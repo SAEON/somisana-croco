@@ -1,0 +1,45 @@
+{ 
+  "---------" : ["---------------------------------------------------" , "-------------" , "-------" , "-------" , "--" , "--" ], 
+  "ShortName" : ["VariableNameInCDS                                  " , "Units"         , "ParamID" , "LevType" , "An" , "Fc" ],
+  "---------" : ["---------------------------------------------------" , "-------------" , "-------" , "-------" , "--" , "--" ], 
+  "sst"       : ["sea_surface_temperature"                             , "K"             , "34.128"  , "sfc"     , "1"  , "1"  ],
+  "msl"       : ["mean_sea_level_pressure"                             , "Pa"            , "151.128" , "sfc"     , "1"  , "1"  ],
+  "tcc"       : ["total_cloud_cover"                                   , "(0 - 1)"       , "164.128" , "sfc"     , "1"  , "1"  ],
+  "u10"       : ["10m_u_component_of_wind"                             , "m s-1"         , "165.128" , "sfc"     , "1"  , "1"  ],
+  "v10"       : ["10m_v_component_of_wind"                             , "m s-1"         , "166.128" , "sfc"     , "1"  , "1"  ],
+  "t2m"       : ["2m_temperature"                                      , "K"             , "167.128" , "sfc"     , "1"  , "1"  ],
+  "d2m"       : ["2m_dewpoint_temperature"                             , "K"             , "168.128" , "sfc"     , "1"  , "1"  ],
+  "---------" : ["---------------------------------------------------" , "-------------" , "-------" , "-------" , "--" , "--" ], 
+  "strd"      : ["surface_thermal_radiation_downwards"                 , "J m-2"         , "175.128" , "sfc"     , "0"  , "1"  ],
+  "ssr"       : ["surface_net_solar_radiation"                         , "J m-2"         , "176.128" , "sfc"     , "0"  , "1"  ],
+  "str"       : ["surface_net_thermal_radiation"                       , "J m-2"         , "177.128" , "sfc"     , "0"  , "1"  ],
+  "ewss"      : ["eastward_turbulent_surface_stress"                   , "N m-2 s"       , "180.128" , "sfc"     , "0"  , "1"  ],
+  "nwss"      : ["northward_turbulent_surface_stress"                  , "N m-2 s"       , "181.128" , "sfc"     , "0"  , "1"  ],
+  "e"         : ["evaporation"                                         , "m"             , "182.128" , "sfc"     , "0"  , "1"  ],
+  "tp"        : ["total_precipitation"                                 , "m"             , "228.128" , "sfc"     , "0"  , "1"  ],
+  "---------" : ["---------------------------------------------------" , "-------------" , "-------" , "-------" , "--" , "--" ], 
+  "msshf"     : ["mean_surface_sensible_heat_flux"                     , "W m-2"         , "33.235"  , "sfc"     , "0"  , "1"  ],  
+  "mslhf"     : ["mean_surface_latent_heat_flux"                       , "W m-2"         , "34.235"  , "sfc"     , "0"  , "1"  ],   
+  "msdwswrf"  : ["mean_surface_downward_short_wave_radiation_flux"     , "W m-2"         , "35.235"  , "sfc"     , "0"  , "1"  ],  
+  "msdwlwrf"  : ["mean_surface_downward_long_wave_radiation_flux"      , "W m-2"         , "36.235"  , "sfc"     , "0"  , "1"  ],  
+  "msnswrf"   : ["mean_surface_net_short_wave_radiation_flux"          , "W m-2"         , "37.235"  , "sfc"     , "0"  , "1"  ],
+  "msnlwrf"   : ["mean_surface_net_long_wave_radiation_flux"           , "W m-2"         , "38.235"  , "sfc"     , "0"  , "1"  ],
+  "meets"     : ["mean_eastward_turbulent_surface_stress"              , "W m-2"         , "41.235"  , "sfc"     , "0"  , "1"  ],
+  "mntss"     : ["mean_northward_turbulent_surface_stress"             , "W m-2"         , "42.235"  , "sfc"     , "0"  , "1"  ],
+  "mer"       : ["mean_evaporation_rate"                               , "kg m-2 s-1"    , "43.235"  , "sfc"     , "0"  , "1"  ],  
+  "mtpr"      : ["mean_total_precipitation_rate"                       , "kg m-2 s-1"    , "55.235"  , "sfc"     , "0"  , "1"  ],  
+  "---------" : ["---------------------------------------------------" , "-------------" , "-------" , "-------" , "--" , "--" ], 
+  "swh"       : ["significant_height_of_combined_wind_waves_and_swell" , "m"             , "229.140" , "wave"    , "1"  , "1"  ],
+  "mwd"       : ["mean_wave_direction"                                 , "Degress true"  , "230.140" , "wave"    , "1"  , "1"  ],
+  "pp1d"      : ["peak_wave_period"                                    , "s"             , "231.140" , "wave"    , "1"  , "1"  ],
+  "cdww"      : ["coefficient_of_drag_with_waves"                      , "dimensionless" , "233.140" , "wave"    , "1"  , "1"  ],
+  "---------" : ["---------------------------------------------------" , "-------------" , "-------" , "-------" , "--" , "--" ], 
+  "q"         : ["specific_humidity"                                   , "kg kg-1"       , "133.128" , "pl"      , "1"  , "1"  ],
+  "r"         : ["relative_humidity"                                   , "%"             , "157.128" , "pl"      , "1"  , "1"  ],
+  "lsm"       : ["land_sea_mask"                                       , "(0 - 1)"       , "172    " , "sfc"     , "1"  , "1"  ]
+}
+
+
+
+
+
