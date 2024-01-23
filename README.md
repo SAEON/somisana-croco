@@ -1,12 +1,14 @@
 # SOMISANA croco related tools
 
-`crocotools_mat` contains some matlab code which can be used in conjunction with the official croco-tools to support SOMISANA related activities 
-`crocotools_py` contains some additional python code which is hopefully useful for some postprocessing, validation and plotting
-the files can be easily imported into your code as packages e.g.
+`crocotools_mat` contains some matlab code which can be used in conjunction with the official croco-tools to support SOMISANA related activities. 
+`crocotools_py` contains some additional python code which is hopefully useful for some postprocessing, validation and plotting.
+The files can be easily imported into your code as packages e.g.
 ```sh
 import crocotools_py.postprocess as post
+import crocotools_py.plotting as crocplot
+import crocotools_py.validation as val
 ```
-if you have an environment set up as described below
+... but only if you have an environment set up as described below
 
 ## Create the environment
 
@@ -27,7 +29,9 @@ pip install --no-deps -e .
 ```
 Now you do not need to add this directory to your PYTHONPATH as long as you have the somisana\_croco environment activated.
 
-If you want to add more packages to this environment, please add them to `environment.yml`,
+## Adding new packages to the environment
+
+If you want to add more packages to this environment, please add them to `environment.yml` (pls push commits to this repo),
 and you can then update your environment like this 
 ```sh
 mamba env update -f environment.yml --prune
