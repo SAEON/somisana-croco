@@ -15,7 +15,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import xarray as xr
 import sys
-import postprocess as post
+import crocotools_py.postprocess as post
 
 def setup_plot(ax, fname, extents=[]):
     # extents = [lon_min, lon_max, lat_min, lat_max]

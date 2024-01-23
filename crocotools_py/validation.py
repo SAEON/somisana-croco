@@ -2,7 +2,7 @@ import numpy as np
 import xarray as xr 
 from glob import glob
 from datetime import datetime
-import postprocess as post
+import crocotools_py.postprocess as post
 import netCDF4 as nc
 import pandas as pd
 import os
