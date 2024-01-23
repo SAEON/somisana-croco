@@ -1,7 +1,5 @@
 # SOMISANA croco related tools
 
-## Documentation
-
 `crocotools_mat` contains some matlab code which can be used in conjunction with the official croco-tools to support SOMISANA related activities 
 `crocotools_py` contains some additional python code which is hopefully useful for some postprocessing, validation and plotting
 the files can be easily imported into your code as packages e.g.
