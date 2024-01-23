@@ -2,8 +2,13 @@
 
 ## Documentation
 
-`matlab_tools` contains some matlab code which can be used in conjunction with the official croco-tools to support SOMISANA related activities 
-Otherwise, the python code in this directory is intended to useful some some postprocessing, validation and plotting
+`crocotools_mat` contains some matlab code which can be used in conjunction with the official croco-tools to support SOMISANA related activities 
+`crocotools_py` contains some additional python code which is hopefully useful for some postprocessing, validation and plotting
+the files can be easily imported into your code as packages e.g.
+```sh
+import crocotools_py.postprocess as post
+```
+if you have an environment set up as described below
 
 ## Create the environment
 
