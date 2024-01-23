@@ -18,8 +18,10 @@ import sys
 import crocotools_py.postprocess as post
 
 def setup_plot(ax, fname, extents=[]):
+    '''
+    generic stuff applicable to all 2D plots
+    '''
     # extents = [lon_min, lon_max, lat_min, lat_max]
-    # generic stuff applicable to all plots
     #
     # first need to get the domain extents if it's not set autmatically
     if len(extents) == 0:
@@ -40,16 +42,22 @@ def setup_plot(ax, fname, extents=[]):
     gl.top_labels = False
 
 def plot_var(ax,fname,var,
-             tstep=0,
+             tstep=0, # index or a datetime (in which case specify ref_date)
              level=0,
+             ref_date = None, 
              ticks = [], # the ticks to plot
              cmap = 'Spectral_r',
              extents = []
              ):
+    '''
+    Add a variable to a 2D plot
+    
+    see post.get_var() for how inputs must be defined
+    '''
     
     # get the data
     lon,lat,mask = post.get_lonlatmask(fname)
-    var_data = post.get_var(fname,var,tstep=tstep,level=level)
+    var_data = post.get_var(fname,var,tstep=tstep,level=level,ref_date=ref_date)
     
     # set up the plot
     setup_plot(ax,fname,extents = extents)
@@ -81,6 +89,10 @@ def plot_cbar(var_plt,
              loc=[1., 0.2, 0.02, 0.6], # [left, bottom, width, height]
              orientation='vertical'):
     
+    '''
+    Add a colorbar to a plot
+    '''
+    
     cbarax = plt.gcf().add_axes(loc) 
     cbar_plt = plt.colorbar(var_plt, cbarax,
                         ticks=ticks,
@@ -96,7 +108,13 @@ def plot_time(ax,fname,
              ref_date = datetime(2000, 1, 1, 0, 0, 0),
              time_fmt = '%Y-%m-%d %H:%M:%S',
              time_font=12):
-    time = post.get_time(fname, ref_date)[tstep]
+    '''
+    Add time text to a 2D plot
+    '''
+    if isinstance(tstep,datetime):
+        time = tstep
+    else:
+        time = post.get_time(fname, ref_date)[tstep]
     time_plt = ax.text(loc[0], loc[1],  datetime.strftime(time, time_fmt),
         ha='center', fontsize=time_font,
         transform=ax.transAxes)
@@ -106,15 +124,19 @@ def plot_time(ax,fname,
 def plot_uv(ax,fname,
               tstep=0,
               level=0,
+              ref_date=None,
               extents = [],
               scale = 10,
               skip = 1,
               col = 'k'
               ):
+    '''
+    Add vectors to a 2D plot
+    '''
     
     # get the data
     lon,lat,mask = post.get_lonlatmask(fname)
-    u, v = post.get_uv(fname,tstep=tstep,level=level)
+    u, v = post.get_uv(fname,tstep=tstep,level=level,ref_date=ref_date)
     
     # set up the plot
     setup_plot(ax, fname, extents = extents)
@@ -137,7 +159,7 @@ def plot(fname,
         ticks = np.linspace(10,22,num=13), # the ticks to plot
         cmap = 'Spectral_r',
         extents = [],
-        ref_date = datetime(2000, 1, 1, 0, 0, 0), # used in CROCO model setup
+        ref_date = None, # datetime, from CROCO model setup
         cbar_loc = [0.9, 0.2, 0.02, 0.6],
         cbar_label = 'temperature ($\degree$C)',
         add_vectors = True,
@@ -150,10 +172,12 @@ def plot(fname,
         write_gif=False,
         tstep_end=None,
         ):
-    # a convenience function for doing a quick plot with minimal coding.
-    # this could also be used as example code for doing your own plots
-    # there's also an option to turn the plot into an animation
-
+    '''
+    this is a convenience function for doing a quick 2D plot with minimal coding.
+    this might also be used as example code for doing your own plots 
+    there's also an option to turn the plot into an animation
+    '''
+    
     fig = plt.figure(figsize=figsize) # (hz,vt)
     ax = plt.axes(projection=ccrs.Mercator())
     
@@ -166,13 +190,16 @@ def plot(fname,
     var_plt = plot_var(ax,fname,var,
              tstep=tstep,
              level=level,
+             ref_date=ref_date, 
              ticks=ticks)
+    
     time_plt = plot_time(ax,fname,tstep=tstep,ref_date=ref_date)
     plot_cbar(var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc)
     if add_vectors:
         uv_plt = plot_uv(ax,fname,
                       tstep=tstep,
                       level=level,
+                      ref_date=ref_date,
                       scale = scale_uv,
                       skip = skip_uv,
                       )
@@ -185,9 +212,8 @@ def plot(fname,
     
     # and/or write a gif if specified
     if write_gif: # do the animation
-
+        # this only works if you stecify tstep as an integer, not a datetime
         def plot_tstep(i):
-            
             # get the data for this time-step
             time_i = post.get_time(fname, ref_date)[i]
             var_i = post.get_var(fname,var,tstep=i,level=level)
