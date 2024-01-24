@@ -747,10 +747,11 @@ def find_nearest_point(fname, Longi, Latit):
     if ('*' in fname) or ('?' in fname) or ('[' in fname):
         fname = glob(fname)[0]
 
-    with post.get_ds(fname) as ds:
+    with get_ds(fname) as ds:
         # Calculate the distance between (Longi, Latit) and all grid points
         distance = ((ds['lon_rho'].values - Longi) ** 2 +
                     (ds['lat_rho'].values - Latit) ** 2) ** 0.5
+
 
     # Find the indices of the minimum distance
     min_index = np.unravel_index(distance.argmin(), distance.shape)
