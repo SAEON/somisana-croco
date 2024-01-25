@@ -722,16 +722,11 @@ def get_boundary(fname):
 def find_nearest_point(fname, Longi, Latit):
     """
             The next METHOD is for finding the nearest point to insitu data in the model:
-                1. The if statement in this function is intended to apply in cases where there are 
-                    multiple files to read in the model. It instructs to only read the first one the glob method
-                    can be used to search for a file with a specific file name, I find it especially handy for
-                    reading through several files with similar names: https://docs.python.org/3/library/glob.html
-                2. with post.get_ds(fname) as ds: Calculate the distance between model and insitu lats and lons  
-                    at all grid points. If you pay special attention you will see that it is indeed a 
-                    distance formular in the form of d = sqrt(x^2+y^2) expanded to d = sqrt((x1-x2)^2+(y1-y2)^2)
-                3. min_index findes indices j,i which represents the minimum distance between model and insitu points
-                   unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
-                   arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
+                
+            distance = with post.get_ds(fname) as ds: Calculate the distance between model and insitu lats and lons  
+                        at all grid points. If you pay special attention you will see that it is indeed a 
+                        distance formular in the form of d = sqrt(x^2+y^2) expanded to d = sqrt((x1-x2)^2+(y1-y2)^2)
+                
                 
             Parameters:
             - fname             :filename of the model
@@ -741,9 +736,11 @@ def find_nearest_point(fname, Longi, Latit):
             Returns:
             - j, i
     """
-    print("2. Im in find_nearest_point")
-    # for effeciency we shouldn't use open_mfdataset for this function
-    # only use the first file
+    #print("2. Im in find_nearest_point")
+    # for effeciency we shouldn't use open_mfdataset for this function  only use the first file
+    #The if statement in this function is intended to apply in cases where there are multiple files to read in the model. 
+    #It instructs to only read the first one the glob method
+    #can be used to search for a file with a specific file name: https://docs.python.org/3/library/glob.html
     if ('*' in fname) or ('?' in fname) or ('[' in fname):
         fname = glob(fname)[0]
 
@@ -754,6 +751,9 @@ def find_nearest_point(fname, Longi, Latit):
 
 
     # Find the indices of the minimum distance
+    # min_index findes indices j,i which represents the minimum distance between model and insitu points
+    # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
+    # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
     min_index = np.unravel_index(distance.argmin(), distance.shape)
     # min_index is a tuple containing the row and column indices of the minimum value
     j, i = min_index
@@ -763,47 +763,38 @@ def find_nearest_point(fname, Longi, Latit):
 def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, time_lims=[]):
     """
            The next Function is for getting MODEL time series:
-               1. time_model is computed using the get_time function from somisana toolkit called postprocess
-                   this model time is extracted based on time limits set by observations time-span that overlaps 
-                   the model time span. fname taken in by time model is the model name.
-               2. j, i = find_nearest_point(fname, lon, lat) : finds the nearest point in the model to the insitu
-                   lon, lat extracted from the insitu file.
-               3. the i_shifted or j_shifted represents the possible shift a user can physically input in order to 
-                   offset as the new supposed point of observation so that the model will find a point nearest to 
-                   it for model evaluation. The reason for this shift is a possible bathymetry mismatch between 
-                   model and station observation which results in nans if the model is shallower than the insitu
-               4. the data_model function call extracts data in the location of the model that is nearest to the 
-                   insitu dataset based on the j and i indices. In the case where the bathymetry becomes a factor
-                   as explained above; then the data_model extracts at the shifted indices.
-               5. lat_mod and lon_mod are extracted with the aim of using them for plotting model location closest
-                   to the insitu data with availability of corrasponding z-level to the insitu data later
                    
             Parameters:
             - fname             :filename of the model
             - var               :variable input by the user. should be the same in both the modeland obs netCDFs.
-            - lat               :lat read from the insitu file
-            - lon               :lon read from the insitu file 
+            - lat               :lat read from the in the model
+            - lon               :lon read from the in the model
             - ref_date          :static user input
             - depth             :user input based on insitu sensor depth
             - model_frequency   :user input, it is the model frequency if the model is an average model output
-            - i_shifted         :optional user inputs if the z level of the model does not match the insitu depth
-            - j_shifted         :optional user inputs if the z level of the model does not match the insitu depth
+            - i_shifted         :optional user inputs if the z level of the model does not match the model depth (insitu depth)
+            - j_shifted         :optional user inputs if the z level of the model does not match the model depth (insitu depth)
             - time_lims         :limits are computed based on the length of the insitu data that matches model span
 
             Returns:
             - time_model, data_model,lat_mod,lon_mod
     """
-    print("3. Im in get_ts")
-    # this function will eventually get moved into the postprocess.py file of the somisana repo
-    # which is why I'd call it just 'get_ts', as it will be obvious that it relates to croco model output
-    # time_lims=[datetime(2012,11,1),datetime(2018,11,1)]
-    # Convert datetime64 array to datetime.datetime objects
-
+    #print("3. Im in get_ts")
+    # time_model is computed using the get_time function above in this toolkit
+    # it is extracted based on time limits set by observations time-span that overlaps the model time span.
     time_model = get_time(fname, ref_date, time_lims=time_lims)
+    #find_nearest_point finds the nearest point in the model to the insitu lon, lat extracted from the insitu input.
     j, i = find_nearest_point(fname, lon, lat) 
+    # the i_shifted or j_shifted represents the possible shift a user can physically input in order to 
+    # offset as the point of the observation so that the model will find a point nearest to it for model evaluation.
+    # The reason for this shift is a possible bathymetry mismatch between 
+    # model and station observation which results in nans if the model is shallower than the insitu
     i = i+i_shifted
     j = j+j_shifted
-        
+    
+    # the data_model function call extracts data in the location of the model that is nearest to the 
+    # insitu dataset based on the j and i indices. In the case where the bathymetry becomes a factor
+    # as explained above; then the data_model extracts at the shifted indices.
     data_model = get_var(fname, var,
                          tstep=time_lims,
                          level=depth,
@@ -811,7 +802,12 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
                          xi=i,
                          ref_date=ref_date)
     
+    # lat_mod and lon_mod are extracted with the aim of using them for plotting model location closest
+    # to the insitu data with availability of corrasponding z-level to the insitu data later
     lat_mod =  get_var(fname,"lat_rho",eta=j,xi=i)
     lon_mod =  get_var(fname,"lon_rho",eta=j,xi=i)
+    
+    # In the instances where the model depth is of interest such as on plotting the bathymetry you can extract h
+    h = get_var(fname,"h",eta=j,xi=i)
         
-    return time_model, data_model,lat_mod,lon_mod
+    return time_model, data_model,lat_mod,lon_mod,h
