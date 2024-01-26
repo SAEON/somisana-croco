@@ -2,7 +2,7 @@
 %
 % script created by Giles Fearon, adapted from existing CROCOTOOLS scripts
 % As per make_OGCM.m in croco_tools but functionality for taking HYCOM, 
-% Bluelink and Glorys data as boundaries
+% Bluelink and Glorys etc data as boundaries
 %
 % Create and fill CROCO clim and bry files with OGCM data.
 %
