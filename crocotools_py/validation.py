@@ -148,8 +148,8 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
             - ref_date          :static user input
             - depth             :user input based on insitu sensor depth
             - model_frequency   :user input, it is the model frequency if the model is an average model output
-            - i_shifted         :optional user inputs if the z level of the model does not match the insitu depth
-            - j_shifted         :optional user inputs if the z level of the model does not match the insitu depth
+            - i_shifted         :optional user inputs if the z level of the model does not match the input lon depth
+            - j_shifted         :optional user inputs if the z level of the model does not match the input lat depth
             - time_lims         :limits are computed based on the length of the insitu data that matches model span
     """
     # print("5. Im in get_model_obs_ts")
@@ -177,11 +177,14 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
             lat_mod = np.array([lat_mod], dtype=np.float32)
             nc_file.createDimension('latitude', len(lat_mod))
         else:
+            lat_obs = np.array([lat_obs], dtype=np.float32)
             nc_file.createDimension('latitude', len(lat_obs))
 
         if i_shifted != 0:
+            lon_mod = np.array([lon_mod], dtype=np.float32)
             nc_file.createDimension('longitude', len(lon_mod))
         else:
+            long_obs = np.array([long_obs], dtype=np.float32)
             nc_file.createDimension('longitude', len(long_obs))
         
         # print(f"5.1 NetCDF file created at: {output_path}")
@@ -230,8 +233,9 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
         nc_file.setncattr('AMJ', round(AMJ_mean,3))
         nc_file.setncattr('JAS', round(JAS_mean,3))
         nc_file.setncattr('OND', round(OND_mean,3))
-            
+         
         nc_file.setncattr('depth',depth)
+        nc_file.setncattr('h',h)
         nc_file.setncattr('i_shift',i_shifted)
         nc_file.setncattr('j_shift',j_shifted)
         
@@ -273,36 +277,57 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
         nc_file.setncattr('obs_max', obs_max)
         
         # Console feedback to the user
-        if np.isnan(data_obs_model_timeaxis).any():
+        if -depth<h:
             print('')
             print('----------------------------------------------------------------')
             print(f'{Fore.GREEN}{Style.BRIGHT} Successfully Done!!!{Style.RESET_ALL}')
             print('----------------------------------------------------------------')
             print(f'Find your evaluation output netCDF file at: {output_directory}')
-        if not np.isnan(data_obs_model_timeaxis).any():
+        elif i_shifted == 0 and j_shifted == 0 and h<-depth:
+            print('')
+            print('----------------------------------------------------------------')
+            print(f'{Fore.GREEN}{Style.BRIGHT} Successfully Done!!!{Style.RESET_ALL}')
+            print('----------------------------------------------------------------')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} WARNING: {Style.RESET_ALL}')
+            print(f'{Fore.CYAN}{Style.BRIGHT} The following issue is caused by lower resolution bathymetry data used in the model, not very well suited for coastal areas* {Style.RESET_ALL}')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} The model is shallower than the in situ data due to bathymetric inconsistencies, your model height is (h = {-round(h)} m), {Style.RESET_ALL}')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} while in situ data is at (depth = {depth} m). Your model output is therefore taken at the deepest model point since model is shallower.  {Style.RESET_ALL}')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} Alternatively; if prefered, the user can consider changing/shifting i_shift, j_shift or both from zero to deeper parts of the ocean {Style.RESET_ALL}')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} REMEMBER:  {Style.RESET_ALL}')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} i_shifted :optional user input for shifting input lon/xi by a grid point at a time on function get_model_obs_ts() {Style.RESET_ALL}')
+            print(f'{Fore.YELLOW}{Style.BRIGHT} j_shifted :optional user input for shifting input lat/eta by a grid point at a time on function get_model_obs_ts() {Style.RESET_ALL}')
+            print('')
+            print(f'Find your evaluation output netCDF file at: {output_directory}')            
+        else:
             print('')
             print('----------------------------------------------------------------')
             print(f'{Fore.RED}{Style.BRIGHT} Evaluation FAILED!!!{Style.RESET_ALL}')
             print('----------------------------------------------------------------')
             print(f"{Fore.MAGENTA}{Style.BRIGHT} But don't panic, here's how you can fix it: {Style.RESET_ALL}")
             print('Consider changing i_shift, j_shift or both from zero to deeper parts of the ocean or change the station')
-            print(f'the given input is of depth ={Fore.GREEN}{Style.BRIGHT} {depth} {Style.RESET_ALL}> h = {round(h,2)}, this means you are evaluating below sea-floor; remember h is model sea-height')
+            print(f'the given input is of observation depth ={Fore.GREEN}{Style.BRIGHT} {-depth} m {Style.RESET_ALL}> h = -{round(h)} m, this means you are evaluating below sea-floor; remember h is model sea-height')
+            print('')
+            print('Remember:')
+            print('i_shifted :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time')
+            print('j_shifted :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time')
             
+               
 # %%
     
 if __name__ == "__main__":
 
     # Define the input parameters:  
-    # dir_model is the directory at which your model files are located.
-    dir_model = '/mnt/d/Run_False_Bay_2008_2018_SANHO/croco_avg_Y2016*.nc.1'
     # fname_out is the file name you want your output netCDF file to be labelled as.
-    fname_out = 'CapePoint_CP003.nc' # or 'CapePoint_CP003.nc'  'FalseBay_FB001.nc'
+    fname_out = 'CapePoint_CP002.nc' # or 'CapePoint_CP003.nc'  'FalseBay_FB001.nc'
+    # dir_model is the directory at which your model files are located.
+    dir_model = '/mnt/d/Run_False_Bay_2008_2018_SANHO/croco_avg_Y201*.nc.1'
+
     # fname_obs is the file name of your observations
     fname_obs = f'/mnt/d/DATA-20231010T133411Z-003/DATA/ATAP/Processed/Processed_Station_Files/{fname_out}'
 
     # Output file name and directory:
     # Be sure to change the following directory to the one in which you are working
-    output_directory = '/mnt/d/Run_False_Bay_2008_2018_SANHO/Validation/ATAP/model_validation/'
+    output_directory = '/mnt/d/Run_False_Bay_2008_2018_SANHO/Validation/ATAP/model_validation/'#'i-j_Shifted/'
     fname_out = os.path.join(output_directory, 'Validation_'+fname_out )
 
     # Other parameters:
@@ -311,7 +336,7 @@ if __name__ == "__main__":
     # The variable of interest during validation. Should idealy be extracted accurately from the observations file
     var = 'temp'
     # The depth you are providing should be the in situ station depth
-    depth=-55
+    depth=-50
     # The following ref_date corrasponds to the refdate of croco SWCC model, 
     # change it if you model has a different ref date
     ref_date = datetime(1990, 1, 1, 0, 0, 0)
@@ -320,11 +345,17 @@ if __name__ == "__main__":
                       fname_out,model_frequency=model_frequency,
                       var=var,
                       ref_date=ref_date,
-                      depth=depth, 
+                      depth=depth,
                       # The following are optional user inputs. Should be left as 0 on both, otherwise if the output
                       # netCDF file returns empty arrays, then what has happened is that the model z level is 
                       # modelled to be beneath bathymetry for the above statn depth. in this case the 
                       #i_shifted and j_shifted can be used to machanically shift the obs station to a deeper ocean.
-                      i_shifted=0,j_shifted=-4         
+                       i_shifted=0,j_shifted=0   #CapePoint_CP001.nc , depth=-32
+                       # i_shifted=0,j_shifted=-3  #CapePoint_CP002.nc, depth=-50
+                       # i_shifted=3,j_shifted=-3  #CapePoint_CP003.nc, depth=-58
+                      # i_shifted=0,j_shifted=0   #FalseBay_FB001.nc , depth=-40
+                       # i_shifted=-1,j_shifted=0  #FalseBay_FB002.nc, depth=-50
+                       # i_shifted=-2,j_shifted=0  #FalseBay_FB003.nc, depth=-58
+                      # i_shifted=0,j_shifted=0  #WalkerBay_WB003.nc, depth=-23
                       )
     

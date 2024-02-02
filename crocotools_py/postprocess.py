@@ -726,8 +726,7 @@ def find_nearest_point(fname, Longi, Latit):
             distance = with post.get_ds(fname) as ds: Calculate the distance between model and insitu lats and lons  
                         at all grid points. If you pay special attention you will see that it is indeed a 
                         distance formular in the form of d = sqrt(x^2+y^2) expanded to d = sqrt((x1-x2)^2+(y1-y2)^2)
-                
-                
+                    
             Parameters:
             - fname             :filename of the model
             - lat               :lat read from the insitu file
@@ -748,7 +747,6 @@ def find_nearest_point(fname, Longi, Latit):
         # Calculate the distance between (Longi, Latit) and all grid points
         distance = ((ds['lon_rho'].values - Longi) ** 2 +
                     (ds['lat_rho'].values - Latit) ** 2) ** 0.5
-
 
     # Find the indices of the minimum distance
     # min_index findes indices j,i which represents the minimum distance between model and insitu points
@@ -772,8 +770,8 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
             - ref_date          :static user input
             - depth             :user input based on insitu sensor depth
             - model_frequency   :user input, it is the model frequency if the model is an average model output
-            - i_shifted         :optional user inputs if the z level of the model does not match the model depth (insitu depth)
-            - j_shifted         :optional user inputs if the z level of the model does not match the model depth (insitu depth)
+            - i_shifted         :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time, useful in cases where the z level of the point model is deeper than h. 
+            - j_shifted         :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time, useful in cases where the z level of the point model is deeper than h.
             - time_lims         :limits are computed based on the length of the insitu data that matches model span
 
             Returns:
@@ -792,6 +790,7 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
     i = i+i_shifted
     j = j+j_shifted
     
+    
     # the data_model function call extracts data in the location of the model that is nearest to the 
     # insitu dataset based on the j and i indices. In the case where the bathymetry becomes a factor
     # as explained above; then the data_model extracts at the shifted indices.
@@ -809,5 +808,27 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
     
     # In the instances where the model depth is of interest such as on plotting the bathymetry you can extract h
     h = get_var(fname,"h",eta=j,xi=i)
-        
+    print('----------------------------------------------------------------')
+    print('')
+    print('h=',-h)
+    print('first 5 model values at (in situ depth = z-level ) =',data_model[0:5])
+    print('')
+    print('depth=',depth)
+    print('')
+    print('----------------------------------------------------------------')
+    
+    if i_shifted == 0 and j_shifted == 0 and h<-depth:
+        print('The height of the model is shallower than input/(in situ) depth, thats why the nans above.')
+        print('Were extracting the bottom sigma layer of the model.')
+        data_model = get_var(fname, var,
+                             tstep=time_lims,
+                             level=0,                                                               # The 3 subtracted here represents a possible 3m height above sea-floor of the bottom moored bouyant in situ sensor.
+                             eta=j,
+                             xi=i,
+                             ref_date=ref_date)
+        print('----------------------------------------------------------------')
+        print('')
+        print('first 5 mod values at (in situ depth = h) =',data_model[0:5])
+        print('')
+        print('----------------------------------------------------------------')
     return time_model, data_model,lat_mod,lon_mod,h
