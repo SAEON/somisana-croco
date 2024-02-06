@@ -93,7 +93,8 @@ for Y=Ymin:Ymax
     Nt=length(time);
     time_origin=ncreadatt(glorysfile,'time','units');
     time_origin=strsplit(time_origin);
-    time_origin=char(strcat(time_origin(3)," ",time_origin(4)));
+    % time_origin=char(strcat(time_origin(3)," ",time_origin(4)));
+    time_origin=char(time_origin(3));
     time_origin=datenum(time_origin);
     % Transform time to days since hycom time origin
     time=time+time_origin;

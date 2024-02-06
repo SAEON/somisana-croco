@@ -1,10 +1,46 @@
 *.swp
 
-# NetCDF binary files
-*.nc
-*.zarr
+# ignore all data which needs to be downloaded for running configurations
+DATASETS_CROCOTOOLS/*
+# except for a few files which keep a record of how other datasets can be downloaded
+!DATASETS_CROCOTOOLS/README.md/
+!DATASETS_CROCOTOOLS/GLORYS/download_glorys.py
+!DATASETS_CROCOTOOLS/ERA5/era5_crocotools_param.py
+!DATASETS_CROCOTOOLS/ERA5/ERA5_utilities.py
+!DATASETS_CROCOTOOLS/ERA5/ERA5_convert.py
+!DATASETS_CROCOTOOLS/ERA5/ERA5_variables.json
+!DATASETS_CROCOTOOLS/ERA5/ERA5_request.py
+!DATASETS_CROCOTOOLS/ERA5/README_ERA5.txt/
 
-##### Python
+# croco run-time files (this should exclude all directories set up by running a configuration in our directory structure)
+C*_I*_*
+
+# netcdf files
+*.nc*
+*.zarr*
+# except for grid files, which we should keep with the repo
+!*grd.nc*
+
+# plots
+*.jpg
+*.png
+
+# matlab files
+*.mat
+
+# from compiling croco
+kRGB61*
+*MUSTANG_NAMELIST/*
+namelist_pisces*
+*Compile/*
+croco
+ncjoin
+partit
+
+
+##### Python stuff
+# (everything below here is github's suggested default things for python projects)
+#
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
