@@ -19,12 +19,12 @@ DATASETS_CROCOTOOLS/ERA5/*
 !DATASETS_CROCOTOOLS/ERA5/README_ERA5.txt
 
 # croco run-time files (this should exclude all directories set up by running a configuration in our directory structure)
-/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/*
-/configs/swcape_02/croco_v1.3.1/C01/*
+#/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/*
+#/configs/swcape_02/croco_v1.3.1/C01/*
 /configs/swcape_02/croco_v1.3.1/I01/*
 /configs/swcape_02/croco_v1.3.1/GLORYS/*
 /configs/swcape_02/croco_v1.3.1/ERA5/*
-# C*_I*_*
+C*_I*_*
 
 # netcdf files
 *.nc*
