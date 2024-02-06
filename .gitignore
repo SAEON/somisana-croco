@@ -41,9 +41,9 @@ C*_I*_*
 
 # from compiling croco
 kRGB61*
-*MUSTANG_NAMELIST/*
+MUSTANG_NAMELIST/*
 namelist_pisces*
-*Compile/*
+Compile/*
 croco
 ncjoin
 partit
