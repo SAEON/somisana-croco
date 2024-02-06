@@ -126,7 +126,7 @@ if makeini==1
         disp([' NO VTRANSFORM parameter found'])
         disp([' USE vtransform default value  Vtransfor = 1'])
     end
-  ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(Mmin),nc_suffix];
+  ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,Mmin)),nc_suffix];
   %
   % Process the time in Yorig time (i.e days since Yorig-01-01)
   %
@@ -362,8 +362,8 @@ if SPIN_Long>0
       %
       % Copy the file
       %
-      clmname=[clm_prefix,'Y',num2str(Ymin),'M',num2str(M),nc_suffix];
-      clmname2=[clm_prefix,'Y',num2str(Y),'M',num2str(M),nc_suffix];
+      clmname=[clm_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
+      clmname2=[clm_prefix,'Y',num2str(Y),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
       disp(['Create ',clmname2]) 
       eval(['!cp ',clmname,' ',clmname2]) 
       %
