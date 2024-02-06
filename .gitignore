@@ -18,15 +18,12 @@ DATASETS_CROCOTOOLS/ERA5/*
 !DATASETS_CROCOTOOLS/ERA5/ERA5_request.py
 !DATASETS_CROCOTOOLS/ERA5/README_ERA5.txt
 
-# croco run-time files (this should exclude all directories set up by running a configuration in our directory structure)
-#/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/*
-#/configs/swcape_02/croco_v1.3.1/C01/*
-/configs/swcape_02/croco_v1.3.1/I01/*
-/configs/swcape_02/croco_v1.3.1/GLORYS/*
-/configs/swcape_02/croco_v1.3.1/ERA5/*
+# croco run-time files 
+# (exclude all directories set up by running a configuration in our directory structure)
 C*_I*_*
 
 # netcdf files
+*.cdf*
 *.nc*
 *.zarr*
 # except for grid files, which we should keep with the repo
@@ -41,13 +38,12 @@ C*_I*_*
 
 # from compiling croco
 kRGB61*
-MUSTANG_NAMELIST/*
+MUSTANG_NAMELIST
 namelist_pisces*
-Compile/*
+Compile
 croco
 ncjoin
 partit
-
 
 ##### Python stuff
 # (everything below here is github's suggested default things for python projects)
