@@ -3,8 +3,10 @@
 # ignore all data which needs to be downloaded for running configurations
 DATASETS_CROCOTOOLS/*
 # except for a few files which keep a record of how other datasets can be downloaded
-!DATASETS_CROCOTOOLS/README.md/
+!DATASETS_CROCOTOOLS/README.md
+DATASETS_CROCOTOOLS/GLORYS/*
 !DATASETS_CROCOTOOLS/GLORYS/download_glorys.py
+DATASETS_CROCOTOOLS/ERA5/*
 !DATASETS_CROCOTOOLS/ERA5/era5_crocotools_param.py
 !DATASETS_CROCOTOOLS/ERA5/ERA5_utilities.py
 !DATASETS_CROCOTOOLS/ERA5/ERA5_convert.py

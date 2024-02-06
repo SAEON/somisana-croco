@@ -1,6 +1,6 @@
-<domain>_**
+domain_**
 
-<domain> is self explanatory - just descriptive of the region covered
+domain   is self explanatory - just descriptive of the region covered
          ** is a number denoting the grid used 
 
 swcape 
