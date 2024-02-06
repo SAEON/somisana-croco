@@ -477,7 +477,7 @@ rmdepth     = 2;
 % Overlap parameters : nb of records around each monthly sequence
 %
 itolap_a    = 1;   % before
-itolap_p    = 1;   % after
+itolap_p    = 2;   % after
                    %
 %--------------------------
 % Options for make_bry_WKB 
