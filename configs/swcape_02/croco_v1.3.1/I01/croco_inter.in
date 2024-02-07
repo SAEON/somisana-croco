@@ -31,7 +31,7 @@ restart:          NRST, NRPFRST / filename
                   NUMTIMES   -1
                           croco_rst.nc
 history: LDEFHIS, NWRT, NRPFHIS / filename 
-            T     NUMHIS     0
+            F     NUMHIS     0
                           croco_his.nc
 averages: NTSAVG, NAVG, NRPFAVG / filename
             1     NUMAVG     0
@@ -143,12 +143,12 @@ diags_ek_average_fields: diags_ek_avg
                             T
 
 surf:   ldefsurf, nwrtsurf, nrpfsurf /filename
-                   T          NUMHISSURF        0
-    croco_surf.nc
+                   F          NUMHISSURF        0
+    croco_his_surf.nc
 
 surf_avg: ldefsurf_avg  ntssurf_avg  nwrtsurf_avg  nprfsurf_avg /filename
                T          1           NUMAVGSURF        0
-    croco_surf_avg.nc
+    croco_avg_surf.nc
 
 surf_history_fields: surf
                             T

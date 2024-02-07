@@ -44,6 +44,7 @@ Compile
 croco
 ncjoin
 partit
+param.h
 
 ##### Python stuff
 # (everything below here is github's suggested default things for python projects)

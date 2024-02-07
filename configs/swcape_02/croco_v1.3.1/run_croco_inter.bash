@@ -10,7 +10,6 @@ MK=/bin/mkdir
 ########################################################
 #  Define files and run parameters
 ########################################################
-#
 
 source myenv_inter.sh
 
@@ -19,6 +18,7 @@ EXEDIR=$RUNDIR/$EXENAME
 CODFILE=croco
 
 INPUTDIR_IN=$RUNDIR/${INNAME}
+source ${INPUTDIR_IN}/myenv_in.sh
 INPUTDIR_SRF=$RUNDIR/$ATMOS_BULK
 INPUTDIR_BRY=$RUNDIR/$OGCM
 INPUTDIR_GRD=$RUNDIR/GRID
@@ -27,57 +27,12 @@ MODEL=croco
 RUNNAME=${EXENAME}_${INNAME}_${OGCM}_${ATMOS_BULK}
 SCRATCHDIR=$RUNDIR/$RUNNAME/scratch
 OUTPUTDIR=$RUNDIR/$RUNNAME/output
-#
+
 BULK_FILES=1
 FORCING_FILES=0
 CLIMATOLOGY_FILES=1
 BOUNDARY_FILES=0
-#
-# Model time step [seconds]
-#
-DT=40
-DTFAST=40
-#      Number of hours for averages files
-#      24 is 1 days
-#      48 is 2 days
-#      72 is 3 days
-#      96 is 4 days
-#      120 is 5 days
-NH_AVG=24 #6
-NH_HIS=24 #1
-NH_AVGSURF=1 #6
-NH_HISSURF=24 #1
-NH_STA=1
-#
-# Time refinement coefficient (factor to apply to time-step at each child level)
-#
-T_REF=3
-#
-# Number total of grid levels (1: No child grid)
-#
-NLEVEL=1
-#
-NY_START=2009
-NY_END=2009
-NM_START=1
-NM_END=3
-#
-# Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
-MTH_FORMAT="%02d"
-#
-# Number of year that are considered to be part of the spin-up (i.e. 365 days per year)
-NY_SPIN=0
-#
-#  Restart file - RSTFLAG=0 --> No Restart
-#		  RSTFLAG=1 --> Restart
-#
-RSTFLAG=0
-#
-#  Time Schedule  -  TIME_SCHED=0 --> yearly files
-#                    TIME_SCHED=1 --> monthly files
-#
-TIME_SCHED=1
-#
+
 ########################################################
 #
 if [[ $TIME_SCHED == 0 ]]; then
