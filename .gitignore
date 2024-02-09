@@ -1,3 +1,4 @@
+copy2chpc.bash
 *.swp
 
 # ignore all data which needs to be downloaded for running configurations
