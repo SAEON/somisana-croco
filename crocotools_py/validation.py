@@ -46,7 +46,16 @@ def get_ts_obs(fname_obs, var):
         # Handle the exception, provide default values
         long_obs = obs.lon.values
         lat_obs = obs.lat.values
-    
+    except ValueError as ve:
+        print(f"Caught an exception: {ve}")
+        # Handle the exception, provide default values
+        long_obs = obs.Lon.values
+        lat_obs = obs.Lat.values
+    except ValueError as ve:
+        print(f"Caught an exception: {ve}")
+        # Handle the exception, provide default values
+        long_obs = obs.Longitude.values
+        lat_obs = obs.Latitude.values
     else:
         print("Longitude and latitude successfully retrieved.")
 
