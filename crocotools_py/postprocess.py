@@ -721,16 +721,16 @@ def get_boundary(fname):
 
 def find_nearest_point(fname, Longi, Latit):
     """
-            The next METHOD is for finding the nearest point to insitu data in the model:
+            The next METHOD is for finding the nearest point to model grid data in the model:
                 
-            distance = with post.get_ds(fname) as ds: Calculate the distance between model and insitu lats and lons  
+            distance = with post.get_ds(fname) as ds: Calculate the distance between model and model grid lats and lons  
                         at all grid points. If you pay special attention you will see that it is indeed a 
                         distance formular in the form of d = sqrt(x^2+y^2) expanded to d = sqrt((x1-x2)^2+(y1-y2)^2)
                     
             Parameters:
             - fname             :filename of the model
-            - lat               :lat read from the insitu file
-            - lon               :lon read from the insitu file 
+            - lat               :lat read from the model grid point
+            - lon               :lon read from the model grid point
 
             Returns:
             - j, i
@@ -749,7 +749,7 @@ def find_nearest_point(fname, Longi, Latit):
                     (ds['lat_rho'].values - Latit) ** 2) ** 0.5
 
     # Find the indices of the minimum distance
-    # min_index findes indices j,i which represents the minimum distance between model and insitu points
+    # min_index findes indices j,i which represents the minimum distance between model and model grid points
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
     min_index = np.unravel_index(distance.argmin(), distance.shape)
@@ -768,11 +768,11 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
             - lat               :lat read from the in the model
             - lon               :lon read from the in the model
             - ref_date          :static user input
-            - depth             :user input based on insitu sensor depth
+            - depth             :user input based on model depth
             - model_frequency   :user input, it is the model frequency if the model is an average model output
             - i_shifted         :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time, useful in cases where the z level of the point model is deeper than h. 
             - j_shifted         :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time, useful in cases where the z level of the point model is deeper than h.
-            - time_lims         :limits are computed based on the length of the insitu data that matches model span
+            - time_lims         :limits are computed based on the length of the model data input that is within the model span
 
             Returns:
             - time_model, data_model,lat_mod,lon_mod
@@ -781,18 +781,17 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
     # time_model is computed using the get_time function above in this toolkit
     # it is extracted based on time limits set by observations time-span that overlaps the model time span.
     time_model = get_time(fname, ref_date, time_lims=time_lims)
-    #find_nearest_point finds the nearest point in the model to the insitu lon, lat extracted from the insitu input.
+    #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     j, i = find_nearest_point(fname, lon, lat) 
     # the i_shifted or j_shifted represents the possible shift a user can physically input in order to 
     # offset as the point of the observation so that the model will find a point nearest to it for model evaluation.
     # The reason for this shift is a possible bathymetry mismatch between 
-    # model and station observation which results in nans if the model is shallower than the insitu
+    # model and station observation which results in nans if the model grid is shallower than the model point selected
     i = i+i_shifted
     j = j+j_shifted
     
-    
-    # the data_model function call extracts data in the location of the model that is nearest to the 
-    # insitu dataset based on the j and i indices. In the case where the bathymetry becomes a factor
+    # the get_var function call extracts data in the location of the model that is nearest to the 
+    # model grid dataset based on the j and i indices. In the case where the bathymetry becomes a factor
     # as explained above; then the data_model extracts at the shifted indices.
     data_model = get_var(fname, var,
                          tstep=time_lims,
@@ -802,7 +801,7 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
                          ref_date=ref_date)
     
     # lat_mod and lon_mod are extracted with the aim of using them for plotting model location closest
-    # to the insitu data with availability of corrasponding z-level to the insitu data later
+    # to the model data with availability of corrasponding z-level to the model grid data later
     lat_mod =  get_var(fname,"lat_rho",eta=j,xi=i)
     lon_mod =  get_var(fname,"lon_rho",eta=j,xi=i)
     

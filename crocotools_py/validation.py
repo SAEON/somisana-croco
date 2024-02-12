@@ -24,16 +24,33 @@ def get_ts_obs(fname_obs, var):
     obs = xr.open_dataset(fname_obs)
     # data_obs: uses obs[var] it retrieves obs data array
     data_obs = np.squeeze(obs[var].values)
+    var_units = obs[var].units
     time_obs = obs.time.values
     # time_obs  : uses the traditional dot method to retrieve time array from obs and corrects it from
     # a datetime64 datatype to a datetime.datetime object to ensure compliance with model time 
     # astype methos can be found at: https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.astype.html
     time_obs = time_obs.astype('datetime64[s]').astype(datetime)
     # lat_obs: uses the dot method to extract latitude values. the same applieas to long_obs
-    long_obs = obs.longitude.values
-    lat_obs = obs.latitude.values
+    #But First it must handle an exception for an example, if the obs data defines lats and lons in full names    
+    try:
+        long_obs = obs.longitude.values
+        lat_obs = obs.latitude.values
+    
+        if (long_obs == [0]).any():
+            raise ValueError("Undesired output detected in 'longitude': array([0])")
+        if (lat_obs == [0]).any():
+            raise ValueError("Undesired output detected in 'latitude': array([0])")
+        
+    except ValueError as ve:
+        print(f"Caught an exception: {ve}")
+        # Handle the exception, provide default values
+        long_obs = obs.lon.values
+        lat_obs = obs.lat.values
+    
+    else:
+        print("Longitude and latitude successfully retrieved.")
 
-    return time_obs, data_obs, long_obs, lat_obs
+    return time_obs, data_obs, long_obs, lat_obs, var_units
 
 def obs_2_model_timeaxis(fname_obs,time_model,model_frequency,var):
     """
@@ -69,19 +86,25 @@ def obs_2_model_timeaxis(fname_obs,time_model,model_frequency,var):
     data_obs_model_timeaxis = [None for i in range(len(time_model))]
     # Convert the NumPy array to a list of datetime objects
     formatted_time_obs = time_obs.tolist()
-
-    for index_mod, time_model_now in enumerate(time_model):
-        # the if statement selects conditions at which the for loop applies which are: at every 
-        # time step of the time model that also exists in the observations time array.
-        # Step through index: Checks the time component in time_obs and in each record if it is contained in time_obs then.
-        if time_model_now in formatted_time_obs:            
-        # Step: If contained then replace that time value in with a value in time_model in the same index.
-        # when the above condition is met, a new index_obs is computed as the index when time obs and
-        # time model are identical times. That index output represents a location of the obervation that 
-        # is to be placed on the model time axis on that time axis array. the x.index method is a in https://www.w3schools.com/python/ref_list_index.asp
-            
-            index_obs = formatted_time_obs.index(time_model_now)
-            data_obs_model_timeaxis[index_mod] = data_obs[index_obs]
+    
+    if var == 'u' or 'v':
+        for index_mod, time_model_now in enumerate(time_model):
+            if time_model_now in formatted_time_obs:            
+                index_obs = formatted_time_obs.index(time_model_now)
+                data_obs_model_timeaxis[index_mod] = data_obs[index_obs]
+    else:
+        for index_mod, time_model_now in enumerate(time_model):
+            # the if statement selects conditions at which the for loop applies which are: at every 
+            # time step of the time model that also exists in the observations time array.
+            # Step through index: Checks the time component in time_obs and in each record if it is contained in time_obs then.
+            if time_model_now in formatted_time_obs:            
+            # Step: If contained then replace that time value in with a value in time_model in the same index.
+            # when the above condition is met, a new index_obs is computed as the index when time obs and
+            # time model are identical times. That index output represents a location of the obervation that 
+            # is to be placed on the model time axis on that time axis array. the x.index method is a in https://www.w3schools.com/python/ref_list_index.asp
+                
+                index_obs = formatted_time_obs.index(time_model_now)
+                data_obs_model_timeaxis[index_mod] = data_obs[index_obs]
        
     return np.array(data_obs_model_timeaxis)
   
@@ -157,7 +180,7 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
     # which will have the model and observations on the same time axis
     
     # get the observations time-series
-    time_obs, data_obs, long_obs, lat_obs = get_ts_obs(fname_obs,var)   
+    time_obs, data_obs, long_obs, lat_obs, var_units = get_ts_obs(fname_obs,var)   
 
     # get the model time-series
     time_model, data_model,lat_mod,lon_mod,h = post.get_ts(fname,var,long_obs,lat_obs,ref_date,depth=depth,i_shifted=i_shifted,j_shifted=j_shifted,time_lims=[time_obs[0],time_obs[-1]]) # Change the 10 back to -1
@@ -217,13 +240,14 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
         time_var.units = 'seconds since 1970-01-01 00:00:00'    
         time_var.calendar = 'standard'        
         time_var.long_name = 'time'
-        # time_var.units = 'days'
-        lat_var.units = 'latitude'
-        lon_var.units = 'longitude'
-        lat_mod_var.units = 'latitude' 
-        lon_mod_var.units= 'longitude'
-        model_var.units = 'degrees Celsius' # SHOULDN'T BE HARD CODED
-        obs_model_var.units = 'degrees Celsius'
+        lat_var.units = 'degrees_north'
+        lon_var.units = 'degrees_east'
+        lat_mod_var.units = 'degrees_north'
+        lon_mod_var.units= 'degrees_east'
+        model_var.units = var_units     # SHOULDN'T BE HARD CODED
+        obs_model_var.units = var_units
+        
+        
                 
         # calculate model seasonal means:
         # seasonal_mean = calculate_seasonal_means(data_model, time_model,var)
