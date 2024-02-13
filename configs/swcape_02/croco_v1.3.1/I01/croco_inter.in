@@ -31,7 +31,7 @@ restart:          NRST, NRPFRST / filename
                   NUMTIMES   -1
                           croco_rst.nc
 history: LDEFHIS, NWRT, NRPFHIS / filename 
-            F     NUMHIS     0
+            F     NUMTIMES     0
                           croco_his.nc
 averages: NTSAVG, NAVG, NRPFAVG / filename
             1     NUMAVG     0

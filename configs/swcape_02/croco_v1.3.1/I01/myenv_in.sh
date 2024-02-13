@@ -30,10 +30,17 @@ T_REF=3
 #
 NLEVEL=1
 #
-NY_START=2009
-NY_END=2009
-NM_START=1
-NM_END=3
+# these are the time extents for this run
+#NY_START=2009
+#NY_END=2013
+#NM_START=1
+#NM_END=12
+# but we had to run it in fits and starts due to copying over forcings files inbetween load shedding :(
+# so these settings get changed as we execute bits at a time
+NY_START=2010
+NY_END=2012
+NM_START=11
+NM_END=07
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
 MTH_FORMAT="%02d"
@@ -44,7 +51,7 @@ NY_SPIN=0
 #  Restart file - RSTFLAG=0 --> No Restart
 #		  RSTFLAG=1 --> Restart
 #
-RSTFLAG=0
+RSTFLAG=1
 #
 #  Time Schedule  -  TIME_SCHED=0 --> yearly files
 #                    TIME_SCHED=1 --> monthly files

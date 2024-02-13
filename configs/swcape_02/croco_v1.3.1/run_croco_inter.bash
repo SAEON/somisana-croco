@@ -63,7 +63,7 @@ if [[ $RSTFLAG != 0 ]]; then
     fi
     TIME=Y${NY}M$( printf ${MTH_FORMAT} ${NM})
   fi
-  RSTFILE=rst_${TIME}
+  RSTFILE=${MODEL}_rst_${TIME}
 fi
 #
 if [[ $TIME_SCHED == 0 ]]; then
