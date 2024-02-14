@@ -721,25 +721,19 @@ def get_boundary(fname):
 
 def find_nearest_point(fname, Longi, Latit):
     """
-            The next METHOD is for finding the nearest point to model grid data in the model:
+            Dinding the nearest indices of the model rho grid point to a specified lon, lat:
                 
-            distance = with post.get_ds(fname) as ds: Calculate the distance between model and model grid lats and lons  
-                        at all grid points. If you pay special attention you will see that it is indeed a 
-                        distance formular in the form of d = sqrt(x^2+y^2) expanded to d = sqrt((x1-x2)^2+(y1-y2)^2)
-                    
             Parameters:
-            - fname             :filename of the model
-            - lat               :lat read from the model grid point
-            - lon               :lon read from the model grid point
+            - fname :filename of the model
+            - Latit :latitude
+            - Longi :longitude
 
             Returns:
-            - j, i
+            - j :the nearest eta index
+            - i :the nearest xi index
     """
-    #print("2. Im in find_nearest_point")
-    # for effeciency we shouldn't use open_mfdataset for this function  only use the first file
-    #The if statement in this function is intended to apply in cases where there are multiple files to read in the model. 
-    #It instructs to only read the first one the glob method
-    #can be used to search for a file with a specific file name: https://docs.python.org/3/library/glob.html
+
+    # for effeciency we shouldn't use open_mfdataset for this function  only use the first file if a file pattern is specified
     if ('*' in fname) or ('?' in fname) or ('[' in fname):
         fname = glob(fname)[0]
 
@@ -749,11 +743,10 @@ def find_nearest_point(fname, Longi, Latit):
                     (ds['lat_rho'].values - Latit) ** 2) ** 0.5
 
     # Find the indices of the minimum distance
-    # min_index findes indices j,i which represents the minimum distance between model and model grid points
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
     min_index = np.unravel_index(distance.argmin(), distance.shape)
-    # min_index is a tuple containing the row and column indices of the minimum value
+
     j, i = min_index
 
     return j, i
@@ -796,8 +789,8 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
     # But first check the model depth against the input depth
     h = get_var(fname,"h",eta=j,xi=i)
     if h<-depth:
-        print('The height of the model is shallower than input/(in situ) depth!!')
-        print('Were extracting the bottom sigma layer of the model.')
+        print('The model depth is shallower than input/(in situ) depth!!')
+        print('Were rather extracting the bottom sigma layer of the model.')
         data_model = get_var(fname, var,
                              tstep=time_lims,
                              level=0, # extracts bottom layer
