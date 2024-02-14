@@ -758,41 +758,41 @@ def find_nearest_point(fname, Longi, Latit):
 
     return j, i
 
-def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, time_lims=[]):
+def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, time_lims=None):
     """
-           The next Function is for getting MODEL time series:
+           Extract a timeseries from the model:
                    
             Parameters:
-            - fname             :filename of the model
-            - var               :variable input by the user. should be the same in both the modeland obs netCDFs.
-            - lat               :lat read from the in the model
-            - lon               :lon read from the in the model
-            - ref_date          :static user input
-            - depth             :user input based on model depth
-            - model_frequency   :user input, it is the model frequency if the model is an average model output
-            - i_shifted         :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time, useful in cases where the z level of the point model is deeper than h. 
-            - j_shifted         :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time, useful in cases where the z level of the point model is deeper than h.
-            - time_lims         :limits are computed based on the length of the model data input that is within the model span
+            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
+            - var               :variable name (string) in the CROCO output file(s)
+            - lat               :latitude of time-series
+            - lon               :longitude of time-series
+            - ref_date          :reference datetime used in croco runs
+            - depth             :vertical level to extract
+                                 If >= 0 then a sigma level is extracted 
+                                 If <0 then a z level in meters is extracted
+            - i_shifted         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
+            - j_shifted         :number of grid cells to shift along the eta axis, (similar utility to i_shifted)
+            - time_lims         :optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
 
             Returns:
-            - time_model, data_model,lat_mod,lon_mod
+            - time_model, data_model,lat_mod,lon_mod,h
     """
-    #print("3. Im in get_ts")
-    # time_model is computed using the get_time function above in this toolkit
-    # it is extracted based on time limits set by observations time-span that overlaps the model time span.
+    # get the model time
     time_model = get_time(fname, ref_date, time_lims=time_lims)
-    #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
+    
+    # finds the rho grid indices nearest to the input lon, lat
     j, i = find_nearest_point(fname, lon, lat) 
-    # the i_shifted or j_shifted represents the possible shift a user can physically input in order to 
-    # offset as the point of the observation so that the model will find a point nearest to it for model evaluation.
-    # The reason for this shift is a possible bathymetry mismatch between 
-    # model and station observation which results in nans if the model grid is shallower than the model point selected
+    
+    # apply the shifts along the xi and eta axis
     i = i+i_shifted
     j = j+j_shifted
     
-    # the get_var function call extracts data in the location of the model that is nearest to the 
-    # model grid dataset based on the j and i indices. In the case where the bathymetry becomes a factor
-    # as explained above; then the data_model extracts at the shifted indices.
+    # default tstep for get_var() is a slice, not none, so a little hack to handle that
+    if time_lims is None:
+        time_lims = slice(None)
+    
+    # get the data from the model
     data_model = get_var(fname, var,
                          tstep=time_lims,
                          level=depth,
@@ -800,34 +800,21 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1,i_shifted=0,j_shifted=0, tim
                          xi=i,
                          ref_date=ref_date)
     
-    # lat_mod and lon_mod are extracted with the aim of using them for plotting model location closest
-    # to the model data with availability of corrasponding z-level to the model grid data later
+    # get the model lon, lat data for the time-series we just extracted
+    # (useful for comparing against the input lon, lat values)
     lat_mod =  get_var(fname,"lat_rho",eta=j,xi=i)
     lon_mod =  get_var(fname,"lon_rho",eta=j,xi=i)
     
-    # In the instances where the model depth is of interest such as on plotting the bathymetry you can extract h
+    # Check the model depth against the input depth
     h = get_var(fname,"h",eta=j,xi=i)
-    print('----------------------------------------------------------------')
-    print('')
-    print('h=',-h)
-    print('first 5 model values at (in situ depth = z-level ) =',data_model[0:5])
-    print('')
-    print('depth=',depth)
-    print('')
-    print('----------------------------------------------------------------')
-    
-    if i_shifted == 0 and j_shifted == 0 and h<-depth:
-        print('The height of the model is shallower than input/(in situ) depth, thats why the nans above.')
+    if h<-depth:
+        print('The height of the model is shallower than input/(in situ) depth!!')
         print('Were extracting the bottom sigma layer of the model.')
         data_model = get_var(fname, var,
                              tstep=time_lims,
-                             level=0,                                                               # The 3 subtracted here represents a possible 3m height above sea-floor of the bottom moored bouyant in situ sensor.
+                             level=0,
                              eta=j,
                              xi=i,
                              ref_date=ref_date)
-        print('----------------------------------------------------------------')
-        print('')
-        print('first 5 mod values at (in situ depth = h) =',data_model[0:5])
-        print('')
-        print('----------------------------------------------------------------')
+
     return time_model, data_model,lat_mod,lon_mod,h
