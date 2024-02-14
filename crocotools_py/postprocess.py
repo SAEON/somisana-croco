@@ -4,6 +4,7 @@ import xarray as xr
 import dask
 from datetime import timedelta, datetime
 from glob import glob
+import sys
 
 def hour_rounder(t):
     """
@@ -32,9 +33,7 @@ def u2rho(u):
         u_rho = np.zeros((T, D, Mp, L + 1))
         
         # Interpolate from u grid to rho grid by summing adjacent u points, and divide by 2
-        u_rho[:, :, :, 1 : L] = 0.5 * np.squeeze(
-            [u[:, :, :, 0 : L - 1] + u[:, :, :, 1 : L]]
-        )
+        u_rho[:, :, :, 1 : L] = 0.5 * (u[:, :, :, 0 : L - 1] + u[:, :, :, 1 : L])
 
         # On the edges of the new u grid, you can't interpolate values.
         # So just copy the closest values for the cells on the edge of the grid
@@ -45,9 +44,8 @@ def u2rho(u):
         # TorD: Temperature or depth
         [TorD, Mp, L] = u.shape # works if first dimension is time or depth
         u_rho = np.zeros((TorD, Mp, L + 1))
-        u_rho[:, :, 1 : L] = 0.5 * np.squeeze(
-            [u[:, :, 0 : L - 1] + u[ :, :, 1 : L]]
-        )
+        u_rho[:, :, 1 : L] = 0.5 * (u[:, :, 0 : L - 1] + u[ :, :, 1 : L])
+        
         u_rho[:, :, 0] = u_rho[:, :, 1]
         u_rho[:, :, L] = u_rho[:, :, L - 1]
         
@@ -55,9 +53,7 @@ def u2rho(u):
         # 2D grid - no time/depth information (possibly a surface level at a single time step)
         [Mp, L] = u.shape
         u_rho = np.zeros((Mp, L + 1))
-        u_rho[:, 1 : L] = 0.5 * np.squeeze(
-            [u[:, 0 : L - 1] + u[ :, 1 : L]]
-        )
+        u_rho[:, 1 : L] = 0.5 * (u[:, 0 : L - 1] + u[ :, 1 : L])
         u_rho[:, 0] = u_rho[:, 1]
         u_rho[:, L] = u_rho[:, L - 1]
         
@@ -75,9 +71,7 @@ def v2rho(v):
         [T, D, M, Lp] = v.shape
         v_rho = np.zeros((T, D, M + 1, Lp))
 
-        v_rho[:, :, 1 : M, :] = 0.5 * np.squeeze(
-            [v[:, :, 0 : M - 1, :] + v[:, :, 1 : M, :]]
-        )
+        v_rho[:, :, 1 : M, :] = 0.5 * (v[:, :, 0 : M - 1, :] + v[:, :, 1 : M, :])
         v_rho[:, :, 0, :] = v_rho[:, :, 1, :]
         v_rho[:, :, M, :] = v_rho[:, :, M - 1, :]
         
@@ -85,9 +79,7 @@ def v2rho(v):
         [TorD, M, Lp] = v.shape # works if first dimension is time or depth
         v_rho = np.zeros((TorD, M + 1, Lp))
 
-        v_rho[:, 1 : M, :] = 0.5 * np.squeeze(
-            [v[:, 0 : M - 1, :] + v[:, 1 : M, :]]
-        )
+        v_rho[:, 1 : M, :] = 0.5 * (v[:, 0 : M - 1, :] + v[:, 1 : M, :])
         v_rho[:, 0, :] = v_rho[:, 1, :]
         v_rho[:, M, :] = v_rho[:, M - 1, :]
 
@@ -96,9 +88,7 @@ def v2rho(v):
         [M, Lp] = v.shape
         v_rho = np.zeros((M + 1, Lp))
 
-        v_rho[1 : M, :] = 0.5 * np.squeeze(
-            [v[0 : M - 1, :] + v[1 : M, :]]
-        )
+        v_rho[1 : M, :] = 0.5 * (v[0 : M - 1, :] + v[1 : M, :])
         v_rho[0, :] = v_rho[1, :]
         v_rho[M, :] = v_rho[M - 1, :]
         
@@ -159,15 +149,15 @@ def rho2u(var_rho):
     if Num_dims == 2:
         [Mp,Lp]=var_rho.shape
         L=Lp-1
-        var_u=0.5*(var_rho[:,0:L]+var_rho[:,1:Lp]);
+        var_u=0.5*(var_rho[:,0:L]+var_rho[:,1:Lp])
     elif Num_dims == 3:
         [T_D,Mp,Lp]=var_rho.shape
         L=Lp-1
-        var_u=0.5*(var_rho[:,:,0:L]+var_rho[:,:,1:Lp]);
+        var_u=0.5*(var_rho[:,:,0:L]+var_rho[:,:,1:Lp])
     else: # Num_dims == 4:
         [T,D,Mp,Lp]=var_rho.shape
         L=Lp-1
-        var_u=0.5*(var_rho[:,:,:,0:L]+var_rho[:,:,:,1:Lp]);
+        var_u=0.5*(var_rho[:,:,:,0:L]+var_rho[:,:,:,1:Lp])
     return var_u
 
 def rho2v(var_rho):
@@ -178,15 +168,15 @@ def rho2v(var_rho):
     if Num_dims == 2:
         [Mp,Lp]=var_rho.shape
         M=Mp-1
-        var_v=0.5*(var_rho[0:M,:]+var_rho[1:Mp,:]);
+        var_v=0.5*(var_rho[0:M,:]+var_rho[1:Mp,:])
     elif Num_dims == 3:
         [T_D,Mp,Lp]=var_rho.shape
         M=Mp-1
-        var_v=0.5*(var_rho[:,0:M,:]+var_rho[:,1:Mp,:]);
+        var_v=0.5*(var_rho[:,0:M,:]+var_rho[:,1:Mp,:])
     else: # Num_dims == 4:
         [T,D,Mp,Lp]=var_rho.shape
         M=Mp-1
-        var_v=0.5*(var_rho[:,:,0:M,:]+var_rho[:,:,1:Mp,:]);
+        var_v=0.5*(var_rho[:,:,0:M,:]+var_rho[:,:,1:Mp,:])
     return var_v
 
 def csf(sc, theta_s, theta_b):
@@ -467,7 +457,9 @@ def get_time(fname,ref_date,time_lims=None):
     ds.close()
     return time_dt
 
-def get_lonlatmask(fname,type='r'):
+def get_lonlatmask(fname,type='r',
+                   eta_rho=slice(None),
+                   xi_rho=slice(None)):
     
     # for effeciency we shouldn't use open_mfdataset for this function 
     # only use the first file
@@ -475,6 +467,7 @@ def get_lonlatmask(fname,type='r'):
         fname=glob(fname)[0]
     
     ds = get_ds(fname)
+    ds = ds.isel(eta_rho=eta_rho,xi_rho=xi_rho)
     
     lon = ds.lon_rho.values 
     lat = ds.lat_rho.values 
@@ -489,22 +482,24 @@ def get_lonlatmask(fname,type='r'):
     # specify two input files in functions like get_var()
     
     if type=='u':
-        lon=0.5*(lon[:,0:Lp-1]+lon[:,1:Lp]);
-        lat=0.5*(lat[:,0:Lp-1]+lat[:,1:Lp]);
-        mask=mask[:,0:Lp-1]*mask[:,1:Lp];
+        lon=0.5*(lon[:,0:Lp-1]+lon[:,1:Lp])
+        lat=0.5*(lat[:,0:Lp-1]+lat[:,1:Lp])
+        mask=mask[:,0:Lp-1]*mask[:,1:Lp]
         
     if type=='v':
-        lon=0.5*(lon[0:Mp-1,:]+lon[1:Mp,:]);
-        lat=0.5*(lat[0:Mp-1,:]+lat[1:Mp,:]);
-        mask=mask[0:Mp-1,:]*mask[1:Mp,:];
+        lon=0.5*(lon[0:Mp-1,:]+lon[1:Mp,:])
+        lat=0.5*(lat[0:Mp-1,:]+lat[1:Mp,:])
+        mask=mask[0:Mp-1,:]*mask[1:Mp,:]
         
     return lon,lat,mask
 
 def get_var(fname,var_str,
             tstep=slice(None),
             level=slice(None),
-            eta=slice(None),
-            xi=slice(None),
+            eta_rho=slice(None),
+            eta_v=slice(None),
+            xi_rho=slice(None),
+            xi_u=slice(None),
             ref_date=None):
     '''
         extract a variable from a CROCO file
@@ -518,10 +513,16 @@ def get_var(fname,var_str,
                 If >= 0 then a sigma level is extracted 
                 If <0 then a z level in meters is extracted
                 If slice(None), then all sigma levels are extracted
-        eta = index/indices of the eta axis
+        eta_rho = index/indices of the eta_rho axis
               If slice(None), then all indices are extracted
-        xi = index/indices of the eta axis
+        eta_v = index/indices of the eta_v axis
               If slice(None), then all indices are extracted
+              this is only needed for extracting a subset of 'v'
+        xi_rho = index/indices of the eta_rho axis
+              If slice(None), then all indices are extracted
+        xi_u = index/indices of the eta_rho axis
+              If slice(None), then all indices are extracted
+              this is only needed for extracting a subset of 'u'
         ref_date = reference datetime used in croco runs
     '''
     
@@ -553,15 +554,18 @@ def get_var(fname,var_str,
             # convert the start and end limits into a slice
             tstep = slice(tstep[0],tstep[1]+1) # +1 to make indices inclusive         
     
-    # as per time, make sure we keep the eta/xi dimensions after the ds.isel() step below
+    # as per time, make sure we keep the eta_rho/xi dimensions after the ds.isel() step below
     # this greatly simplifies further functions for depth interpolation 
     # as we know the number of dimensions, even if some of them are single length
     # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
-    if not isinstance(eta,slice):
-        eta = [eta]
-    if not isinstance(xi,slice):
-        xi = [xi]
-    
+    if not isinstance(eta_rho,slice):
+        eta_rho = [eta_rho]
+        if var_str=='u' or var_str=='v':
+            print('rather use get_ts_uv() for extracting a time-series of u/v data')
+            sys.exit()
+    if not isinstance(xi_rho,slice):
+        xi_rho = [xi_rho]
+
     # it gets a bit convoluted for the vertical levels 
     # as we have the option of a constant z level which needs interpolation...
     # start by defining variable 'level_for_isel' which is as it sounds
@@ -586,16 +590,22 @@ def get_var(fname,var_str,
     ds = ds.isel(time=tstep, 
                        s_rho=level_for_isel,
                        s_w=level_for_isel,
-                       eta_rho=eta,
-                       xi_rho=xi,
-                       xi_u=xi,
-                       eta_v=eta
+                       eta_rho=eta_rho,
+                       xi_rho=xi_rho,
+                       xi_u=xi_u,
+                       eta_v=eta_v
                        )
     
     # this step can take some time
     # TODO: can we not do this here, and work purely with xarray datasets?
     print('extracting data for '+var_str)
     var = ds[var_str].values
+    
+    # regrid u, v data onto the rho grid
+    if var_str=='u':
+        var=u2rho(var)
+    if var_str=='v':
+        var=v2rho(var)
     
     # ---------------------------
     # Do vertical interpolations
@@ -606,11 +616,7 @@ def get_var(fname,var_str,
         # given the above checks in the code, here we should be dealing with a 3D variable 
         # and we want a hz slice at a constant depth level
         z=get_depths(ds)
-        # if needed, get z onto the u/v grid to line up with the variable
-        if var_str == 'u':
-            z=rho2u(z)
-        if var_str == 'v':
-            z=rho2v(z)
+        # z is on the rho grid, but u and v are already regridded to the rho grid above so no need to catch anything here
         T,D,M,L=var.shape
         var_out=np.zeros((T,M,L))
         for t in np.arange(T):
@@ -620,8 +626,10 @@ def get_var(fname,var_str,
     # --------
     # Masking
     # --------
-    if isinstance(eta,slice) and isinstance(xi,slice):
-        _,_,mask=get_lonlatmask(fname,var_str) # var_str will define the mask type (u,v, or rho)
+    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice):
+        _,_,mask=get_lonlatmask(fname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
+                                eta_rho=eta_rho,
+                                xi_rho=xi_rho) # var_str will define the mask type (u,v, or rho)
     else:
         mask=1
     # it looks like numpy is clever enough to use the 2D mask on a 3D or 4D variable
@@ -633,6 +641,10 @@ def get_var(fname,var_str,
 def get_uv(fname,
            tstep=slice(None),
            level=slice(None),
+           eta_rho=slice(None),
+           eta_v=slice(None),
+           xi_rho=slice(None),
+           xi_u=slice(None),
            ref_date=None):
     '''
     extract u and v components from a CROCO output file(s), regrid onto the 
@@ -640,17 +652,36 @@ def get_uv(fname,
     
     see get_var() for a description of the inputs   
     
-    subsetting in space not perimitted for this as the data are assumed 
-    to be on the u,v grids... I guess we could check the size of u,v and 
-    skip the regridding steps? Or maybe rather a separate get_ts_uv() function
-    Cross that bridge when we get there
     '''
     
-    u=get_var(fname,'u',tstep=tstep,level=level,ref_date=ref_date)
-    v=get_var(fname,'v',tstep=tstep,level=level,ref_date=ref_date)
-    u=u2rho(u)
-    v=v2rho(v)
-    angle=get_var(fname, 'angle') # grid angle
+    u=get_var(fname,'u',
+              tstep=tstep,
+              level=level,
+              eta_rho=eta_rho,
+              eta_v=eta_v,
+              xi_rho=xi_rho,
+              xi_u=xi_u,
+              ref_date=ref_date)
+    v=get_var(fname,'v',
+              tstep=tstep,
+              level=level,
+              eta_rho=eta_rho,
+              eta_v=eta_v,
+              xi_rho=xi_rho,
+              xi_u=xi_u,
+              ref_date=ref_date)
+    
+    # regridding from the u and v grids to the rho grid is now handled inside 
+    # get_var() which allows us to more easily do the vertical interpolation 
+    # inside get_var() using the depth levels which are defined on the rho grid
+    # u=u2rho(u)
+    # v=v2rho(v)
+    
+    # grid angle
+    angle=get_var(fname, 'angle',
+                  eta_rho=eta_rho,
+                  xi_rho=xi_rho,
+                  ) 
     
     # Use the grid angle to rotate the vectors
     cos_a = np.cos(angle)
@@ -721,19 +752,20 @@ def get_boundary(fname):
 
 def find_nearest_point(fname, Longi, Latit):
     """
-            Dinding the nearest indices of the model rho grid point to a specified lon, lat:
-                
+            Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
+            
             Parameters:
             - fname :filename of the model
-            - Latit :latitude
             - Longi :longitude
+            - Latit :latitude
 
             Returns:
             - j :the nearest eta index
             - i :the nearest xi index
     """
 
-    # for effeciency we shouldn't use open_mfdataset for this function  only use the first file if a file pattern is specified
+    # for effeciency we shouldn't use open_mfdataset for this function  
+    # only use the first file if fname is specified as a pattern of file names
     if ('*' in fname) or ('?' in fname) or ('[' in fname):
         fname = glob(fname)[0]
 
@@ -758,6 +790,7 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
             Parameters:
             - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
             - var               :variable name (string) in the CROCO output file(s)
+                                 (not intended for use with u,v variables - rather use get_ts_uv())
             - lat               :latitude of time-series
             - lon               :longitude of time-series
             - ref_date          :reference datetime used in croco runs
@@ -771,6 +804,11 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
             Returns:
             - time_model, data_model,lat_mod,lon_mod,h
     """
+    
+    if var=='u' or var=='v':
+        print('rather use get_ts_uv() for extracting a time-series of u/v data')
+        sys.exit()
+    
     # get the model time
     time_model = get_time(fname, ref_date, time_lims=time_lims)
     
@@ -787,27 +825,107 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
     
     # get the data from the model
     # But first check the model depth against the input depth
-    h = get_var(fname,"h",eta=j,xi=i)
+    h = get_var(fname,"h",eta_rho=j,xi_rho=i)
     if h<-depth:
         print('The model depth is shallower than input/(in situ) depth!!')
         print('Were rather extracting the bottom sigma layer of the model.')
         data_model = get_var(fname, var,
                              tstep=time_lims,
                              level=0, # extracts bottom layer
-                             eta=j,
-                             xi=i,
+                             eta_rho=j,
+                             xi_rho=i,
                              ref_date=ref_date)
     else:
         data_model = get_var(fname, var,
                              tstep=time_lims,
                              level=depth,
-                             eta=j,
-                             xi=i,
+                             eta_rho=j,
+                             xi_rho=i,
                              ref_date=ref_date)
         
     # get the model lon, lat data for the time-series we just extracted
     # (useful for comparing against the input lon, lat values)
-    lat_mod =  get_var(fname,"lat_rho",eta=j,xi=i)
-    lon_mod =  get_var(fname,"lon_rho",eta=j,xi=i)
+    lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
+    lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
         
     return time_model, data_model,lat_mod,lon_mod,h
+
+def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, time_lims=None):
+    """
+           Extract a timeseries of u,v from the model:
+                   
+            Parameters:
+            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
+            - lat               :latitude of time-series
+            - lon               :longitude of time-series
+            - ref_date          :reference datetime used in croco runs
+            - depth             :vertical level to extract
+                                 If >= 0 then a sigma level is extracted 
+                                 If <0 then a z level in meters is extracted
+            - i_shifted         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
+            - j_shifted         :number of grid cells to shift along the eta axis, (similar utility to i_shifted)
+            - time_lims         :optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
+
+            Returns:
+            - time_model, u, v, lat_mod, lon_mod, h
+              (u,v are rotated from grid-aligned to east-north components)
+    """
+    # get the model time
+    time_model = get_time(fname, ref_date, time_lims=time_lims)
+    
+    # finds the rho grid indices nearest to the input lon, lat
+    j, i = find_nearest_point(fname, lon, lat) 
+    
+    # apply the shifts along the xi and eta axis
+    i = i+i_shifted
+    j = j+j_shifted
+    
+    # j,i are the eta,xi indices of the rho grid for our time-series extraction
+    # extracting u and v at this location is kind of complicated by the u, and v grids
+    # to get around this, let's consider a 3x3 block of rho grid points 
+    # with j,i in the centre. Then let's define the indices we'll need to extract
+    # for the rho grid, u grid and v grid within this 3x3 block of rho grid cells    
+    i_rho=slice(i-1,i+2) # 3 indices for the xi_rho axis, with i in the middle
+    j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
+    i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
+    j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
+    
+    # default tstep for get_var() is a slice, not none, so a little hack to handle that
+    if time_lims is None:
+        time_lims = slice(None)
+    
+    # get the data from the model
+    # But first check the model depth against the input depth
+    h = get_var(fname,"h",eta_rho=j,xi_rho=i)
+    if h<-depth:
+        print('The model depth is shallower than input/(in situ) depth!!')
+        print('Were rather extracting the bottom sigma layer of the model.')
+        u,v = get_uv(fname,
+                              tstep=time_lims,
+                              level=0, # extracts bottom layer
+                              eta_rho=j_rho,
+                              xi_rho=i_rho,
+                              eta_v=j_v,
+                              xi_u=i_u,
+                              ref_date=ref_date)
+    else:
+        u,v = get_uv(fname,
+                             tstep=time_lims,
+                             level=depth,
+                             eta_rho=j_rho,
+                             xi_rho=i_rho,
+                             eta_v=j_v,
+                             xi_u=i_u,
+                             ref_date=ref_date)
+    
+    # now that u and v on our 3x3 subset of the rho grid, 
+    # let's pull out the time-series from the middle grid cell
+    u = u[:,1,1]
+    v = v[:,1,1]
+    
+    # get the model lon, lat data for the time-series we just extracted
+    # (useful for comparing against the input lon, lat values)
+    lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
+    lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
+        
+    return time_model, u, v, lat_mod, lon_mod, h
