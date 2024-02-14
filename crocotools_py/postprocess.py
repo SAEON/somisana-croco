@@ -793,28 +793,28 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
         time_lims = slice(None)
     
     # get the data from the model
-    data_model = get_var(fname, var,
-                         tstep=time_lims,
-                         level=depth,
-                         eta=j,
-                         xi=i,
-                         ref_date=ref_date)
-    
-    # get the model lon, lat data for the time-series we just extracted
-    # (useful for comparing against the input lon, lat values)
-    lat_mod =  get_var(fname,"lat_rho",eta=j,xi=i)
-    lon_mod =  get_var(fname,"lon_rho",eta=j,xi=i)
-    
-    # Check the model depth against the input depth
+    # But first check the model depth against the input depth
     h = get_var(fname,"h",eta=j,xi=i)
     if h<-depth:
         print('The height of the model is shallower than input/(in situ) depth!!')
         print('Were extracting the bottom sigma layer of the model.')
         data_model = get_var(fname, var,
                              tstep=time_lims,
-                             level=0,
+                             level=0, # extracts bottom layer
                              eta=j,
                              xi=i,
                              ref_date=ref_date)
-
+    else:
+        data_model = get_var(fname, var,
+                             tstep=time_lims,
+                             level=depth,
+                             eta=j,
+                             xi=i,
+                             ref_date=ref_date)
+        
+    # get the model lon, lat data for the time-series we just extracted
+    # (useful for comparing against the input lon, lat values)
+    lat_mod =  get_var(fname,"lat_rho",eta=j,xi=i)
+    lon_mod =  get_var(fname,"lon_rho",eta=j,xi=i)
+        
     return time_model, data_model,lat_mod,lon_mod,h
