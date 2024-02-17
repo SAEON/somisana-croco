@@ -38,3 +38,7 @@ mamba env update -f environment.yml --prune
 ```
 or use `conda` instead of `mamba` if you haven't moved to mamba yet
 
+## Developing new configurations
+
+We are also using this repo for the development of new croco configurations, in the `configs` directory.
+

@@ -2,7 +2,7 @@
 %
 % script created by Giles Fearon, adapted from existing CROCOTOOLS scripts
 % As per make_OGCM.m in croco_tools but functionality for taking HYCOM, 
-% Bluelink and Glorys etc data as boundaries
+% Bluelink and Glorys (or whatever we want) data as boundaries
 %
 % Create and fill CROCO clim and bry files with OGCM data.
 %
@@ -50,52 +50,6 @@ close all
 %
 crocotools_param
 %
-if strcmp(OGCM,'SODA')
-  %
-  %  SODA DODS URL
-  %
-  % SODA 2.0.2-4
-  %url= 'http://apdrc.soest.hawaii.edu:80/dods/public_data/SODA/soda_pop2.0.4'
-  
-  % SODA_2.1.6 [ ERA40/QSCAT 1958-2008 / POP2.1 / WOD09 ]
-  %%url='http://iridl.ldeo.columbia.edu/SOURCES/.CARTON-GIESE/.SODA/.v2p1p6' ;
-  %url='http://apdrc.soest.hawaii.edu:80/dods/public_data/SODA/soda_pop2.1.6' ;
-  
-  % SODA_2.2.4/ [ C20R-2 1871-2008 / POP2.1 ]
-  %%url='http://iridl.ldeo.columbia.edu/SOURCES/.CARTON-GIESE/.SODA/.v2p2p4' ;
-  url='http://apdrc.soest.hawaii.edu:80/dods/public_data/SODA/soda_pop2.2.4' ;
-  
-elseif strcmp(OGCM,'ECCO')
-  %
-  %  ECCO DODS URL
-  %
-  % Kalman filter 
-  %
-  %  url = 'http://ecco.jpl.nasa.gov/thredds/dodsC/las/kf080/kf080_'; 
-     url = 'http://ecco2.jpl.nasa.gov:80/opendap/data1/cube/cube92/lat_lon/quart_90S_90N/'
-  %
-elseif strcmp(OGCM,'HYCOM')
-  %
-  %  DODS extraction from HYCOM is not yet implemented...
-  %  this is placeholder for if it ever is... for now using data already downloaded locally
-     url = '';
-  %
-elseif strcmp(OGCM,'BLUELINK')
-  %
-  %  DODS extraction from Bluelink is not yet implemented...
-  %  this is placeholder for if it ever is... for now using data already downloaded locally
-     url = '';
-  %
-elseif strcmp(OGCM,'GLORYS')
-  %
-  %  DODS extraction from GLORYS is not yet implemented...
-  %  this is placeholder for if it ever is... for now using data already downloaded locally
-     url = '';
-  %
-else
-  error(['Unknown OGCM: ',OGCM])
-end
-%
 itolap_tot=itolap_a + itolap_p;
 disp(['Overlap before =',num2str(itolap_a)])
 disp(['Overlap after =',num2str(itolap_p)])
@@ -125,34 +79,22 @@ angle=nc{'angle'}(:);
 h=nc{'h'}(:);
 close(nc)
 %
-% Extract data over the internet
+% Get the model limits
 %
-if Download_data==1
-  %
-  % Get the model limits
-  %
-  lonmin=min(min(lon));
-  lonmax=max(max(lon));
-  latmin=min(min(lat));
-  latmax=max(max(lat));
-  %
-  % Download data with DODS (the download matlab routine depends on the OGCM)
-  % 
-  if ~exist('Get_My_DataOGCM') | ( Get_My_DataOGCM == 0) ;
-    disp('Download data...')
-    eval(['download_',OGCM,'(Ymin,Ymax,Mmin,Mmax,lonmin,lonmax,latmin,latmax,',...
-	  'OGCM_dir,OGCM_prefix,url,Yorig)'])
-  else
-    %Reference to Oforc_OGCM/Mydata routines : specific routines to your own data
-    disp('Use my own data...')
-    disp('Specific routines for your own OGCM datasets')
-    disp(['Flag Get_My_DataOGCM declared and =1'])
-    disp([' '])
-    disp(['Located at My_',OGCM,'_dir'])
+lonmin=min(min(lon));
+lonmax=max(max(lon));
+latmin=min(min(lat));
+latmax=max(max(lat));
+%
+% We already have the data downloaded in whatever format it comes 
+% the download_<OGCM>_Mydata.m functions convert the native formats
+% into a standard format for interpolating onto our grid
+%
+if Reformat_OGCM == 1
+    disp('Using Specific routines for reformating your own previously downloaded OGCM datasets')
+    disp(['Located at ',My_OGCM_dir])
     eval(['download_',OGCM,'_Mydata(Ymin,Ymax,Mmin,Mmax,lonmin,lonmax,latmin,latmax,',...
-      'OGCM_dir,OGCM_prefix,My_',OGCM,'_dir,Yorig)'])    
-  end
-
+        'OGCM_dir,OGCM_prefix,My_OGCM_dir,Yorig)'])
 end
 %
 %------------------------------------------------------------------------------------
@@ -184,7 +126,7 @@ if makeini==1
         disp([' NO VTRANSFORM parameter found'])
         disp([' USE vtransform default value  Vtransfor = 1'])
     end
-  ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(Mmin),nc_suffix];
+  ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,Mmin)),nc_suffix];
   %
   % Process the time in Yorig time (i.e days since Yorig-01-01)
   %
@@ -283,7 +225,7 @@ if makeclim==1 | makebry==1
       %
       if makebry==1
 	bryname=[bry_prefix,'Y',num2str(Y),...
-		 'M',num2str(M),nc_suffix];
+		 'M',num2str(sprintf(Mth_format,M)),nc_suffix];
 	create_bryfile(bryname,grdname,CROCO_title,[1 1 1 1],...
 		       theta_s,theta_b,hc,N,...
 		       croco_time,0,'clobber',vtransform);
@@ -293,7 +235,7 @@ if makeclim==1 | makebry==1
       end
       if makeclim==1
 	clmname=[clm_prefix,'Y',num2str(Y),...
-		 'M',num2str(M),nc_suffix];
+		 'M',num2str(sprintf(Mth_format,M)),nc_suffix];
 	create_climfile(clmname,grdname,CROCO_title,...
 			theta_s,theta_b,hc,N,...
 			croco_time,0,'clobber',vtransform);
@@ -392,8 +334,8 @@ if SPIN_Long>0
     %
     % Copy the file
     %
-    ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(Mmin),nc_suffix];
-    ininame2=[ini_prefix,'Y',num2str(Ymin-SPIN_Long),'M',num2str(Mmin),nc_suffix];
+    ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,Min)),nc_suffix];
+    ininame2=[ini_prefix,'Y',num2str(Ymin-SPIN_Long),'M',num2str(sprintf(Mth_format,Min)),nc_suffix];
     disp(['Create ',ininame2]) 
     eval(['!cp ',ininame,' ',ininame2])
     %
@@ -420,8 +362,8 @@ if SPIN_Long>0
       %
       % Copy the file
       %
-      clmname=[clm_prefix,'Y',num2str(Ymin),'M',num2str(M),nc_suffix];
-      clmname2=[clm_prefix,'Y',num2str(Y),'M',num2str(M),nc_suffix];
+      clmname=[clm_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
+      clmname2=[clm_prefix,'Y',num2str(Y),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
       disp(['Create ',clmname2]) 
       eval(['!cp ',clmname,' ',clmname2]) 
       %
@@ -448,8 +390,8 @@ if SPIN_Long>0
       %
       % Copy the file
       %
-      bryname=[bry_prefix,'Y',num2str(Ymin),'M',num2str(M),nc_suffix];
-      bryname2=[bry_prefix,'Y',num2str(Y),'M',num2str(M),nc_suffix];
+      bryname=[bry_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
+      bryname2=[bry_prefix,'Y',num2str(Y),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
       disp(['Create ',bryname2]) 
       eval(['!cp ',bryname,' ',bryname2]) 
       %
@@ -469,21 +411,21 @@ if makeplot==1
   disp(' ')
   disp(' Make a few plots...')
   if makeini==1
-    ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(Mmin),nc_suffix];
+    ininame=[ini_prefix,'Y',num2str(Ymin),'M',num2str(sprintf(Mth_format,Min)),nc_suffix];
     figure
     test_clim(ininame,grdname,'temp',1,coastfileplot)
     figure
     test_clim(ininame,grdname,'salt',1,coastfileplot)
   end
   if makeclim==1
-    clmname=[clm_prefix,'Y',num2str(Y),'M',num2str(M),nc_suffix];
+    clmname=[clm_prefix,'Y',num2str(Y),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
     figure
     test_clim(clmname,grdname,'temp',1,coastfileplot)
     figure
     test_clim(clmname,grdname,'salt',1,coastfileplot)
   end
   if makebry==1
-    bryname=[bry_prefix,'Y',num2str(Y),'M',num2str(M),nc_suffix];
+    bryname=[bry_prefix,'Y',num2str(Y),'M',num2str(sprintf(Mth_format,M)),nc_suffix];
     figure
     test_bry(bryname,grdname,'temp',1,obc)
     figure
