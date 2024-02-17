@@ -34,4 +34,4 @@ dependencies:
   - pip
   - pip:
     - motuclient
-    - copernicus-marine-client>=0.10.0<0.11.0
+    - copernicusmarine

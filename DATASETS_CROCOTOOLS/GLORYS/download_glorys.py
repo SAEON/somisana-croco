@@ -30,7 +30,7 @@ def download_glorys_monthly(usrname, passwd, domain, downloadDate, varList, dept
     # output filename
     fname = str(downloadDate.strftime('%Y_%m'))+'.nc'
     
-    runcommand = 'copernicus-marine subset -i cmems_mod_glo_phy_my_0.083_P1D-m'+ \
+    runcommand = 'copernicusmarine subset -i cmems_mod_glo_phy_my_0.083_P1D-m'+ \
             ' -x '+str(domain[0])+' -X '+str(domain[1])+ \
             ' -y '+str(domain[2])+' -Y '+str(domain[3])+ \
             ' -t \''+str(downloadDate.strftime('%Y-%m-01 00:00:00'))+'\''+ \
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     downloadDate=start_date
     while downloadDate <= end_date:
         print(downloadDate.strftime('%Y-%m'))
-        download_glorys(usrname, passwd, domain, downloadDate, varList, depths, outputDir)
+        download_glorys_monthly(usrname, passwd, domain, downloadDate, varList, depths, outputDir)
         downloadDate=downloadDate+timedelta(days=32) # 32 days ensures we get to the next month
         downloadDate=datetime(downloadDate.year, downloadDate.month, 1) # set the first day of the month
 

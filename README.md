@@ -33,6 +33,9 @@ Now you do not need to add this directory to your PYTHONPATH as long as you have
 
 If you want to add more packages to this environment, please add them to `environment.yml` (pls push commits to this repo),
 and you can then update your environment like this 
+
+You'll also need to run this if packages need to be updated, or of course if some-one else has added to the `environment.yml` file
+
 ```sh
 mamba env update -f environment.yml --prune
 ```
