@@ -434,11 +434,12 @@ def find_nearest_time_indx(dt,dts):
 
     return indx_out.astype(int)
 
-def get_time(fname,ref_date,time_lims=None):
+def get_time(fname,ref_date,time_lims=slice(None)):
     ''' 
         fname = CROCO output file (or file pattern to use when opening with open_mfdataset())
         ref_date = reference date for the croco run as a datetime object
         time_lims = optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
+                    If slice(None), then all time-steps are extracted
     '''
     ds = get_ds(fname)
     
@@ -449,14 +450,41 @@ def get_time(fname,ref_date,time_lims=None):
         date_now = ref_date + timedelta(seconds=np.float64(t))
         time_dt.append(date_now)
     
-    if time_lims is not None:
+    if not isinstance(time_lims,slice):
         indx_lims = find_nearest_time_indx(time_dt,time_lims)
-        indx = slice(indx_lims[0],indx_lims[-1]+1) # +1 to make indices inclusive
-        time_dt = time_dt[indx]
+        time_lims = slice(indx_lims[0],indx_lims[-1]+1) # +1 to make indices inclusive
+        
+    time_dt = time_dt[time_lims]
     
     ds.close()
     return time_dt
 
+def tstep_to_slice(fname, tstep, ref_date):
+    
+    # check if tstep input is instance of datetime, 
+    # in which case convert it/them into the correct time index/indices
+    if isinstance(np.atleast_1d(tstep)[0],datetime):
+        if ref_date is None:
+            print('ref_date is not defined - using default of 2000-01-01')
+            ref_date=datetime(2000,1,1)
+        time_croco = get_time(fname,ref_date)
+        tstep = find_nearest_time_indx(time_croco,tstep)
+        
+    # get the time indices for input to ds.isel()
+    if not isinstance(tstep,slice):
+        if isinstance(tstep,int):
+            # make sure tstep is a list, even if it's a single integer
+            # this is a hack to make sure we keep the time dimension 
+            # after the ds.isel() step below, even though it's a single index
+            # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
+            tstep = [tstep]  
+        elif len(tstep)==2:
+            # convert the start and end limits into a slice
+            tstep = slice(tstep[0],tstep[1]+1) # +1 to make indices inclusive 
+    
+    return tstep
+
+    
 def get_lonlatmask(fname,type='r',
                    eta_rho=slice(None),
                    xi_rho=slice(None)):
@@ -533,26 +561,9 @@ def get_var(fname,var_str,
     # for each of the input dimensions we check the format of the input 
     # and construct the appropriate slice to extract
     #
-    # check if tstep input is instance of datetime, 
-    # in which case convert it/them into the correct time index/indices
-    if isinstance(np.atleast_1d(tstep)[0],datetime):
-        if ref_date is None:
-            print('ref_date is not defined - using default of 2000-01-01')
-            ref_date=datetime(2000,1,1)
-        time_croco = get_time(fname,ref_date)
-        tstep = find_nearest_time_indx(time_croco,tstep)
-        
-    # get the time indices for input to ds.isel()
-    if not isinstance(tstep,slice):
-        if isinstance(tstep,int):
-            # make sure tstep is a list, even if it's a single integer
-            # this is a hack to make sure we keep the time dimension 
-            # after the ds.isel() step below, even though it's a single index
-            # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
-            tstep = [tstep]  
-        elif len(tstep)==2:
-            # convert the start and end limits into a slice
-            tstep = slice(tstep[0],tstep[1]+1) # +1 to make indices inclusive         
+    
+    # get a slice object for time if not already a slice
+    tstep = tstep_to_slice(fname, tstep, ref_date)
     
     # as per time, make sure we keep the eta_rho/xi dimensions after the ds.isel() step below
     # this greatly simplifies further functions for depth interpolation 
@@ -783,7 +794,7 @@ def find_nearest_point(fname, Longi, Latit):
 
     return j, i
 
-def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, time_lims=None):
+def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, time_lims=slice(None)):
     """
            Extract a timeseries from the model:
                    
@@ -799,7 +810,9 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
                                  If <0 then a z level in meters is extracted
             - i_shifted         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
             - j_shifted         :number of grid cells to shift along the eta axis, (similar utility to i_shifted)
-            - time_lims         :optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
+            - time_lims         :time step indices to extract 
+                                 two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+                                 If slice(None), then all time-steps are extracted
 
             Returns:
             - time_model, data_model,lat_mod,lon_mod,h
@@ -818,10 +831,6 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
     # apply the shifts along the xi and eta axis
     i = i+i_shifted
     j = j+j_shifted
-    
-    # default tstep for get_var() is a slice, not none, so a little hack to handle that
-    if time_lims is None:
-        time_lims = slice(None)
     
     # get the data from the model
     # But first check the model depth against the input depth
@@ -850,7 +859,7 @@ def get_ts(fname, var, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, t
         
     return time_model, data_model,lat_mod,lon_mod,h
 
-def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, time_lims=None):
+def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, time_lims=slice(None)):
     """
            Extract a timeseries of u,v from the model:
                    
@@ -864,8 +873,10 @@ def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, tim
                                  If <0 then a z level in meters is extracted
             - i_shifted         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
             - j_shifted         :number of grid cells to shift along the eta axis, (similar utility to i_shifted)
-            - time_lims         :optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
-
+            - time_lims         :time step indices to extract 
+                                 two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+                                 If slice(None), then all time-steps are extracted
+                                 
             Returns:
             - time_model, u, v, lat_mod, lon_mod, h
               (u,v are rotated from grid-aligned to east-north components)
@@ -889,10 +900,6 @@ def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, tim
     j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
     i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
     j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
-    
-    # default tstep for get_var() is a slice, not none, so a little hack to handle that
-    if time_lims is None:
-        time_lims = slice(None)
     
     # get the data from the model
     # But first check the model depth against the input depth
@@ -929,3 +936,64 @@ def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, tim
     lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
         
     return time_model, u, v, lat_mod, lon_mod, h
+
+# %%
+
+def get_profile(fname, var, lon, lat, ref_date, time_lims=slice(None),depths=None):
+    """
+           Extract a timeseries from the model:
+                   
+            Parameters:
+            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
+            - var               :variable name (string) in the CROCO output file(s)
+                                 (not intended for use with u,v variables - rather use get_ts_uv())
+            - lat               :latitude of time-series
+            - lon               :longitude of time-series
+            - ref_date          :reference datetime used in croco runs
+            - i_shifted         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
+            - j_shifted         :number of grid cells to shift along the eta axis, (similar utility to i_shifted)
+            - time_lims         :time step indices to extract 
+                                 it can be a single integer (starting at zero) or datetime
+                                 or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+                                 If slice(None), then all time-steps are extracted
+
+            Returns:
+            - time_model, profile ,lat_mod ,lon_mod, h
+    """
+    time_model = get_time(fname, ref_date, time_lims=time_lims)
+    #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
+    j, i = find_nearest_point(fname, lon, lat) 
+    
+    # get a slice object for time if not already a slice
+    time_lims = tstep_to_slice(fname, time_lims, ref_date)
+
+    ds = get_ds(fname, var)
+    ds = ds.isel(time=time_lims,
+                        eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
+                        xi_rho=slice(i,i+1)
+                        )
+
+    if depths is None:
+        depths_out = np.squeeze(get_depths(ds))
+        profile = get_var(fname, var,
+                              tstep=time_lims,
+                              eta_rho=j,
+                              xi_rho=i,
+                              ref_date=ref_date)
+    else:
+        depths_out = depths
+        profiles = np.zeros((len(time_model),len(depths)))
+        for index, depth in enumerate(depths):
+            profile = get_var(fname, var,
+                              tstep=time_lims,
+                              level=depth,
+                              eta_rho=j,
+                              xi_rho=i,
+                              ref_date=ref_date)
+            profiles[:,index]=profile
+        
+    print(profiles)
+    lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
+    lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
+
+    return time_model, depths_out, profile, lat_mod, lon_mod
