@@ -937,7 +937,7 @@ def get_ts_uv(fname, lon, lat, ref_date, depth=-1, i_shifted=0, j_shifted=0, tim
         
     return time_model, u, v, lat_mod, lon_mod, h
 
-# %%
+# %% Gets a profile section
 
 def get_profile(fname, var, lon, lat, ref_date, time_lims=slice(None),depths=None):
     """
@@ -975,7 +975,7 @@ def get_profile(fname, var, lon, lat, ref_date, time_lims=slice(None),depths=Non
 
     if depths is None:
         depths_out = np.squeeze(get_depths(ds))
-        profile = get_var(fname, var,
+        profiles = get_var(fname, var,
                               tstep=time_lims,
                               eta_rho=j,
                               xi_rho=i,
@@ -992,8 +992,101 @@ def get_profile(fname, var, lon, lat, ref_date, time_lims=slice(None),depths=Non
                               ref_date=ref_date)
             profiles[:,index]=profile
         
-    print(profiles)
+    # print(profiles)
     lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
     lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
 
-    return time_model, depths_out, profile, lat_mod, lon_mod
+    return time_model, depths_out, profiles, lat_mod, lon_mod
+
+# %%
+
+def get_profile_uv(fname, lon, lat, ref_date, i_shifted=0, j_shifted=0, time_lims=slice(None),depths=None):
+    """
+           Extract a timeseries of u,v from the model:
+                   
+            Parameters:
+            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
+            - lat               :latitude of time-series
+            - lon               :longitude of time-series
+            - ref_date          :reference datetime used in croco runs
+            - depth             :vertical level to extract
+                                 If >= 0 then a sigma level is extracted 
+                                 If <0 then a z level in meters is extracted
+            - i_shifted         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
+            - j_shifted         :number of grid cells to shift along the eta axis, (similar utility to i_shifted)
+            - time_lims         :time step indices to extract 
+                                 two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+                                 If slice(None), then all time-steps are extracted
+                                 
+            Returns:
+            - time_model, u, v, lat_mod, lon_mod, h
+              (u,v are rotated from grid-aligned to east-north components)
+    """
+    # get the model time
+    time_model = get_time(fname, ref_date, time_lims=time_lims)
+    
+    # finds the rho grid indices nearest to the input lon, lat
+    j, i = find_nearest_point(fname, lon, lat) 
+    
+    # apply the shifts along the xi and eta axis
+    i = i+i_shifted
+    j = j+j_shifted
+    
+    # get a slice object for time if not already a slice
+    time_lims = tstep_to_slice(fname, time_lims, ref_date)
+
+    ds = get_ds(fname)
+    ds = ds.isel(time=time_lims,
+                        eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
+                        xi_rho=slice(i,i+1)
+                        )
+    
+    # j,i are the eta,xi indices of the rho grid for our time-series extraction
+    # extracting u and v at this location is kind of complicated by the u, and v grids
+    # to get around this, let's consider a 3x3 block of rho grid points 
+    # with j,i in the centre. Then let's define the indices we'll need to extract
+    # for the rho grid, u grid and v grid within this 3x3 block of rho grid cells    
+    i_rho=slice(i-1,i+2) # 3 indices for the xi_rho axis, with i in the middle
+    j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
+    i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
+    j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
+    
+    # get the data from the model
+    # But first check the model depth against the input depth
+
+    if depths is None:
+        depths_out = np.squeeze(get_depths(ds))
+        u,v = get_uv(fname,
+                              tstep=time_lims,
+                              eta_rho=j_rho,
+                              xi_rho=i_rho,
+                              eta_v=j_v,
+                              xi_u=i_u,
+                              ref_date=ref_date)
+    else:
+        for index, depth in enumerate(depths):
+            depths_out = depths
+            profile = np.zeros((len(time_model),len(depths)))
+            profile = np.zeros((len(time_model),len(depths)))
+            u,v = get_uv(fname,
+                                 tstep=time_lims,
+                                 level=depth,
+                                 eta_rho=j_rho,
+                                 xi_rho=i_rho,
+                                 eta_v=j_v,
+                                 xi_u=i_u,
+                                 ref_date=ref_date)
+            profile[:, index] = u[:, 1, 1]  # Assuming you want the first element along the last two axes
+            profile[:, index] = v[:, 1, 1]  # Assuming you want the first element along the last two axes
+        
+        # now that u and v on our 3x3 subset of the rho grid, 
+        # let's pull out the time-series from the middle grid cell
+        u_profile = u[:,1,1]
+        v_profile = v[:,1,1]
+            
+    # get the model lon, lat data for the time-series we just extracted
+    # (useful for comparing against the input lon, lat values)
+    lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
+    lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
+        
+    return time_model, u_profile, v_profile, lat_mod, lon_mod,depths_out
