@@ -1056,18 +1056,26 @@ def get_profile_uv(fname, lon, lat, ref_date, i_shifted=0, j_shifted=0, time_lim
 
     if depths is None:
         depths_out = np.squeeze(get_depths(ds))
-        u,v = get_uv(fname,
-                              tstep=time_lims,
-                              eta_rho=j_rho,
-                              xi_rho=i_rho,
-                              eta_v=j_v,
-                              xi_u=i_u,
-                              ref_date=ref_date)
+        u_profiles = np.zeros((len(time_model),len(depths_out[2])))
+        v_profiles = np.zeros((len(time_model),len(depths_out[2]))) # 2 represents 2nd variable d. depths_out=(t,d)
+        for idx, time in enumerate(time_model):
+            for index, depth in enumerate(depths_out[idx:]):
+                u,v = get_uv(fname,
+                                      tstep=time_lims,
+                                      level=depth[index-1], # the -1 is bcos elements starts from 0 in an array
+                                      eta_rho=j_rho,
+                                      xi_rho=i_rho,
+                                      eta_v=j_v,
+                                      xi_u=i_u,
+                                      ref_date=ref_date)
+                u_profiles[:, index-1] = u[:, 1, 1]  # 
+                v_profiles[:, index-1] = v[:, 1, 1]  #
+
     else:
+        u_profiles = np.zeros((len(time_model),len(depths)))
+        v_profiles = np.zeros((len(time_model),len(depths)))
         for index, depth in enumerate(depths):
-            depths_out = depths
-            profile = np.zeros((len(time_model),len(depths)))
-            profile = np.zeros((len(time_model),len(depths)))
+            depths_out = depths      
             u,v = get_uv(fname,
                                  tstep=time_lims,
                                  level=depth,
@@ -1076,17 +1084,13 @@ def get_profile_uv(fname, lon, lat, ref_date, i_shifted=0, j_shifted=0, time_lim
                                  eta_v=j_v,
                                  xi_u=i_u,
                                  ref_date=ref_date)
-            profile[:, index] = u[:, 1, 1]  # Assuming you want the first element along the last two axes
-            profile[:, index] = v[:, 1, 1]  # Assuming you want the first element along the last two axes
+
+            u_profiles[:, index] = u[:, 1, 1]  #
+            v_profiles[:, index] = v[:, 1, 1]  #
         
-        # now that u and v on our 3x3 subset of the rho grid, 
-        # let's pull out the time-series from the middle grid cell
-        u_profile = u[:,1,1]
-        v_profile = v[:,1,1]
-            
     # get the model lon, lat data for the time-series we just extracted
     # (useful for comparing against the input lon, lat values)
     lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
     lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
         
-    return time_model, u_profile, v_profile, lat_mod, lon_mod,depths_out
+    return time_model, u_profiles, v_profiles, lat_mod, lon_mod,depths_out
