@@ -40,26 +40,30 @@ def regrid_tier1(fname_in, fname_out, ref_date):
     time_steps = post.get_time(fname_in, ref_date)
 
     print("Extracting the model output variables we need")
-    with xr.open_dataset(fname_in) as ds:
-        eta_rho = ds.eta_rho  # y index-based grid position
-        xi_rho = ds.xi_rho  # x index-based grid position
-        lon_rho = ds.lon_rho
-        lat_rho = ds.lat_rho
-        s_rho = ds.s_rho
-        h_ = ds.h
-        temp_ = ds.temp
-        salt_ = ds.salt
-        ssh_ = ds.zeta
+    # with xr.open_dataset(fname_in) as ds:
+    #     eta_rho = ds.eta_rho  # eta index-based grid position
+    #     xi_rho = ds.xi_rho  # xi index-based grid position
+    #     lon_rho = ds.lon_rho
+    #     lat_rho = ds.lat_rho
+    #     s_rho = ds.s_rho
+    #     h_ = ds.h
+    #     temp_ = ds.temp
+    #     salt_ = ds.salt
+    #     ssh_ = ds.zeta
 
     # using the get_var() function so masking is included
     h = post.get_var(fname_in, "h")
-    temp = post.get_var(fname_in, "temp")
-    salt = post.get_var(fname_in, "salt")
-    ssh = post.get_var(fname_in, "zeta")
-
-    print("Regridding and rotating u/v")
-    u, v = post.get_uv(fname_in)
-
+    temp = post.get_var(fname_in, "temp", ref_date=ref_date)
+    salt = post.get_var(fname_in, "salt", ref_date=ref_date)
+    ssh = post.get_var(fname_in, "zeta", ref_date=ref_date)
+    u, v = post.get_uv(fname_in, ref_date=ref_date)
+    # grid variables (using temp, but could use any variable above)
+    eta_rho = temp.eta_rho  # eta index-based grid position
+    xi_rho = temp.xi_rho  # xi index-based grid position
+    lon_rho = temp.lon_rho
+    lat_rho = temp.lat_rho
+    s_rho = temp.s_rho
+    
     # get the depth levels of the sigma layers
     print("Computing depth of sigma levels")
     depth = post.get_depths(post.get_ds(fname_in)) # get_depths now takes an xarray dataset as input
@@ -71,30 +75,18 @@ def regrid_tier1(fname_in, fname_out, ref_date):
             "description": "tier 1 regridded CROCO output - u,v data are regridded to the rho grid and rotated to be east,north components. A new 'depth' variable is added to provide the depths of the sigma levels in metres",
         },
         data_vars={
-            "zeta": xr.Variable(["time", "eta_rho", "xi_rho"], ssh, ssh_.attrs),
+            "zeta": xr.Variable(["time", "eta_rho", "xi_rho"], ssh.values, ssh.attrs),
             "temp": xr.Variable(
-                ["time", "s_rho", "eta_rho", "xi_rho"], temp, temp_.attrs
+                ["time", "s_rho", "eta_rho", "xi_rho"], temp.values, temp.attrs
             ),
             "salt": xr.Variable(
-                ["time", "s_rho", "eta_rho", "xi_rho"], salt, salt_.attrs
+                ["time", "s_rho", "eta_rho", "xi_rho"], salt.values, salt.attrs
             ),
             "u": xr.Variable(
-                ["time", "s_rho", "eta_rho", "xi_rho"],
-                u,
-                {
-                    "long_name": "Eastward velocity",
-                    "units": "meters per second",
-                    "standard_name": "eastward_sea_water_velocity",
-                },
+                ["time", "s_rho", "eta_rho", "xi_rho"], u.values, u.attrs
             ),
             "v": xr.Variable(
-                ["time", "s_rho", "eta_rho", "xi_rho"],
-                v,
-                {
-                    "long_name": "Northward velocity",
-                    "units": "meters per second",
-                    "standard_name": "northward_sea_water_velocity",
-                },
+                ["time", "s_rho", "eta_rho", "xi_rho"], v.values, v.attrs
             ),
             "depth": xr.Variable(
                 ["time", "s_rho", "eta_rho", "xi_rho"],
@@ -105,7 +97,7 @@ def regrid_tier1(fname_in, fname_out, ref_date):
                     "positive": "up",
                 },
             ),
-            "h": xr.Variable(["eta_rho", "xi_rho"], h, h_.attrs),
+            "h": xr.Variable(["eta_rho", "xi_rho"], h.values, h.attrs),
         },
         coords={
             "eta_rho": xr.Variable(["eta_rho"], eta_rho.values, eta_rho.attrs),
