@@ -1051,11 +1051,15 @@ def get_ts_uv(fname, lon, lat, ref_date, depth=-1,
     
     return ds
 
-# %% Gets a profile section
-
-def get_profile(fname, var, lon, lat, ref_date, time_lims=slice(None),depths=None):
+def get_profile(fname, var, lon, lat, ref_date, 
+                i_shifted=0, j_shifted=0, 
+                time_lims=slice(None),
+                depths=None,
+                write_nc=False,
+                fname_nc='profile.nc'
+                ):
     """
-           Extract a timeseries from the model:
+           Extract a profile from the model:
                    
             Parameters:
             - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
@@ -1070,53 +1074,102 @@ def get_profile(fname, var, lon, lat, ref_date, time_lims=slice(None),depths=Non
                                  it can be a single integer (starting at zero) or datetime
                                  or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
                                  If slice(None), then all time-steps are extracted
-
+            - depths            : if None, then all sigma levels are extracted, and the depths of the levels are provided as an additional variable
+                                : otherwise, specify a list of z levels to extract (negative values which get progressively more negative)
+            - write_nc          :write a netcdf file? (True/False)
+            - fname_nc          :netcdf file name. Only used if write_nc = True
+            
             Returns:
-            - time_model, profile ,lat_mod ,lon_mod, h
+            - ds, an xarray dataset containing the profile data
     """
+    # get the model time
     time_model = get_time(fname, ref_date, time_lims=time_lims)
+    
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     j, i = find_nearest_point(fname, lon, lat) 
     
+    # apply the shifts along the xi and eta axis
+    i = i+i_shifted
+    j = j+j_shifted
+    
     # get a slice object for time if not already a slice
     time_lims = tstep_to_slice(fname, time_lims, ref_date)
-
-    ds = get_ds(fname, var)
-    ds = ds.isel(time=time_lims,
-                        eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
-                        xi_rho=slice(i,i+1)
-                        )
-
+    
     if depths is None:
-        depths_out = np.squeeze(get_depths(ds))
-        profiles = get_var(fname, var,
+        # we're extracting data accross all sigma levels
+        # (this is automatically achieved in get_var() by not specifying the 'level' input)
+        profiles_da = get_var(fname, var,
                               tstep=time_lims,
                               eta_rho=j,
                               xi_rho=i,
                               ref_date=ref_date)
+        
+        # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
+        ds = get_ds(fname, var)
+        ds = ds.isel(time=time_lims,
+                            eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
+                            xi_rho=slice(i,i+1))
+        depths_out = np.squeeze(get_depths(ds))
+        
+        # we need to create a new dataarray for the depths of the sigma levels
+        depths_da = xr.DataArray(depths_out, coords={'time': profiles_da['time'].values,
+                                             'eta_rho': profiles_da['eta_rho'].values, 
+                                             'xi_rho': profiles_da['xi_rho'].values,
+                                             's_rho': profiles_da['s_rho'].values,
+                                             'lon_rho': profiles_da['lon_rho'].values,
+                                             'lat_rho': profiles_da['lat_rho'].values
+                                             },
+                                      dims=['time', 's_rho'])
+        depths_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
+        depths_da.attrs['units'] = 'meter'
+        depths_da.attrs['positive'] = 'up'
+        
+        # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
+        ds = xr.Dataset({var: profiles_da, 'depth': depths_da})
+        
     else:
-        depths_out = depths
+        # we're extracting data at specified z levels
+        # set up an empty array of the correct size, which we populate in a loop through depths
         profiles = np.zeros((len(time_model),len(depths)))
         for index, depth in enumerate(depths):
-            profile = get_var(fname, var,
+            # extract a time-series for this z level
+            ts = get_var(fname, var,
                               tstep=time_lims,
                               level=depth,
                               eta_rho=j,
                               xi_rho=i,
                               ref_date=ref_date)
-            profiles[:,index]=profile
+            # and populate the profiles array for the extracted z level
+            profiles[:,index]=ts.values
         
-    # print(profiles)
-    lat_mod =  get_var(fname,"lat_rho",eta_rho=j,xi_rho=i)
-    lon_mod =  get_var(fname,"lon_rho",eta_rho=j,xi_rho=i)
+        # create an xarray dataarray for the profile variable
+        # We can use the last 'ts' dataarray to extract the coordinate information
+        profiles_da = xr.DataArray(profiles, coords={'time': ts['time'].values,
+                                             'eta_rho': ts['eta_rho'].values, 
+                                             'xi_rho': ts['xi_rho'].values,
+                                             'depth': depths, # THE INPUT DEPTHS IS NOW A DIMENSION
+                                             'lon_rho': ts['lon_rho'].values,
+                                             'lat_rho': ts['lat_rho'].values
+                                             },
+                                      dims=['time', 'depth'])
+        profiles_da.attrs = ts.attrs # doing this after creating the dataset else the attributes are not maintained for some reason?
+        
+        # convert the dataarray into a dataset, even though we only have one variable 
+        # (to be consistent with output if sigma levels are output)
+        ds = profiles_da.to_dataset(name=var,promote_attrs=True)
+    
+    # write a netcdf file if specified
+    if write_nc:
+        ds.to_netcdf(fname_nc)
+    
+    return ds
 
-    return time_model, depths_out, profiles, lat_mod, lon_mod
-
-# %%
-
-def get_profile_uv(fname, lon, lat, ref_date, i_shifted=0, j_shifted=0, time_lims=slice(None),depths=None):
+def get_profile_uv(fname, lon, lat, ref_date, 
+                   i_shifted=0, j_shifted=0, 
+                   time_lims=slice(None),
+                   depths=None):
     """
-           Extract a timeseries of u,v from the model:
+           Extract a profile of u,v from the model:
                    
             Parameters:
             - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
@@ -1136,6 +1189,8 @@ def get_profile_uv(fname, lon, lat, ref_date, i_shifted=0, j_shifted=0, time_lim
             - time_model, u, v, lat_mod, lon_mod, h
               (u,v are rotated from grid-aligned to east-north components)
     """
+    # TODO: Nkululeko to re-write this based on get_profile() approach
+    
     # get the model time
     time_model = get_time(fname, ref_date, time_lims=time_lims)
     
