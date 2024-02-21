@@ -95,6 +95,7 @@ def obs_2_model_timeaxis(fname_obs,time_model,model_frequency,var):
     data_obs_model_timeaxis = [None for i in range(len(time_model))]
     # Convert the NumPy array to a list of datetime objects
     formatted_time_obs = time_obs.tolist()
+    formatted_time_obs
     
     if var == 'u' or 'v':
         for index_mod, time_model_now in enumerate(time_model):
@@ -192,15 +193,19 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
     time_obs, data_obs, long_obs, lat_obs, var_units = get_ts_obs(fname_obs,var)   
 
     # get the model time-series
-    time_model, data_model,lat_mod,lon_mod,h = post.get_ts(fname,var,long_obs,lat_obs,ref_date,depth=depth,i_shifted=i_shifted,j_shifted=j_shifted,time_lims=[time_obs[0],time_obs[-1]]) # Change the 10 back to -1
+    time_model, data_model,lat_mod,lon_mod,h = post.get_ts(fname,var,long_obs,lat_obs,ref_date,depth=depth,i_shifted=i_shifted,j_shifted=j_shifted,time_lims=[time_obs[0].replace(hour=12, minute=0, second=20, microsecond=0),time_obs[-1].replace(hour=12, minute=0, second=20, microsecond=0)]) # Change the 10 back to -1
 
     # get the observations onto the model time axis
     data_obs_model_timeaxis = obs_2_model_timeaxis(fname_obs,time_model, model_frequency,var)
     
+    print("data_model shape:", data_model.shape)
+    print("data_obs_model_timeaxis shape:", data_obs_model_timeaxis.shape)
+    
+    data_obs_model_timeaxis = data_obs_model_timeaxis.astype(float)
     insitu_no_nan =  data_obs_model_timeaxis[~np.isnan( data_obs_model_timeaxis)]  
     model_no_nan = data_model[~np.isnan(data_obs_model_timeaxis)]  
 
-    # Create a NetCDF file
+    # # Create a NetCDF file
     with nc.Dataset(output_path, 'w', format='NETCDF4') as nc_file:
         # Create dimensions
         nc_file.createDimension('time', len(time_model))
@@ -344,23 +349,38 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
             print('i_shifted :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time')
             print('j_shifted :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time')
             
-               
+    # print('')
+    # print('----------------------------------------------------------------')
+    # print(f'{Fore.RED}{Style.BRIGHT} Evaluation FAILED!!!{Style.RESET_ALL}')
+    # print('----------------------------------------------------------------')
+    # print(f"{Fore.MAGENTA}{Style.BRIGHT} But don't panic, here's how you can fix it: {Style.RESET_ALL}")
+    # print('Consider changing i_shift, j_shift or both from zero to deeper parts of the ocean or change the station')
+    # print(f'the given input is of observation depth ={Fore.GREEN}{Style.BRIGHT} {-depth} m {Style.RESET_ALL}> h = -{round(h)} m, this means you are evaluating below sea-floor; remember h is model sea-height')
+    # print('')
+    # print('Remember:')
+    # print('i_shifted :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time')
+    # print('j_shifted :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time')
+                       
 # %%
     
 if __name__ == "__main__":
 
     # Define the input parameters:  
     # fname_out is the file name you want your output netCDF file to be labelled as.
-    fname_out = 'CapePoint_CP002.nc' # or 'CapePoint_CP003.nc'  'FalseBay_FB001.nc'
+    # fname_out = 'CapePoint_CP002.nc' # or 'CapePoint_CP003.nc'  'FalseBay_FB001.nc'
+    fname_out = 'wirewalker_mooring_1.nc' # or 'adcp_mooring_2.nc'  'adcp_mooring_3.nc'
     # dir_model is the directory at which your model files are located.
-    dir_model = '/mnt/d/Run_False_Bay_2008_2018_SANHO/croco_avg_Y201*.nc.1'
+    dir_model = '/home/nkululeko/somisana-croco/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/output/croco_avg_Y2011M0*.nc'
 
     # fname_obs is the file name of your observations
-    fname_obs = f'/mnt/d/DATA-20231010T133411Z-003/DATA/ATAP/Processed/Processed_Station_Files/{fname_out}'
+    # fname_obs = f'/mnt/d/DATA-20231010T133411Z-003/DATA/ATAP/Processed/Processed_Station_Files/{fname_out}'
+    # fname_obs = f'/home/nkululeko/insitu-data/ALUCAS_SHB/adcp_mooring/{fname_out}'
+    fname_obs = f'/home/nkululeko/insitu-data/ALUCAS_SHB/wirewalker_mooring/{fname_out}'
 
     # Output file name and directory:
     # Be sure to change the following directory to the one in which you are working
-    output_directory = '/mnt/d/Run_False_Bay_2008_2018_SANHO/Validation/ATAP/model_validation/'#'i-j_Shifted/'
+    # output_directory = '/mnt/d/Run_False_Bay_2008_2018_SANHO/Validation/ATAP/model_validation/'#'i-j_Shifted/'
+    output_directory = '/home/nkululeko/somisana-croco/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/postprocess/'
     fname_out = os.path.join(output_directory, 'Validation_'+fname_out )
 
     # Other parameters:
@@ -372,7 +392,8 @@ if __name__ == "__main__":
     depth=-50
     # The following ref_date corrasponds to the refdate of croco SWCC model, 
     # change it if you model has a different ref date
-    ref_date = datetime(1990, 1, 1, 0, 0, 0)
+    # ref_date = datetime(1990, 1, 1, 0, 0, 0)
+    ref_date = datetime(1993, 1, 1, 0, 0, 0)
     
     get_model_obs_ts(dir_model,fname_obs,
                       fname_out,model_frequency=model_frequency,
