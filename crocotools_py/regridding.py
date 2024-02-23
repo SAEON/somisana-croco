@@ -1,6 +1,6 @@
 """
 Some scripts for regridding CROCO output with the hope that the files 
-are easier to use.
+are easier to use for non-CROCO folk.
 These functions are used in the regridding of SOMISANA's operational CROCO output
 I don't think the output netcdf files are totally CF compliant - 
 something to come back to when we start archiving on MIMS!
