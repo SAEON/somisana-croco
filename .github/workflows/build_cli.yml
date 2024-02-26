@@ -24,7 +24,7 @@ jobs:
       - name: Set envs
         id: ENVS
         run: |
-          echo "CLI_IMAGE=${{ github.repository }}_cli_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
+          echo "CLI_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}_cli_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
 
   build-and-push-image:
     needs: [envs]
@@ -34,18 +34,13 @@ jobs:
       CLI_IMAGE: ${{ needs.envs.outputs.CLI_IMAGE }}
       SHA: sha-${{ github.sha }}
     outputs:
-      image: ${{ env.REGISTRY }}/${{ steps.lowercase.outputs.image_name }}
+      image: ${{ env.CLI_IMAGE }}:${{ env.SHA }}
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:
       contents: read
       packages: write
       # 
     steps:
-      - name: Get image name lowercase
-        id: 'lowercase'
-        run: |
-          IMAGE_NAME_LOWER=$(echo $CLI_IMAGE | tr '[:upper:]' '[:lower:]')
-          echo "image_name=$IMAGE_NAME_LOWER" >> $GITHUB_OUTPUT
       - name: Check out source code
         uses: actions/checkout@main # change to main
         with:
@@ -60,7 +55,7 @@ jobs:
         id: check-image
         run: |
           set -e
-          SHA_IMAGE=$(docker images -q ${REGISTRY}/${{ steps.lowercase.outputs.image_name }}:${SHA} || true)
+          SHA_IMAGE=$(docker images -q ${{ env.CLI_IMAGE }}:${{ env.SHA }} || true)
           if [ -z "$SHA_IMAGE" ]; then
             echo "image_exists=false" >> $GITHUB_OUTPUT
           else
@@ -70,7 +65,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@master
         with:
-          images: ${{ env.REGISTRY }}/${{ env.CLI_IMAGE }}
+          images: ${{ env.CLI_IMAGE }}
           tags: |
             latest
             ${{ env.SHA }}
