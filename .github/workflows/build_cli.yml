@@ -24,7 +24,7 @@ jobs:
       - name: Set envs
         id: ENVS
         run: |
-          echo "CLI_IMAGE=${{ github.repository }}_cli_${{ steps.branch-ref.outputs.value }}" >> $GITHUB_OUTPUT
+          echo "CLI_IMAGE=${{ github.repository }}_cli_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
 
   build-and-push-image:
     needs: [envs]
