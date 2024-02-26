@@ -43,7 +43,6 @@ jobs:
       SHA: sha-${{ github.sha }}
     outputs:
       image: ${{ env.REGISTRY }}/${{ steps.lowercase.outputs.image_name }}
-    runs-on: ubuntu-latest
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:
       contents: read
