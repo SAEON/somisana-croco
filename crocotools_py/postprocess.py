@@ -51,8 +51,8 @@ def u2rho(u):
         # extend the xi axis by one on either side before doing the interpolating along the xi axis
         u_extended = np.zeros((Mp, L + 2))
         u_extended[:,1:-1] = u
-        u_extended[:,0] = u[:,:,0] # repeat adjacent values along the extended part
-        u_extended[:,-1] = u[:,:,-1] # repeat adjacent values along the extended part
+        u_extended[:,0] = u[:,0] # repeat adjacent values along the extended part
+        u_extended[:,-1] = u[:,-1] # repeat adjacent values along the extended part
         
         # Interpolate from u grid to rho grid by summing adjacent u points, and divide by 2
         # output is on the rho grid due to extending the xi axis

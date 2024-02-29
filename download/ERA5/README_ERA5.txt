@@ -1,9 +1,13 @@
 This readme and scripts are copied from the official croco_tools-v1.3.1
 The original download scripts prompts you to download data into a model configuration dir
-We are rather downloading the ERA5 data into this more general directory, so that
+Our workflow is to rather downloading the ERA5 data into the DATASETS_CROCOTOOLS directory,
+located in the root directory of this repo. This is so that
 multiple croco configurations can make use of the same downloaded files
-the original era5_crocotools_param.py is saved as era5_crocotools_param_template.py 
-to keep a record of the originally intended use 
+
+The easiest approach may be to just copy all the files in this directory  into a DATASETS_CROCOTOOLS/ERA5/ directory
+and edit the era5_crocotools_param.py file appropriately
+
+DATASETS_CROCOTOOLS is in .gitignore so nothing in there will be tracked in the repo
 
 everything below is unchanged from the original readme
 ----------------------------------------------------------

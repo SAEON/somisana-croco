@@ -253,7 +253,80 @@ def plot(fname,
         if gif_out is None:
             gif_out = fname.split('.nc')[0]+'_'+var+'.gif'
         anim.save(gif_out, writer='imagemagick')
-        
+
+def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk file
+        croco_blk_file, # the croco blk file
+        var='wspd',
+        figsize=(6,6), # (hz,vt)
+        tstep=0, # the step to plot (not going to worry about decoding the actual dates here)
+        ticks = [], # the ticks to plot
+        cmap = 'Spectral_r',
+        extents = [],
+        cbar_loc = [0.7, 0.2, 0.02, 0.6],
+        add_vectors = True,
+        scale_uv = 150,
+        skip_uv = 10
+        ):
+    '''
+    this is a convenience function for doing a quick 2D plot 
+    of a croco input blk file, just to make sure the forcing looks ok
+    a quick plot on winds at the first time-step would be just
+    plot_blk(croco_grd, croco_blk_file)
+    '''
+    # get the croco grid variables
+    ds_croco_grd=xr.open_dataset(croco_grd)
+    lon_rho=ds_croco_grd.lon_rho.values
+    lat_rho=ds_croco_grd.lat_rho.values
+    angle=ds_croco_grd.angle.values
+    cos_a = np.cos(angle)
+    sin_a = np.sin(angle)
+    ds_croco_grd.close()
+
+    ds_blk = xr.open_dataset(croco_blk_file, decode_times=False)
+    ds_blk = ds_blk.isel(bulk_time=tstep)
+
+    var_data=ds_blk[var].values
+    u = ds_blk.uwnd.values
+    v = ds_blk.vwnd.values
+    # get u,v onto rho grid
+    u = post.u2rho(u)
+    v = post.v2rho(v)
+    # rotate to be east,north components
+    u_rot = u * cos_a - v * sin_a
+    v_rot = v * cos_a + u * sin_a
+
+    fig = plt.figure() 
+    ax = plt.axes(projection=ccrs.Mercator())
+
+    setup_plot(ax, croco_grd)
+
+    # set up the cmap to handle non-uniform input ticks
+    if len(ticks)==0:
+        ticks = np.linspace(min(np.ravel(var_data)),max(np.ravel(var_data)),num=20)
+    n_levels = len(ticks)
+    #vmin = min(ticks) 
+    #vmax = max(ticks)
+    levs = np.array(ticks)
+    cmap_norm = mplc.BoundaryNorm(boundaries=levs, ncolors=256)
+
+    # plot the data
+    var_plt = ax.pcolormesh(lon_rho,
+                              lat_rho,
+                              var_data,
+                              cmap=cmap,
+                              norm=cmap_norm,
+                              transform=ccrs.PlateCarree())
+
+    plot_cbar(var_plt,label=var,ticks=ticks,loc=cbar_loc)
+
+    if add_vectors:
+        uv_plt = ax.quiver(lon_rho[::skip_uv, ::skip_uv],
+                          lat_rho[::skip_uv, ::skip_uv],
+                          u_rot[::skip_uv, ::skip_uv],
+                          v_rot[::skip_uv, ::skip_uv],
+                          scale=scale_uv,
+                          transform=ccrs.PlateCarree(), zorder=1)
+
 if __name__ == "__main__":
     
     fname='../output/avg_Y2011M2.nc'

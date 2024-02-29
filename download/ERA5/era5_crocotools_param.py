@@ -9,19 +9,19 @@
 # General path
 #
 # GF comment - I don't think these tools need to be tied to any particular configuration, so I am commenting these inputs
-# I'm rather saving the output here, for use in multiple configurations if necessary
+# I'm rather saving the output in DATASETS_CROCOTOOLS in the root of this repo, for use in multiple configurations if necessary
 #
 # config_dir = '../croco/Run_TEST/'           # must be the same than crocotools_param
 # config_dir = '../../configs/swcape_02/croco_v1.3.1/'            # must be the same than crocotools_param
 # config_name = 'swcape_02' 
 #
 # Original ERA5 directory
-#
-era5_dir_raw = './swcape' # this is where the output of ERA5_request.py goes. 
+# this is where the output of ERA5_request.py goes
+era5_dir_raw = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/swcape'  
 #
 # Output ERA5 directory
-#
-era5_dir_processed = './swcape_for_croco' # this is where the output of ERA5_convert.py goes 
+# this is where the output of ERA5_convert.py goes
+era5_dir_processed = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/swcape_for_croco'  
 #
 # extraction wave variables
 #
