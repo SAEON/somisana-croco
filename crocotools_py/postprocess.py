@@ -1128,17 +1128,26 @@ def get_profile(fname, var, lon, lat, ref_date,
         ds = xr.Dataset({var: profiles_da, 'depth': depths_da})
         
     else:
+        ds = get_ds(fname)
         # we're extracting data at specified z levels
         # set up an empty array of the correct size, which we populate in a loop through depths
         profiles = np.zeros((len(time_model),len(depths)))
         for index, depth in enumerate(depths):
             # extract a time-series for this z level
-            ts = get_var(fname, var,
-                              tstep=time_lims,
-                              level=depth,
-                              eta_rho=j,
-                              xi_rho=i,
-                              ref_date=ref_date)
+            if depth == 0:
+                ts = get_var(fname, var,
+                                  tstep=time_lims,
+                                  level=(len(ds.s_rho) - 1),
+                                  eta_rho=j,
+                                  xi_rho=i,
+                                  ref_date=ref_date)
+            else:
+                ts = get_var(fname, var,
+                                  tstep=time_lims,
+                                  level=depth,
+                                  eta_rho=j,
+                                  xi_rho=i,
+                                  ref_date=ref_date)
             # and populate the profiles array for the extracted z level
             profiles[:,index]=ts.values
         
