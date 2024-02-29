@@ -367,17 +367,17 @@ def get_ds(fname,var_str=''):
     # print('Opening dataset: ' + fname)
     if ('*' in fname) or ('?' in fname) or ('[' in fname):
         # this approach borrowed from OpenDrift's reader_ROMS_native.py
-        # our essential vars are the 'var_str' (obviously) plus some others 
-        # we need for things like vertical interp, rotating vectors, computing vorticity etc
-        # all the lon* lat* and mar* variables are automatically included in the drop_non_essential_vars_pop sub-function
+        # our essential vars are the 'var_str' (obviously) plus some other 
+        # static vars we need to keep:
         static_vars=['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w', 
                         'hc', 'angle', 'h', 'f', 'pn', 'pm',
                         'Vtransform','theta_s','theta_b',
                         'lon_rho', 'lat_rho', 'mask_rho',
-                        'lon_u', 'lat_u', 'lon_v', 'lat_v']
+                        'lon_u', 'lat_u', 'lon_v', 'lat_v',
+                        'eta_rho', 'xi_rho', 'eta_v', 'xi_u']
         if var_str in static_vars:
-            # no need for open_mfdataset, which can be slow
-            # this is here just in case you want to use get_var() and not
+            # No need for open_mfdataset, which can be slower.
+            # This is here just in case you want to use get_var() and not
             # have to change fname just to read a static variable
             fname=glob(fname)[0]
             ds = xr.open_dataset(fname, decode_times=False)
@@ -723,7 +723,7 @@ def get_var(fname,var_str,
     if isinstance(eta_rho,slice) and isinstance(xi_rho,slice):
         _,_,mask=get_lonlatmask(fname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
                                 eta_rho=eta_rho,
-                                xi_rho=xi_rho) # var_str will define the mask type (u,v, or rho)
+                                xi_rho=xi_rho)
     else:
         mask=1
     # it looks like xarray and numpy are clever enough to use the 2D mask on a 3D or 4D variable
