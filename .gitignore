@@ -18,6 +18,7 @@ C*_I*_*
 # plots
 *.jpg
 *.png
+*.gif
 
 # matlab files
 *.mat

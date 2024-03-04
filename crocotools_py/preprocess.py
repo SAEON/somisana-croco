@@ -6,6 +6,90 @@ import fnmatch
 from scipy.interpolate import griddata
 import crocotools_py.postprocess as post
 
+def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
+    '''
+    This is a little hack function to help us getting around the specific problem
+    of having a block of missing data in the WASA3 zarr files for about 13 days in April 2010
+    So we're just using this function to interpolate over this block.
+    Maybe this function will be usefull in other cases too?
+    
+    I'm specifically not doing this automatically in make_WASA3_from_blk()
+    as the user should really know exactly where the missing data are and 
+    first see if this hack is appropriate
+    
+    If the block of missing data is too big, maybe filling with ERA5 would be more appropriate
+    Or maybe we have to make another plan
+    
+    Parameters
+    ----------
+    croco_grd      : /your_dir/croco_grd.nc
+    croco_blk_file_in : /your_dir/croco_blk_file_needing_filling
+    croco_blk_file_out : /your_dir/filled_croco_blk_file
+
+    '''
+    # get the croco grid variables
+    ds_croco_grd=xr.open_dataset(croco_grd)
+    # handling uwnd and vwnd on their own grids
+    lon_u=ds_croco_grd.lon_u.values
+    lat_u=ds_croco_grd.lat_u.values
+    lon_v=ds_croco_grd.lon_v.values
+    lat_v=ds_croco_grd.lat_v.values
+    ds_croco_grd.close()
+    # for use in griddata later:
+    source_points_u = np.column_stack((lon_u.flatten(), lat_u.flatten()))
+    source_points_v = np.column_stack((lon_v.flatten(), lat_v.flatten()))
+    
+    ds_blk = xr.open_dataset(croco_blk_file_in, decode_times=False)
+    u_blk_filled = ds_blk.uwnd.values
+    v_blk_filled = ds_blk.vwnd.values
+    for t in range(len(ds_blk.bulk_time)):
+        
+        # Extract wasa values at this specific time-step
+        # flattening for use in griddata
+        u_blk_now = u_blk_filled[t,:,:].flatten()
+        v_blk_now = v_blk_filled[t,:,:].flatten()
+        
+        # check for missing values and fill them where needed
+        # handling u and v separately as they're on their own grids with different indices
+        if np.any(np.isnan(u_blk_now)):
+            # get the indices for which we have valid data
+            idx = np.logical_not(np.isnan(u_blk_now))
+            # Perform interpolation using valid data
+            u_blk_filled[t,:,:] = griddata(source_points_u[idx,:], u_blk_now[idx], (lon_u, lat_u), method='linear')
+        if np.any(np.isnan(v_blk_now)):
+            # get the indices for which we have valid data
+            idx = np.logical_not(np.isnan(v_blk_now))
+            # Perform interpolation using valid data
+            v_blk_filled[t,:,:] = griddata(source_points_v[idx,:], v_blk_now[idx], (lon_v, lat_v), method='linear')
+        
+    # update wspd (on the rho grid)
+    spd_blk_filled = np.hypot(post.u2rho(u_blk_filled), post.v2rho(v_blk_filled))
+    
+    # Update uwnd in ds_blk
+    ds_blk['uwnd'] = (('bulk_time', 'eta_u', 'xi_u'), u_blk_filled)
+    ds_blk['vwnd'] = (('bulk_time', 'eta_v', 'xi_v'), v_blk_filled)
+    ds_blk['wspd'] = (('bulk_time', 'eta_rho', 'xi_rho'), spd_blk_filled)
+    
+    # write float32 instead of float64 in an attempt to save space
+    encoding = {
+        "tair": {"dtype": "float32"},
+        "rhum": {"dtype": "float32"},
+        "prate": {"dtype": "float32"},
+        "wspd": {"dtype": "float32"},
+        "radlw_in": {"dtype": "float32"},
+        "radsw": {"dtype": "float32"},
+        "uwnd": {"dtype": "float32"},
+        "vwnd": {"dtype": "float32"},
+        "bulk_time": {"dtype": "float32"},
+    }
+    
+    # write the new blk file
+    ds_blk.to_netcdf(croco_blk_file_out,
+                     mode='w', 
+                     encoding=encoding)
+    
+    ds_blk.close()
+    
 def make_WASA3_from_blk(wasa_grid, 
                  wasa_zarr_dir, 
                  croco_grd,

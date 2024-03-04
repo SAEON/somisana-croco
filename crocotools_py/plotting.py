@@ -265,7 +265,13 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         cbar_loc = [0.7, 0.2, 0.02, 0.6],
         add_vectors = True,
         scale_uv = 150,
-        skip_uv = 10
+        skip_uv = 10,
+        skip_time = 1, # every nth time-step will be animated (if provided)
+        jpg_out=None,
+        write_jpg=False,
+        gif_out=None,
+        write_gif=False,
+        tstep_end=None, # The last timestep to animate. Only used if write_gif = True.
         ):
     '''
     this is a convenience function for doing a quick 2D plot 
@@ -283,11 +289,11 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
     ds_croco_grd.close()
 
     ds_blk = xr.open_dataset(croco_blk_file, decode_times=False)
-    ds_blk = ds_blk.isel(bulk_time=tstep)
+    ds_blk_t = ds_blk.isel(bulk_time=tstep)
 
-    var_data=ds_blk[var].values
-    u = ds_blk.uwnd.values
-    v = ds_blk.vwnd.values
+    var_data=ds_blk_t[var].values
+    u = ds_blk_t.uwnd.values
+    v = ds_blk_t.vwnd.values
     # get u,v onto rho grid
     u = post.u2rho(u)
     v = post.v2rho(v)
@@ -326,7 +332,52 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
                           v_rot[::skip_uv, ::skip_uv],
                           scale=scale_uv,
                           transform=ccrs.PlateCarree(), zorder=1)
-
+    
+    # show tstep    
+    time_plt = ax.text(0.5, 1.01, 'tstep = ' + str(tstep),
+        ha='center', # fontsize=12,
+        transform=ax.transAxes)
+    
+    # write a jpg if specified
+    if write_jpg:
+        if jpg_out is None:
+            jpg_out = croco_blk_file.split('.nc')[0]+'_'+var+'_tstep'+str(tstep)+'.jpg'
+        plt.savefig(jpg_out,dpi=500,bbox_inches = 'tight')
+    
+    # and/or write a gif if specified
+    if write_gif: # do the animation
+        # this only works if you stecify tstep as an integer, not a datetime
+        def plot_tstep(i):
+            # get the data for this time-step
+            ds_blk_i = ds_blk.isel(bulk_time=i)
+            var_i=ds_blk_i[var].values
+            u = ds_blk_i.uwnd.values
+            v = ds_blk_i.vwnd.values
+            # get u,v onto rho grid
+            u = post.u2rho(u)
+            v = post.v2rho(v)
+            # rotate to be east,north components
+            u_i = u * cos_a - v * sin_a
+            v_i = v * cos_a + u * sin_a
+            
+            # update the figure for this time-step
+            time_plt.set_text('tstep = '+str(i))    
+            var_plt.set_array(var_i.ravel())
+            uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv],
+                                        v_i[::skip_uv, ::skip_uv])
+        
+        # animate
+        if tstep_end is None: # if not defined then animate to end of file
+            with xr.open_dataset(croco_blk_file) as ds: 
+                tstep_end = len(ds.bulk_time) - 1
+        
+        anim = FuncAnimation(
+            fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 
+        
+        if gif_out is None:
+            gif_out = croco_blk_file.split('.nc')[0]+'_'+var+'.gif'
+        anim.save(gif_out, writer='imagemagick')
+        
 if __name__ == "__main__":
     
     fname='../output/avg_Y2011M2.nc'
