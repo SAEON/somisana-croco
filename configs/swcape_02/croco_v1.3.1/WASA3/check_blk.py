@@ -2,7 +2,7 @@ import crocotools_py.plotting as crocplt
 import numpy as np
 
 # input files
-croco_blk_file = 'croco_blk_WASA3_Y2010M04.nc'
+croco_blk_file = 'croco_blk_WASA3_Y2010M08.nc'
 croco_grd = '/home/gfearon/code/somisana-croco/configs/swcape_02/croco_v1.3.1/GRID/croco_grd.nc'
 
 crocplt.plot_blk(croco_grd,
@@ -19,6 +19,6 @@ crocplt.plot_blk(croco_grd,
                 jpg_out=None,
                 write_jpg=False,
                 gif_out=None,
-                write_gif=True,
-                tstep_end=30
+                write_gif=False,
+                tstep_end=None
                 )

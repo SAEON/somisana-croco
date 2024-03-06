@@ -1,5 +1,6 @@
 copy2chpc.bash
 *.swp
+*.stdout
 
 # ignore all data which needs to be downloaded for running configurations
 DATASETS_CROCOTOOLS/*

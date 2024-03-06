@@ -259,6 +259,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         var='wspd',
         figsize=(6,6), # (hz,vt)
         tstep=0, # the step to plot (not going to worry about decoding the actual dates here)
+        ref_date = datetime(1993,1,1), # datetime, from CROCO model setup
         ticks = [], # the ticks to plot
         cmap = 'Spectral_r',
         extents = [],
@@ -289,6 +290,10 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
     ds_croco_grd.close()
 
     ds_blk = xr.open_dataset(croco_blk_file, decode_times=False)
+    # get an array of datetimes for this file
+    ds_blk_days = np.float64(ds_blk.bulk_time.values)
+    blk_time = ref_date + timedelta(days = ds_blk_days[tstep])
+    # blk_time = np.array([ref_date + timedelta(days=day) for day in ds_blk_days])
     ds_blk_t = ds_blk.isel(bulk_time=tstep)
 
     var_data=ds_blk_t[var].values
@@ -333,8 +338,8 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
                           scale=scale_uv,
                           transform=ccrs.PlateCarree(), zorder=1)
     
-    # show tstep    
-    time_plt = ax.text(0.5, 1.01, 'tstep = ' + str(tstep),
+    # show tstep
+    time_plt = ax.text(0.5, 1.01, 'tstep = ' + str(tstep)+': '+datetime.strftime(blk_time, '%Y-%m-%d %H:%M:%S'),
         ha='center', # fontsize=12,
         transform=ax.transAxes)
     
@@ -361,7 +366,8 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
             v_i = v * cos_a + u * sin_a
             
             # update the figure for this time-step
-            time_plt.set_text('tstep = '+str(i))    
+            blk_time = ref_date + timedelta(days = ds_blk_days[i])
+            time_plt.set_text('tstep = '+str(i)+': '+datetime.strftime(blk_time, '%Y-%m-%d %H:%M:%S')) 
             var_plt.set_array(var_i.ravel())
             uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv],
                                         v_i[::skip_uv, ::skip_uv])

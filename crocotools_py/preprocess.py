@@ -215,6 +215,14 @@ def make_WASA3_from_blk(wasa_grid,
             u_wasa = u * cosa - v * sina
             v_wasa = v * cosa + u * sina
             
+            # check if there are any missing data and print a warning
+            # This is needed due to some random blocks of missing values we've found
+            # I'm intentionally not automatically interpolating over these data
+            # as we should first check to make sure we are happy to do so
+            # ultimately, we need to get a un-corrupted copy of the data!
+            if np.any(np.isnan(u_wasa.values.flatten())):
+                print('wasa contains missing data for '+croco_blk_file_WASA+'. Check this out!')
+            
             # interpolate the wasa u,v wind vectors onto the croco grid   
             # I tried to find an in-built xarray interpolation method to do the job
             # efficiently, but it only works for regular grids
