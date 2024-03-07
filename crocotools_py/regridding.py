@@ -143,7 +143,7 @@ def regrid_tier1(fname_in, fname_out, ref_date):
     print("Done!")
     
 def regrid_tier2(fname_in, fname_out, 
-                 depths="0,1,2,5,10,15,20,30,40,50,60,70,100,150,200,500,1000,1500,2000,99999"):
+                 depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000,-99999]):
     '''
     tier 2 regridding of a CROCO output:
       -> takes the output of regrid-tier1 as input and
@@ -154,9 +154,8 @@ def regrid_tier2(fname_in, fname_out,
     ----------
     fname_in : path to input tier 1 netcdf file
     fname_out : path to output tier 2 netcdf file
-    depths : string with comma separated depth levels (in metres, positive down) to interpolate to 
-            you should include a value of 0 to denote the surface
-            and a value of 99999, which indicates the bottom layer)
+    depths : list of depths to extract (in metres, negative down). 
+            A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)
 
     '''
     
@@ -170,7 +169,7 @@ def regrid_tier2(fname_in, fname_out,
     T,N,M,L=np.shape(depth_in)
     
     # set up the output arrays
-    depth_out = np.array(depths.split(',')).astype(float)
+    depth_out = np.array(depths).astype(float)
     temp_out=np.zeros((T,len(depth_out),M,L))
     salt_out=temp_out.copy()
     u_out=temp_out.copy()
@@ -183,7 +182,7 @@ def regrid_tier2(fname_in, fname_out,
             salt_out[:,d,:,:]=salt_in[:,N-1,:,:]
             u_out[:,d,:,:]=u_in[:,N-1,:,:]
             v_out[:,d,:,:]=v_in[:,N-1,:,:]
-        elif depth==99999: # bottom layer
+        elif depth==-99999: # bottom layer
             temp_out[:,d,:,:]=temp_in[:,0,:,:]
             salt_out[:,d,:,:]=salt_in[:,0,:,:]
             u_out[:,d,:,:]=u_in[:,0,:,:]
@@ -191,10 +190,10 @@ def regrid_tier2(fname_in, fname_out,
         else:
             print("Depth = ", depth, " m")
             for t in np.arange(T):
-                temp_out[t,d,:,:]=post.hlev(temp_in[t,::], depth_in[t,::], -1*depth)
-                salt_out[t,d,:,:]=post.hlev(salt_in[t,::], depth_in[t,::], -1*depth)
-                u_out[t,d,:,:]=post.hlev(u_in[t,::], depth_in[t,::], -1*depth)
-                v_out[t,d,:,:]=post.hlev(v_in[t,::], depth_in[t,::], -1*depth)
+                temp_out[t,d,:,:]=post.hlev(temp_in[t,::], depth_in[t,::], depth)
+                salt_out[t,d,:,:]=post.hlev(salt_in[t,::], depth_in[t,::], depth)
+                u_out[t,d,:,:]=post.hlev(u_in[t,::], depth_in[t,::], depth)
+                v_out[t,d,:,:]=post.hlev(v_in[t,::], depth_in[t,::], depth)
     
     # Create new xarray dataset with selected variables
     print("Generating dataset")
@@ -288,7 +287,7 @@ def regrid_tier2(fname_in, fname_out,
                 {
                     "long_name": "water depth from free surface",
                     "units": "meter",
-                    "postive": "down",
+                    "postive": "up",
                     "standard_name": "depth",
                 },
             ),
@@ -337,7 +336,7 @@ def regrid_tier3(fname_in, fname_out, spacing='0.01'):
     
 
     CAREFUL! tier3 output is useful for website visualisation (it's intended use), 
-    but don't use it for reasearch/analysis as it interpolated, so can be at a 
+    but don't use it for reasearch/analysis as it's interpolated, so can be at a 
     totally different resolution to the native CROCO grid 
 
     '''
@@ -570,7 +569,7 @@ def regrid_tier3(fname_in, fname_out, spacing='0.01'):
                     {
                         "long_name": "water depth from free surface",
                         "units": "meter",
-                        "positive": "down",
+                        "positive": "up",
                         "standard_name": "depth",
                     },
                 ),
@@ -624,6 +623,6 @@ if __name__ == "__main__":
     fname_t1 = '/home/gfearon/tmp/20240122_hourly_avg_tier1.nc'
     fname_t2 = '/home/gfearon/tmp/20240122_hourly_avg_tier2.nc'
     fname_t3 = '/home/gfearon/tmp/20240122_hourly_avg_tier3.nc'
-    regrid_tier1(fname, fname_t1, ref_date)
-    regrid_tier2(fname_t1, fname_t2, depths='0,10,100,1000,99999')
-    regrid_tier3(fname_t2, fname_t3, spacing='0.05')
+    # regrid_tier1(fname, fname_t1, ref_date)
+    regrid_tier2(fname_t1, fname_t2, depths=[0,-10,-100,-1000,-99999])
+    # regrid_tier3(fname_t2, fname_t3, spacing='0.05')

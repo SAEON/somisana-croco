@@ -9,7 +9,7 @@ Feel free to add more functions from the repo as we need them in the cli
 '''
 import argparse
 from datetime import datetime
-from crocotools_py.postprocess import get_ts, get_ts_uv, get_profile, get_profile_uv
+from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys
 
@@ -43,15 +43,10 @@ def regrid_tier2_handler(args):
 def regrid_tier3_handler(args):
     regrid_tier3(args.fname, args.fname_out, spacing = args.spacing)
 
-def get_ts_handler(args):
-    get_ts(args.fname, args.var, args.lon, args.lat, args.ref_date, 
-           depth = args.depth,
-           write_nc=True, # default behaviour in the cli is to write a file
-           fname_nc=args.fname_out)
-
-def get_ts_uv_handler(args):
-    get_ts_uv(args.fname, args.lon, args.lat, args.ref_date, 
-           depth = args.depth,
+def get_ts_multivar_handler(args):
+    get_ts_multivar(args.fname, args.lon, args.lat, args.ref_date, 
+           vars = args.vars, 
+           depths = args.depths,
            write_nc=True, # default behaviour in the cli is to write a file
            fname_nc=args.fname_out)
 
@@ -98,9 +93,9 @@ def main():
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
-    parser_regrid_tier2.add_argument('--depths', type=str,
-                         default='0,1,2,5,10,15,20,30,40,50,60,70,100,150,200,500,1000,1500,2000,99999', 
-                         help='string with comma separated depth levels (in metres, positive down) to interpolate to. You should include a value of 0 to denote the surface and a value of 99999, which indicates the bottom layer)')
+    parser_regrid_tier2.add_argument('--depths', type=parse_list,
+                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
+                         help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)')
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # Subparser for regrid_tier3
@@ -113,30 +108,22 @@ def main():
                          help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
-    # Subparser for get_ts
-    parser_get_ts = subparsers.add_parser('get_ts', help='extract a time-series from a croco file')
-    parser_get_ts.add_argument('--fname', required=True, type=str, help='input native filename')
-    parser_get_ts.add_argument('--var', required=True, type=str, help='CROCO variable name')
-    parser_get_ts.add_argument('--lon', required=True, type=float, help='Longitude of data extraction')
-    parser_get_ts.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
-    parser_get_ts.add_argument('--ref_date', type=parse_datetime, 
+    # Subparser for get_ts_multivar
+    parser_get_ts_multivar = subparsers.add_parser('get_ts_multivar', help='extract a time-series or a profile through time from a croco file')
+    parser_get_ts_multivar.add_argument('--fname', required=True, type=str, help='input CROCO filename')
+    parser_get_ts_multivar.add_argument('--lon', required=True, type=float, help='Longitude of data extraction')
+    parser_get_ts_multivar.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
+    parser_get_ts_multivar.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
-    parser_get_ts.add_argument('--depth', required=True, type=int,help='Depth for time-series extraction (see get_ts() for description of input)')
-    parser_get_ts.add_argument('--fname_out', required=True, help='output time-series filename')
-    parser_get_ts.set_defaults(func=get_ts_handler)
-    
-    # Subparser for get_ts_uv
-    parser_get_ts_uv = subparsers.add_parser('get_ts_uv', help='extract a time-series of u,v current components from a croco file')
-    parser_get_ts_uv.add_argument('--fname', required=True, type=str, help='input native filename')
-    parser_get_ts_uv.add_argument('--lon', required=True, type=float, help='Longitude of data extraction')
-    parser_get_ts_uv.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
-    parser_get_ts_uv.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
-    parser_get_ts_uv.add_argument('--depth', required=True, type=int,help='Depth for time-series extraction (see get_ts() for description of input)')
-    parser_get_ts_uv.add_argument('--fname_out', required=True, help='output time-series filename')
-    parser_get_ts_uv.set_defaults(func=get_ts_uv_handler)
+    parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
+                        default=['temp', 'salt'],
+                        help='optional list of CROCO variable names')
+    parser_get_ts_multivar.add_argument('--depths', type=parse_list, 
+                        default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
+                        help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
+    parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')
+    parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
 
     args = parser.parse_args()
 
