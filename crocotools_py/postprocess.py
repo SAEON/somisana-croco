@@ -1112,7 +1112,7 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     
     # write a netcdf file if specified
     if write_nc:
-        ds_all.to_netcdf(fname_nc)
+        ds_all.to_netcdf(fname_nc, mode='w')
     
     return ds_all
 
@@ -1121,7 +1121,6 @@ def preprocess_profile_depths(depths,default_to_bottom,h):
     # specifically when negative z level(s) is (are) defined
     # I'm sticking this in it's own function as we need it for both get_profile() and get_profile_uv()
     # 
-    depths=np.atleast_1d(depths).astype('float64') # makes life easier for handling both profiles and time-series
     if np.mean(depths)<0:
         # we're extracting z levels
         # in which case we'll want a depth of 0 to represent the surface layer
@@ -1229,7 +1228,8 @@ def get_ts(fname, var, lon, lat, ref_date,
             
     else:
         # we're extracting data at specified z level(s) or a single sigma level
-        depths_in=depths # keep a record of the user input for writing to the dataarray
+        depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
+        depths_in=depths.copy() # keep a record of the user input for writing to the dataarray
         depths=preprocess_profile_depths(depths,default_to_bottom,h)
         # set up an empty array of the correct size, which we populate in a loop through depths
         ts = np.zeros((len(time_model),len(depths)))
@@ -1261,6 +1261,7 @@ def get_ts(fname, var, lon, lat, ref_date,
             ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
             ts_da.coords['depth'].attrs['units'] = 'meters'
             ts_da.coords['depth'].attrs['postive'] = 'up'
+            ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
         else: 
             # we're extracting a time-series (either a sigma level or a z level), so drop the 'depth' dimension
             ts_da = xr.DataArray(ts.squeeze(), coords={'time': ts_i['time'].values,
@@ -1374,7 +1375,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
     
     else:
         # we're extracting data at specified z level(s) or a single sigma level
-        depths_in=depths # keep a record of the user input for writing to the dataarray
+        depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
+        depths_in=depths.copy() # keep a record of the user input for writing to the dataarray
         depths=preprocess_profile_depths(depths,default_to_bottom,h)
         # set up empty arrays of the correct size, which we populate in a loop through depths
         u_ts = np.zeros((len(time_model),len(depths)))
@@ -1414,6 +1416,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
             u_ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
             u_ts_da.coords['depth'].attrs['units'] = 'meters'
             u_ts_da.coords['depth'].attrs['postive'] = 'up'
+            u_ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
             
             v_ts_da = xr.DataArray(v_ts, coords={'time': v_ts_i['time'].values,
                                                  'eta_rho': v_ts_i['eta_rho'].values, 
@@ -1426,6 +1429,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
             v_ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
             v_ts_da.coords['depth'].attrs['units'] = 'meters'
             v_ts_da.coords['depth'].attrs['postive'] = 'up'
+            u_ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
         else:
             # we're extracting a time-series (either a sigma level or a z level), so drop the depth dimension
             u_ts_da = xr.DataArray(u_ts.squeeze(), coords={'time': u_ts_i['time'].values,
