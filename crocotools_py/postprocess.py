@@ -1121,10 +1121,9 @@ def preprocess_profile_depths(depths,default_to_bottom,h):
     # specifically when negative z level(s) is (are) defined
     # I'm sticking this in it's own function as we need it for both get_profile() and get_profile_uv()
     # 
-    depths=np.atleast_1d(depths) # makes life easier for handling both profiles and time-series
+    depths=np.atleast_1d(depths).astype('float64') # makes life easier for handling both profiles and time-series
     if np.mean(depths)<0:
         # we're extracting z levels
-        depths=depths.astype('float64')
         # in which case we'll want a depth of 0 to represent the surface layer
         depths[depths==0]=-0.001 # 1mm below the surface will automatically default to the surface layer as it'll be above the top layer, so no  will get done
         # by definition a value of -99999 represents the bottom layer
