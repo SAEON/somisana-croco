@@ -23,7 +23,8 @@ RUN wget -q https://www.mathworks.com/mpm/glnxa64/mpm && \
     ln -s /opt/matlab/bin/matlab /usr/local/bin/matlab
 
 # bake in the official matlab croco-tools 
-RUN wget -q https://gitlab.inria.fr/croco-ocean/croco_tools/-/archive/v1.3.1/croco_tools-v1.3.1.tar.gz && \
+RUN mkdir /croco_tools-v1.3.1 && \
+    wget -q https://gitlab.inria.fr/croco-ocean/croco_tools/-/archive/v1.3.1/croco_tools-v1.3.1.tar.gz && \
     tar -xvzf croco_tools-v1.3.1.tar.gz -C /croco_tools-v1.3.1 && \
     rm croco_tools-v1.3.1.tar.gz
 
