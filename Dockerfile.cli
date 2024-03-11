@@ -1,0 +1,28 @@
+# This Dockerfile provides instructions to build a docker image 
+# which can be used to run the comman line interface  - cli.py in the root of this repo
+# the cli allows us to call whatever python functions in this repo that we
+# need for our SOMISANA operations
+#
+# The docker image is build by .github/workflows/build_cli.yml
+#
+# This Dockerfile is based on the opendrift Dockerfile - See https://opendrift.github.io
+# We bake the somisana_croco environment into the image and use the cli.py as the entry point
+#
+# TODO: add a user and run the image as a user rather than as root?
+
+FROM condaforge/mambaforge
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN mkdir /somisana-croco
+WORKDIR /somisana-croco
+
+# Install somisana-croco environment into base conda environment
+COPY environment.yml .
+RUN mamba env update -n base -f environment.yml
+
+# Install somisana-croco
+ADD . /somisana-croco
+RUN pip install -e .
+
+ENTRYPOINT ["python", "cli.py"]

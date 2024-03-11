@@ -1,7 +1,5 @@
-name: build and push cli docker image
+name: build and push matlab docker image
 
-# for now I'm doing this manually, but in future it may need to be part of the workflow,
-# in which case we can make this a calleable workflow from say run_ops.yml
 on:
   workflow_dispatch:
 
@@ -9,12 +7,12 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # Set the cli image name using the current branch reference
+  # Set the matlab image name using the current branch reference
   envs:
     runs-on: ubuntu-latest
     outputs:
       BRANCH_REF: ${{ steps.BRANCH_REF.outputs.value }}
-      CLI_IMAGE: ${{ steps.ENVS.outputs.CLI_IMAGE }}
+      MATLAB_IMAGE: ${{ steps.ENVS.outputs.MATLAB_IMAGE }}
     steps:
       # Dynamically set the branch ref to the currently executing branch
       - name: Set the BRANCH_REF
@@ -24,17 +22,17 @@ jobs:
       - name: Set envs
         id: ENVS
         run: |
-          echo "CLI_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}_cli_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
+          echo "MATLAB_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}_matlab_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
 
   build-and-push-image:
     needs: [envs]
     runs-on: ubuntu-latest
     env:
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      CLI_IMAGE: ${{ needs.envs.outputs.CLI_IMAGE }}
+      MATLAB_IMAGE: ${{ needs.envs.outputs.MATLAB_IMAGE }}
       SHA: sha-${{ github.sha }}
     outputs:
-      image: ${{ env.CLI_IMAGE }}:${{ env.SHA }}
+      image: ${{ env.MATLAB_IMAGE }}:${{ env.SHA }}
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:
       contents: read
@@ -55,7 +53,7 @@ jobs:
         id: check-image
         run: |
           set -e
-          SHA_IMAGE=$(docker images -q ${{ env.CLI_IMAGE }}:${{ env.SHA }} || true)
+          SHA_IMAGE=$(docker images -q ${{ env.MATLAB_IMAGE }}:${{ env.SHA }} || true)
           if [ -z "$SHA_IMAGE" ]; then
             echo "image_exists=false" >> $GITHUB_OUTPUT
           else
@@ -65,7 +63,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@master
         with:
-          images: ${{ env.CLI_IMAGE }}
+          images: ${{ env.MATLAB_IMAGE }}
           tags: |
             latest
             ${{ env.SHA }}
@@ -73,7 +71,7 @@ jobs:
         uses: docker/build-push-action@master
         with:
           context: .
-          file: Dockerfile.cli
+          file: Dockerfile.matlab
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
