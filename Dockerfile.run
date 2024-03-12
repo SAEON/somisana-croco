@@ -1,0 +1,35 @@
+# This dockerfile provides instructions for creating a docker image which we use for compiling and running
+# our croco configurations in the operational system
+# It has the official croco source code baked in along with the code from this repo 
+FROM ubuntu:20.04
+
+# Install dependencies
+RUN export DEBIAN_FRONTEND=noninteractive && \
+  apt-get update && \
+  apt-get install --no-install-recommends --yes \
+    wget \ 
+    unzip \
+    nco \
+    mpich \
+    make \
+    libnetcdff-dev \
+    libnetcdf-dev && \
+  apt-get clean && apt-get autoremove
+
+# bake in the official croco source code
+RUN wget --no-check-certificate https://gitlab.inria.fr/croco-ocean/croco/-/archive/v1.3.1/croco-v1.3.1.tar.gz && \
+  tar -xvzf croco-v1.3.1.tar.gz && \
+  rm croco-v1.3.1.tar.gz
+
+# bake in the code from our repo
+RUN mkdir /somisana-croco
+ADD . /somisana-croco
+
+# Add "croco" user and grant sudo permission.
+RUN mkdir -p /etc/sudoers.d
+RUN adduser --shell /bin/bash --disabled-password --gecos "" croco \
+    && echo "croco ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/croco \
+    && chmod 0440 /etc/sudoers.d/croco
+
+USER croco
+WORKDIR /home/croco/
