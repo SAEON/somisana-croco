@@ -5,7 +5,7 @@
 # we can always add more here if we want
 
 # source code
-export SOURCE=/home/gfearon/code/croco-v1.3.1/OCEAN/
+export SOURCE=/home/$USER/code/croco-v1.3.1/OCEAN/
 #
 # dir with compile options
 export EXENAME=C01
