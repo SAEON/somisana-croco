@@ -151,7 +151,6 @@ def download_gfs_atm(domain, run_date, hdays, fdays, outputDir):
     _now = datetime.now()
     hdays = hdays + 0.25
     fdays = fdays + 0.25
-    run_date = datetime.combine(run_date, time())
     start_date = run_date + timedelta(days=-hdays)
 
     latest_available_date = get_latest_available_dt(run_date)
