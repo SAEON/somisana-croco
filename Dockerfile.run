@@ -10,7 +10,10 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     wget \ 
     unzip \
     nco \
+    gfortran \
+    build-essential \
     mpich \
+    libmpich-dev \
     make \
     libnetcdff-dev \
     libnetcdf-dev && \
