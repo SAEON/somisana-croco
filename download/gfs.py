@@ -214,6 +214,8 @@ def download_gfs_atm(domain, run_date, hdays, fdays, outputDir):
             [
                 "RUN_DATE=" + str(datetime.strftime(run_date, "%Y-%m-%d %H")) + "\n",
                 "DELTA_DAYS_GFS=" + str(delta_days) + "\n",
+                "HDAYS=" + str(hdays) + "\n",
+                "FDAYS=" + str(fdays) + "\n",
             ]
         )
     try:

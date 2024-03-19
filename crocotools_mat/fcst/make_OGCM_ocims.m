@@ -1,4 +1,4 @@
-function make_OGCM_ocims(NY,NM,ND,hdays,makeini)
+function make_OGCM_ocims(NY,NM,ND,NH,hdays,makeini)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % G Fearon Oct 2020:
@@ -48,11 +48,11 @@ crocotools_param;
 %
 % name of raw downloaded enviromental data file for this day. This file should be in DATADIR 
 % where all downloaded enviromental data is stored.
-MERCATOR_name_raw=[DATADIR,'mercator_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.nc'];
+MERCATOR_name_raw=[My_OGCM_dir,'mercator_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.nc'];
 %
 % write it into a more croco_tools friendly format. The output goes to forcing file folder FORC_DATA_DIR
 % where dynamic forcing files are created
-MERCATOR_name=[FORC_DATA_DIR,OGCM_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.cdf'];
+MERCATOR_name=[OGCM_dir,OGCM_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.cdf'];
 write_mercator_ocims(MERCATOR_name,MERCATOR_name_raw,Yorig);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -104,8 +104,8 @@ close(nc)
 %
 if makeini==1
   %
-  % by definition our simulation starts at NY-NM-ND 00:00:00 - hdays
-  tini=datenum(NY,NM,ND)-hdays-datenum(Yorig,1,1); 
+  % by definition our simulation starts at NY-NM-ND NH:00:00 - hdays
+  tini=datenum(NY,NM,ND,NH,0,0)-hdays-datenum(Yorig,1,1); 
   %
   % Mercator data is saved at time 12:00:00 daily, so I should do some 
   % temporal interpolation to get the interpolated Mercator data at tini.

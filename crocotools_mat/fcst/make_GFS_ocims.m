@@ -1,4 +1,4 @@
-function make_GFS_ocims(NY,NM,ND,delta_days,hdays,fdays)
+function make_GFS_ocims()
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % G Fearon Oct 2020:
@@ -48,7 +48,14 @@ function make_GFS_ocims(NY,NM,ND,delta_days,hdays,fdays)
 %
 crocotools_param;
 
-%gfs_grb_dir=[DATADIR,'gfs/']; % Changed to DATADIR all downloaded enviromental data now stored in the same place
+% extract the data used in the download of the GFS data
+% assuming this script is run in the same directory where the data were downloaded 
+gfs_env=[My_GFS_dir,'/gfs.env']
+[run_date,delta_days,hdays,fdays]=read_gfs_env(gfs_env);
+%
+% Extract year, month, day, hour
+[NY, NM, ND, NH] = datevec(run_date);
+
 %
 frc_prefix=[frc_prefix,'_GFS_'];
 blk_prefix=[blk_prefix,'_GFS_'];
@@ -57,18 +64,15 @@ blk_prefix=[blk_prefix,'_GFS_'];
 % end of user input  parameters
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% time (in matlab time)
-%
-today=datenum(NY,NM,ND,0,0,0);
-%
 % GFS data name
 %
-gfs_name=[FORC_DATA_DIR,'GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.nc'];
+gfs_name=[GFS_dir,'GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'.nc'];
 %
 % Extract data from the already downloaded enviromental data files and write 
-% into a more croco_tools friendly format. Store the output in the forcing temp
-% directory created everyday.
-extract_GFS(DATADIR,today,delta_days,hdays,fdays,Yorig,gfs_name)
+% into a more croco_tools friendly format.
+% 
+% I'm commenting this, as we now reformat the grb data in a separate step by running reformat_GFS.m
+% extract_GFS(My_GFS_dir,run_date,delta_days,hdays,fdays,Yorig,gfs_name)
 %
 if level==0
   nc_suffix='.nc';
@@ -99,7 +103,7 @@ tlen=length(time);
 %
 % bulk and forcing files
 %
-blkname=[blk_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),nc_suffix];
+blkname=[blk_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),nc_suffix];
 disp(['Create a new bulk file: ' blkname])
 create_bulk(blkname,grdname,CROCO_title,time,0);
 nc_blk=netcdf(blkname,'write');
@@ -252,37 +256,5 @@ end
 %close(nc_frc);
 close(nc_blk);
 close(nc)
-%---------------------------------------------------------------
-% Make a few plots
-%---------------------------------------------------------------
-% if makeplot==1
-%   disp(' ')
-%   disp(' Make a few plots...')
-%   slides=[10 12 14 16]; 
-%   test_forcing(blkname,grdname,'tair',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'rhum',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'prate',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'wspd',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'radlw',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'radlw_in',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'sustr',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'svstr',slides,3,coastfileplot)
-%   figure
-%   test_forcing(blkname,grdname,'radsw',slides,3,coastfileplot)
-% end
 end
-
-
-
-
-
-
-
 

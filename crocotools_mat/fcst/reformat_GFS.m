@@ -1,9 +1,8 @@
-function extract_GFS(gfs_grb_dir,today,delta_days,hdays,fdays,Yorig,gfs_name)
+function reformat_GFS(Yorig)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-%  G Fearon Oct 2020:
-%  A replacement for download_GFS.m and get_GFS.m. It's called in 
-%  make_GFS_ocims.m, and extracts data from grb files already downloaded 
+%  G Fearon Mar 2024:
+%  Reformat the GFS data in grb format into a format which can be used to make blk croco input files
 % 
 %  Further Information:  
 %  http://www.croco-ocean.org
@@ -34,6 +33,19 @@ function extract_GFS(gfs_grb_dir,today,delta_days,hdays,fdays,Yorig,gfs_name)
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% extract the data used in the download of the GFS data
+% assuming this script is run in the same directory where the data were downloaded 
+gfs_env=[pwd,'/gfs.env']
+fileID = fopen(gfs_env, 'r');
+[run_date,delta_days,hdays,fdays]=read_gfs_env(gfs_env);
+%
+% Extract year, month, day, hour
+[NY, NM, ND, NH] = datevec(run_date);
+
+% filename for reformatted GFS data
+%
+gfs_name=[pwd,'/for_croco/','GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'.nc'];
+
 % set up toolbox for reading grib files
 setup_nctoolbox
 
@@ -48,8 +60,8 @@ setup_nctoolbox
 %hdays=hdays+0.25;
 %fdays=fdays+0.25;
 
-datenum_start=datenum(today-hdays);
-datenum_end=datenum(today+fdays);
+datenum_start=datenum(run_date-hdays);
+datenum_end=datenum(run_date+fdays);
 
 gfstime=datenum_start+1/24:1/24:datenum_end; % start from datenum_start+1/24 as the first time step is the first forecast hour from datenum_start
 gfstime_check=gfstime; % gfstime is overwritten in this script and checked at the end to make sure our times were correctly assigned
@@ -58,7 +70,7 @@ gfstime_check=gfstime; % gfstime is overwritten in this script and checked at th
 dv=datevec(datenum_start);
 NY=dv(1);NM=dv(2);ND=dv(3);NH=dv(4);
 %NY=year(datenum_start);NM=month(datenum_start);ND=day(datenum_start);NH=hour(datenum_start);
-gfs_grb_name=[gfs_grb_dir,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'_f001.grb'];
+gfs_grb_name=[pwd,'/',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'_f001.grb'];
 nco=ncgeodataset(gfs_grb_name);
 lat=nco{'lat'}(:);
 lon=nco{'lon'}(:);
@@ -91,7 +103,7 @@ vwnd=tx;
 n=0;
 % this looping method mirrors that used to download the data
 datenum_hist=datenum_start;
-datenum_latest=today+delta_days;
+datenum_latest=run_date+delta_days;
 while datenum_hist<datenum_latest
     %disp(['reading historical GFS data for ',datestr(datenum_hist)]);
     dv=datevec(datenum_hist);
@@ -100,7 +112,7 @@ while datenum_hist<datenum_latest
     for frcst=1:6
         n=n+1;
         gfstime(n)=datenum(NY,NM,ND,NH,0,0)+frcst/24;
-        gfs_grb_name=[gfs_grb_dir,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'_f',num2str(frcst,'%03.f'),'.grb'];
+        gfs_grb_name=[pwd,'/',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'_f',num2str(frcst,'%03.f'),'.grb'];
         
         nco=ncgeodataset(gfs_grb_name);
         %
@@ -219,7 +231,7 @@ fhours=(fdays-delta_days)*24;
 for frcst=1:fhours
     n=n+1;
     gfstime(n)=datenum(NY,NM,ND,NH,0,0)+frcst/24;
-    gfs_grb_name=[gfs_grb_dir,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'_f',num2str(frcst,'%03.f'),'.grb'];
+    gfs_grb_name=[pwd,'/',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'_f',num2str(frcst,'%03.f'),'.grb'];
     
     % we need to check if the grb file exists here as data is only stored 
     % in 3 hour increments from frcst=120 hrs onwards. In this case we just 
@@ -354,7 +366,7 @@ gfstime=gfstime-datenum(Yorig,1,1);
 mask(isnan(mask))=0;
 write_GFS(gfs_name,Yorig,lon,lat,mask,gfstime,tx,ty,tair,rhum,prate,wspd,uwnd,vwnd,radlw,radlw_in,radsw)
 %
-%disp('Extraction of GFS: done')
+disp('reformatting of GFS: done')
 %
 return
 
