@@ -1,0 +1,50 @@
+name: Run SOMISANA forecast models on MIMS
+
+on:
+  # commented for now
+  #schedule:
+    # Runs every 6 hours
+    #  - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      run_date:
+        description: 'Date and time for the run (YYYYMMDD HH:MM:SS)'
+        required: false
+        type: string
+
+jobs:
+  # start by setting some environment variables
+  envs:
+    runs-on: ubuntu-latest
+    outputs:
+      BRANCH_REF: ${{ steps.BRANCH_REF.outputs.value }}
+      RUN_DATE: ${{ steps.calculate_date.outputs.run_date }}
+    steps:
+      - name: Calculate run_date
+        id: calculate_date
+        run: |
+          if ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_date }}
+          then
+            # Use user provided run_date for manual runs
+            echo "::set-output name=run_date::${{ github.event.inputs.run_date }}"
+          else
+            # Get the current time in UTC
+            current_time=$(date -u +'%Y%m%d %H:%M:%S')
+            # Calculate the nearest 6-hour interval
+            hour=$(echo ${current_time:8:2} | awk '{print $1 - ($1%6)}')
+            run_date=$(echo ${current_time:0:8} ${hour}:00:00) 
+            echo "::set-output name=run_date::$run_date"
+          fi
+      # Dynamically set the branch ref to the currently executing branch
+      - name: Set the BRANCH_REF
+        id: BRANCH_REF
+        run: |
+          echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
+  build_images:
+    strategy:
+      matrix:
+        IMAGE_ID: [cli, matlab, run]
+    uses: build_images.yml
+    with:
+      IMAGE_ID: ${{ matrix.IMAGE_ID }}
