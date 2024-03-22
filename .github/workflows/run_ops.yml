@@ -11,6 +11,11 @@ on:
         description: 'Date and time for the run (YYYYMMDD HH:MM:SS)'
         required: false
         type: string
+      build_images:
+        description: 'Run the image builds?'
+        required: true
+        default: 'true'
+        type: boolean
 
 jobs:
   # start by setting some environment variables
@@ -25,16 +30,16 @@ jobs:
         run: |
           if ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_date }}
           then
-            # Use user provided run_date for manual runs
-            echo "::set-output name=run_date::${{ github.event.inputs.run_date }}"
+            run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
             # Get the current time in UTC
             current_time=$(date -u +'%Y%m%d %H:%M:%S')
             # Calculate the nearest 6-hour interval
             hour=$(echo ${current_time:8:2} | awk '{print $1 - ($1%6)}')
             run_date=$(echo ${current_time:0:8} ${hour}:00:00) 
-            echo "::set-output name=run_date::$run_date"
           fi
+          echo "::set-output name=run_date::$run_date"
+      
       # Dynamically set the branch ref to the currently executing branch
       - name: Set the BRANCH_REF
         id: BRANCH_REF
@@ -42,6 +47,7 @@ jobs:
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
   build_images:
+    if: ${{ github.event.inputs.build_images == 'true' }}  # Conditional execution
     strategy:
       matrix:
         image_id: ['cli', 'run', 'matlab']
