@@ -33,13 +33,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       BRANCH_REF: ${{ steps.BRANCH_REF.outputs.value }}
-      RUN_DATE: ${{ steps.calculate_date.outputs.run_date }}
+      RUN_DATE: ${{ steps.calculate_date.outputs.value }}
     steps:
       - name: Calculate run_date
         id: calculate_date
         run: |
-          echo "The input run_date is ${{ github.event.inputs.run_date }}"
-          if [[ ${{ github.event_name }} == 'workflow_dispatch' && github.event.inputs.run_date != "" ]]
+          echo "The input run_date is ${{ github.event.inputs.run_date || 'unspecified' }}" # Handle undefined input
+          if [[ ${{ github.event_name }} == 'workflow_dispatch' && -n ${{ github.event.inputs.run_date }} ]]
           then
             run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
@@ -64,4 +64,5 @@ jobs:
       - name: check run date - just for debugging
         run: |
           echo "The run_date is ${{ needs.envs.outputs.RUN_DATE }}"
+          echo "The branch is ${{ needs.envs.outputs.BRANCH_REF }}"
       
