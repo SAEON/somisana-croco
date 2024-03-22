@@ -39,7 +39,7 @@ jobs:
         id: calculate_date
         run: |
           input_run_date=${{ github.event.inputs.run_date || 'unspecified' }}
-          if [[ ${{ github.event_name }} == 'workflow_dispatch' && ${input_run_date} == 'unspecified' ]]
+          if [[ ${{ github.event_name }} == 'workflow_dispatch' && ${input_run_date} != 'unspecified' ]]
           then
             run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
