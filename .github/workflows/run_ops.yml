@@ -44,7 +44,7 @@ jobs:
   build_images:
     strategy:
       matrix:
-        IMAGE_ID: [cli, matlab, run]
-    uses: build_images.yml
+        image_id: ['cli', 'run', 'matlab']
+    uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
-      IMAGE_ID: ${{ matrix.IMAGE_ID }}
+      IMAGE_ID: ${{ matrix.image_id }}
