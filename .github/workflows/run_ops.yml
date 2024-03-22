@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       run_date:
-        description: 'Date and time for the run (YYYYMMDD HH:MM:SS)'
+        description: 'Date and time for the run in format YYYYMMDD HH:MM:SS'
         required: false
+        default: ''
         type: string
       build_images:
         description: 'Run the image builds?'
@@ -37,7 +38,7 @@ jobs:
       - name: Calculate run_date
         id: calculate_date
         run: |
-          if [[ ${{ github.event_name }} == 'workflow_dispatch' && github.event.inputs.run_date ]]
+          if [[ ${{ github.event_name }} == 'workflow_dispatch' && github.event.inputs.run_date != '' ]]
           then
             run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
