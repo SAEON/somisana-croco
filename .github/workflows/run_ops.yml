@@ -61,5 +61,5 @@ jobs:
     steps:
       - name: check run date - just for debugging
         run: |
-          echo "The run_date is ${{ envs.outputs.RUN_DATE }}"
+          echo "The run_date is ${{ needs.envs.outputs.RUN_DATE }}"
       
