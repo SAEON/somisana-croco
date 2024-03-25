@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, time
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
-import requests as r
+import urllib.request
 import aiofiles
 import aiohttp
 
@@ -71,6 +71,13 @@ def get_latest_available_dt(dt):
     latest_available_date = datetime(dt.year, dt.month, dt.day, 18, 0, 0)
     gfs_exists = False
     iters = 0
+    
+    def check_file_exists(url):
+        try:
+            response = urllib.request.urlopen(url)  # Attempt to open the URL
+            return response.status == 200         # Check for HTTP 200 OK 
+        except Exception:  # Catch potential network-related errors
+            return False
 
     while not (gfs_exists):
         if iters > 4:
@@ -86,23 +93,20 @@ def get_latest_available_dt(dt):
         )
 
         print("Testing GFS availability", dataset_url)
-        result = r.head(dataset_url)
-        xdap = result.headers.get("XDAP")
-
-        if xdap:
+        response = urllib.request.urlopen(dataset_url)
+        data = response.read().decode('utf-8')  # Read the response data
+        if "is not an available service" in data: 
+            latest_available_date = latest_available_date + timedelta(hours=-6)
+            iters += 1
+        else:
+            # Assume valid if error message is not found
             print(
                 "Latest available GFS initialisation found at",
                 dataset_url,
                 "\n",
-                "X-DAP HTTP Header",
-                xdap,
-                "\n",
                 "\n",
             )
             gfs_exists = True
-        else:
-            latest_available_date = latest_available_date + timedelta(hours=-6)
-            iters += 1
 
     return latest_available_date
 
@@ -154,6 +158,7 @@ def download_gfs_atm(domain, run_date, hdays, fdays, outputDir):
     start_date = run_date + timedelta(days=-hdays)
 
     latest_available_date = get_latest_available_dt(run_date)
+    #latest_available_date = run_date ## FOR DEBUGGING - DELETE
     delta_days = (latest_available_date - run_date).total_seconds() / 86400
 
     params = {
