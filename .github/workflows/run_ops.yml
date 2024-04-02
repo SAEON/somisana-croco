@@ -62,8 +62,7 @@ jobs:
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
   prep_dir_1:
-    runs-on: mims1
-    needs: [envs,build_images]
+    needs: [envs, build_images]
     strategy:
       matrix:
         # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
@@ -77,7 +76,6 @@ jobs:
       BRANCH_REF: ${{ envs.outputs.BRANCH_REF }}
 
 #  prep_forcing_1:
-#    runs-on: mims1
 #    needs: [prep_dir_1]
 #    strategy:
 #      matrix:
@@ -95,7 +93,6 @@ jobs:
 #      OGCM: ${{ matrix.ogcm }}
 #
 #  compile_models_1:
-#    runs-on: mims1
 #    needs: [prep_forcing_1]
 #    strategy:
 #      matrix:
@@ -121,7 +118,6 @@ jobs:
 #      INFILE: ${{ matrix.infile }}
 #
 #  run_models_1:
-#    runs-on: mims1
 #    needs: [prep_forcing_1]
 #    strategy:
 #      matrix:
