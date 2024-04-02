@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       run_date:
-        description: 'Date and time for the run in format YYYYMMDD_HH:MM:SS'
+        description: 'Date and time for the run in format YYYYMMDD_HH'
         required: false
         default: ''
         type: string
@@ -20,9 +20,9 @@ on:
 
 jobs:
   build_images:
-    if: ${{ github.event.inputs.build_images == 'true' }}  # Conditional execution
+    if: ${{ github.event.inputs.build_images == 'true' }}  # Conditional execution (saves time when testing something else and we don't want to build it every time)
     strategy:
-      matrix:
+      matrix: # the 'matrix' strategy allows us to build all three docker images in parallel using the same reusable workflow
         image_id: ['cli', 'run', 'matlab']
     uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
@@ -43,14 +43,15 @@ jobs:
           then
             run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
+            # automatically set the run_date by finding the nearest 6 hourly time stamp in the past
             # Get the current time in UTC
-            current_time=$(date -u +'%Y%m%d_%H:%M:%S')
+            current_time=$(date -u +'%Y%m%d_%H')
             # Extract the hour and calculate the nearest multiple of 6 in the past
             hour=$(echo ${current_time:9:2} | awk '{print int($1 - ($1%6))}')
             # Correct hour formatting (ensure leading zero)
             hour=$(printf "%02d" $hour)
             # Assemble the run_date
-            run_date=$(echo ${current_time:0:8}_${hour}:00:00)            
+            run_date=$(echo ${current_time:0:8}_${hour})            
           fi
           echo "value=$run_date" >> $GITHUB_OUTPUT
           
@@ -60,12 +61,87 @@ jobs:
         run: |
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
 
-  check_run_date:
-    runs-on: ubuntu-latest
-    needs: [envs]
-    steps:
-      - name: check run date - just for debugging
-        run: |
-          echo "The run_date is ${{ needs.envs.outputs.RUN_DATE }}"
-          echo "The branch is ${{ needs.envs.outputs.BRANCH_REF }}"
-      
+  prep_dir_1:
+    runs-on: mims1
+    needs: [envs,build_images]
+    strategy:
+      matrix:
+        # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
+        domain: ['swcape_02']
+        model: ['croco_v1.3.1']
+    uses: ./.github/workflows/prep_dirs.yml  # Path to your reusable workflow
+    with:
+      DOMAIN: ${{ matrix.domain }}
+      MODEL: ${{ matrix.model }}
+      RUN_DATE: ${{ envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ envs.outputs.BRANCH_REF }}
+
+#  prep_forcing_1:
+#    runs-on: mims1
+#    needs: [prep_dir_1]
+#    strategy:
+#      matrix:
+#        domain: ['swcape_02']
+#        model: ['croco_v1.3.1']
+#        blk: ['GFS']
+#        frc: ['']
+#        ogcm: ['MECATOR']
+#    uses: ./.github/workflows/prep_croco_forcing.yml  # Path to your reusable workflow
+#    with:
+#      DOMAIN: ${{ matrix.domain }}
+#      MODEL: ${{ matrix.model }}
+#      BLK: ${{ matrix.blk }}
+#      FRC: ${{ matrix.frc }}
+#      OGCM: ${{ matrix.ogcm }}
+#
+#  compile_models_1:
+#    runs-on: mims1
+#    needs: [prep_forcing_1]
+#    strategy:
+#      matrix:
+#        domain: ['swcape_02']
+#        model: ['croco_v1.3.1']
+#        compile: ['C01']
+#        mpi_num_x: [3]
+#        mpi_num_y: [10]
+#        blk: ['GFS']
+#        frc: ['']
+#        ogcm: ['MECATOR']
+#        infile: ['I99']
+#    uses: ./.github/workflows/run_models.yml  # Path to your reusable workflow
+#    with:
+#      DOMAIN: ${{ matrix.domain }}
+#      MODEL: ${{ matrix.model }}
+#      COMPILE: ${{ matrix.compile }}
+#      MPI_NUM_X: ${{ matrix.mpi_num_x }}
+#      MPI_NUM_Y: ${{ matrix.mpi_num_y }}
+#      BLK: ${{ matrix.blk }}
+#      FRC: ${{ matrix.frc }}
+#      OGCM: ${{ matrix.ogcm }}
+#      INFILE: ${{ matrix.infile }}
+#
+#  run_models_1:
+#    runs-on: mims1
+#    needs: [prep_forcing_1]
+#    strategy:
+#      matrix:
+#        domain: ['swcape_02']
+#        model: ['croco_v1.3.1']
+#        compile: ['C01']
+#        mpi_num_x: [3]
+#        mpi_num_y: [10]
+#        blk: ['GFS']
+#        frc: ['']
+#        ogcm: ['MECATOR']
+#        infile: ['I99']
+#    uses: ./.github/workflows/run_models.yml  # Path to your reusable workflow
+#    with:
+#      DOMAIN: ${{ matrix.domain }}
+#      MODEL: ${{ matrix.model }}
+#      COMPILE: ${{ matrix.compile }}
+#      MPI_NUM_X: ${{ matrix.mpi_num_x }}
+#      MPI_NUM_Y: ${{ matrix.mpi_num_y }}
+#      BLK: ${{ matrix.blk }}
+#      FRC: ${{ matrix.frc }}
+#      OGCM: ${{ matrix.ogcm }}
+#      INFILE: ${{ matrix.infile }}

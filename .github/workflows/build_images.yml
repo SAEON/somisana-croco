@@ -80,3 +80,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+  
+#  pull-image-mims1:
+#    needs: [build-and-push-image]
+#    runs-on: mims1
+#    steps:
+#      - name: Check out source code
+#        run: |
+#          docker pull ${{ needs.build-and-push-image.outputs.image }}

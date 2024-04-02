@@ -1,0 +1,50 @@
+name: prepare local directory
+
+on:
+  workflow_call:
+    inputs:
+      # directory name used to define the domain e.g. 'swcape_02'
+      DOMAIN:
+        required: true
+        type: string
+      # directory name used to define the model e.g.'croco_v1.3.1'
+      MODEL:
+        required: true
+        type: string
+      # time of T0 of the model run - defined dynamically in run_ops.yml
+      RUN_DATE:
+        required: true
+        type: string
+      # what branch are we on - defined dynamically in run_ops.yml
+      BRANCH_REF:
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  cleanup-old-rundirs:
+    continue-on-error: true
+    steps:
+      - name: Clean /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+        run: >-
+          find \
+            /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* \
+            -maxdepth 0 \
+            -type d \
+            -ctime +5 \
+            -exec \
+              rm \
+                -rf {} \;
+  setup-rundir:
+    steps:
+      - name: create the directory
+        run: |
+          rm -rf /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
+          mkdir -p /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
+          # do I need to add the runners group? As we already allow general permissions on the next command?
+          # chown -R :runners /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
+          chmod -R 774 /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
+#      - name: copy configuration files from the relevant docker image
+
