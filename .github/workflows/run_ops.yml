@@ -63,6 +63,7 @@ jobs:
 
   prep_dir_1:
     needs: [envs, build_images]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
         # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
