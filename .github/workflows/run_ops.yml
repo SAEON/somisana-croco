@@ -72,8 +72,8 @@ jobs:
     with:
       DOMAIN: ${{ matrix.domain }}
       MODEL: ${{ matrix.model }}
-      RUN_DATE: ${{ envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ envs.outputs.BRANCH_REF }}
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
 #  prep_forcing_1:
 #    needs: [prep_dir_1]
