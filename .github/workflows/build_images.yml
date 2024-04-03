@@ -27,9 +27,7 @@ jobs:
       - name: Set image name
         id: IMAGE_NAME
         run: |
-          # ensure github repo part of the image name doesn't include any capitals
-          git_repo=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
-          echo "value=${{ env.REGISTRY }}/$git_repo_${{ inputs.IMAGE_ID }}_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
+          echo "value=${{ env.REGISTRY }}/saeon/somisana-croco_${{ inputs.IMAGE_ID }}_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
 
   build-and-push-image:
     needs: [envs]
