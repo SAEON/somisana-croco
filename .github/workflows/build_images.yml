@@ -17,17 +17,19 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       BRANCH_REF: ${{ steps.BRANCH_REF.outputs.value }}
-      IMAGE_NAME: ${{ steps.ENVS.outputs.IMAGE_NAME }}
+      IMAGE_NAME: ${{ steps.IMAGE_NAME.outputs.value }}
     steps:
       # Dynamically set the branch ref to the currently executing branch
       - name: Set the BRANCH_REF
         id: BRANCH_REF
         run: |
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
-      - name: Set envs
-        id: ENVS
+      - name: Set image name
+        id: IMAGE_NAME
         run: |
-          echo "IMAGE_NAME=${{ env.REGISTRY }}/${{ github.repository }}_${{ inputs.IMAGE_ID }}_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
+          # ensure github repo part of the image name doesn't include any capitals
+          git_repo=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
+          echo "value=${{ env.REGISTRY }}/$git_repo_${{ inputs.IMAGE_ID }}_${{ steps.BRANCH_REF.outputs.value }}" >> $GITHUB_OUTPUT
 
   build-and-push-image:
     needs: [envs]
@@ -54,16 +56,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Check if image with sha tag already exists
-        id: check-image
-        run: |
-          set -e
-          SHA_IMAGE=$(docker images -q ${{ env.IMAGE_NAME }}:${{ env.SHA }} || true)
-          if [ -z "$SHA_IMAGE" ]; then
-            echo "image_exists=false" >> $GITHUB_OUTPUT
-          else
-            echo "image_exists=true" >> $GITHUB_OUTPUT
-          fi
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@master
