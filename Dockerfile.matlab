@@ -36,7 +36,19 @@ RUN mkdir /somisana-croco
 ADD . /somisana-croco
 
 # Add "matlab" user and grant sudo permission.
-RUN adduser --shell /bin/bash --disabled-password --gecos "" matlab \
+# RUN adduser --shell /bin/bash --disabled-password --gecos "" matlab \
+#     && echo "matlab ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/matlab \
+#     && chmod 0440 /etc/sudoers.d/matlab
+
+# rather setting up the user as Zach did to try and line up with how the somisana user is set up on mims, where we run the model
+RUN groupadd -g 1999 runners \
+    && adduser \
+      -u 1998 \
+      -gid 1999 \
+      --shell /bin/bash \
+      --disabled-password \
+      --gecos "" \
+      matlab \
     && echo "matlab ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/matlab \
     && chmod 0440 /etc/sudoers.d/matlab
 

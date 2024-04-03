@@ -49,9 +49,15 @@ jobs:
         run: |
           rm -rf /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
           mkdir -p /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
-          # do I need to add the runners group? As we already allow general permissions on the next command?
-          # chown -R :runners /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
+          chown -R :runners /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
           chmod -R 774 /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
 
-#     - name: copy configuration files from the relevant docker image
+     - name: copy configuration files from docker image
+       run: |
+         docker run \
+           --rm \
+           --entrypoint /bin/bash \
+           -v /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}:/tmp/ \
+           test_run:latest \
+           -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
 

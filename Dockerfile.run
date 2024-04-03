@@ -29,10 +29,22 @@ RUN mkdir /somisana-croco
 ADD . /somisana-croco
 
 # Add "croco" user and grant sudo permission.
-RUN mkdir -p /etc/sudoers.d
-RUN adduser --shell /bin/bash --disabled-password --gecos "" croco \
-    && echo "croco ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/croco \
-    && chmod 0440 /etc/sudoers.d/croco
+# RUN mkdir -p /etc/sudoers.d
+# RUN adduser --shell /bin/bash --disabled-password --gecos "" croco \
+#     && echo "croco ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/croco \
+#     && chmod 0440 /etc/sudoers.d/croco
 
-USER croco
-WORKDIR /home/croco/
+# USER croco
+# WORKDIR /home/croco/
+
+# rather setting up the user as Zach did to try and line up with how the somisana user is set up on mims, where we run the model
+RUN groupadd -g 1999 runners \
+  && useradd \
+  -u 1003 \
+  -g 1999 \
+  -m \
+  -s /bin/bash \
+  somisana
+
+USER somisana
+WORKDIR /home/somisana
