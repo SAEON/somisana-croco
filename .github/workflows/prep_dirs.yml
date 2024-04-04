@@ -57,7 +57,7 @@ jobs:
           docker run \
             --rm \
             --entrypoint /bin/bash \
-            -v /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}:/tmp/ \
-            test_run:latest \
+            -v /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}:/tmp \
+            ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
 
