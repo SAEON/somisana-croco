@@ -44,20 +44,22 @@ jobs:
                 -rf {} \;
   setup-rundir:
     runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      RUN_DIR: /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
     steps:
       - name: create the directory
         run: |
-          rm -rf /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
-          mkdir -p /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
-          chown -R :runners /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
-          chmod -R 774 /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}
+          rm -rf ${{ env.RUN_DIR }}
+          mkdir -p ${{ env.RUN_DIR }}
+          chown -R :runners ${{ env.RUN_DIR }}
+          chmod -R 774 ${{ env.RUN_DIR }}
 
       - name: copy configuration files from docker image
-        run: ->
+        run: >-
           docker run \
             --rm \
             --entrypoint /bin/bash \
-            -v /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.MODEL_RUN_DATE }}:/tmp \
+            -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
 
