@@ -8,10 +8,20 @@ on:
   workflow_dispatch:
     inputs:
       run_date:
-        description: 'Date and time for the run in format YYYYMMDD_HH'
+        description: 'Date and time for T0 for the run in format YYYYMMDD_HH'
         required: false
         default: ''
         type: string
+      hdays:
+        description: 'number of hindcast days from T0'
+        required: true
+        default: 5
+        type: float
+      fdays:
+        description: 'number of forecast days from T0'
+        required: true
+        default: 5
+        type: float
       build_images:
         description: 'Run the image builds?'
         required: true
@@ -60,16 +70,39 @@ jobs:
         id: BRANCH_REF
         run: |
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+  
+  # everything below here runs using the `mims1` self-hosted runner
+  # This is the `computecroco01` server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
+  # It is possible that we may want to use an additional modelling server (which will have to be a separate)
+  # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
+  # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
+  # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server) 
 
-  prep_dir_1:
+  # download all the data we'll need to force the models
+  # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
+  get_forcing:
+    needs: [envs, build_images]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    uses: ./.github/workflows/get_forcing.yml  # Path to your reusable workflow
+    with:
+      RUNNER_NAME: mims1
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      HDAYS: ${{ github.event.inputs.hdays }}
+      FDAYS: ${{ github.event.inputs.fdays }}
+    secrets: inherit
+
+  # prep the run directory 
+  prep_run_dirs:
     needs: [envs, build_images]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
         # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
+        # for now it's only setting up one domain, so we're not really using the matrix strategy yet, but this will come 
         domain: ['swcape_02']
         model: ['croco_v1.3.1']
-    uses: ./.github/workflows/prep_dirs.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/prep_run_dir.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
       DOMAIN: ${{ matrix.domain }}
@@ -77,8 +110,8 @@ jobs:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
-#  prep_forcing_1:
-#    needs: [prep_dir_1]
+#  prep_forcing:
+#    needs: [prep_run_dirs]
 #    strategy:
 #      matrix:
 #        domain: ['swcape_02']
@@ -93,9 +126,9 @@ jobs:
 #      BLK: ${{ matrix.blk }}
 #      FRC: ${{ matrix.frc }}
 #      OGCM: ${{ matrix.ogcm }}
-#
-#  compile_models_1:
-#    needs: [prep_forcing_1]
+
+#  compile_models:
+#    needs: [prep_forcing]
 #    strategy:
 #      matrix:
 #        domain: ['swcape_02']
@@ -119,7 +152,7 @@ jobs:
 #      OGCM: ${{ matrix.ogcm }}
 #      INFILE: ${{ matrix.infile }}
 #
-#  run_models_1:
+#  run_models:
 #    needs: [prep_forcing_1]
 #    strategy:
 #      matrix:

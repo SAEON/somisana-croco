@@ -32,10 +32,10 @@ jobs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     continue-on-error: true
     steps:
-      - name: Clean /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
         run: >-
           find \
-            /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* \
+            /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* \
             -maxdepth 0 \
             -type d \
             -ctime +5 \
@@ -45,7 +45,7 @@ jobs:
   setup-rundir:
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
-      RUN_DIR: /home/somisana/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
+      RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
     steps:
       - name: create the directory
         run: |
@@ -54,7 +54,7 @@ jobs:
           chown -R :runners ${{ env.RUN_DIR }}
           chmod -R 774 ${{ env.RUN_DIR }}
 
-      - name: copy configuration files from docker image
+      - name: copy configuration files from the `run` docker image
         run: >-
           docker run \
             --rm \

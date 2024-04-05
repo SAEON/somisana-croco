@@ -1,0 +1,95 @@
+name: get regional data to force the models
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      RUN_DATE:
+        description: 'time of T0 of the model run - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      HDAYS:
+        description: 'number of hindcast days from T0'
+        required: true
+        type: float
+      FDAYS:
+        description: 'number of forecast days from T0'
+        required: true
+        type: float
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  cleanup-old-dirs:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    continue-on-error: true
+    steps:
+      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data
+        run: >-
+          find \
+            /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/* \
+            -maxdepth 1 \
+            -type d \
+            -ctime +5 \
+            -exec \
+              rm \
+                -rf {} \;
+  setup-dirs:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/${{ inputs.RUN_DATE }}
+    steps:
+      - name: create the GFS directory
+        run: |
+          rm -rf ${{ env.DATA_DIR }}/GFS
+          mkdir -p ${{ env.DATA_DIR }}/GFS
+          chown -R :runners ${{ env.DATA_DIR }}/GFS
+          chmod -R 774 ${{ env.DATA_DIR }}/GFS
+      - name: create the MERCATOR directory
+        run: |
+          rm -rf ${{ env.DATA_DIR }}/MERCATOR
+          mkdir -p ${{ env.DATA_DIR }}/MERCATOR
+          chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
+          chmod -R 774 ${{ env.DATA_DIR }}/MERCATOR
+
+  download-data:
+    needs: [setup-dirs]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/${{ inputs.RUN_DATE }}
+      RUN_DATE_FORMATTED: ${{ format(inputs.RUN_DATE, 'YYYY-MM-DD HH:00:00') }}
+    steps:
+      - name: download GFS data
+        run: >-
+          docker run \
+            --rm \
+            -v ${{ env.DATA_DIR }}/GFS:/tmp \
+            ghcr.io/saeon/somisana-croco_run_cli:latest \
+            download_gfs_atm \
+              --domain 11,36,-39,-25 \
+              --run_date env.RUN_DATE_FORMATTED \
+              --hdays inputs.HDAYS \
+              --fdays inputs.FDAYS \
+              --outputDir '/tmp'
+      - name: download MERCATOR data
+        run: >-
+          docker run \
+            --rm \
+            -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
+            ghcr.io/saeon/somisana-croco_run_cli:latest \
+            download_mercator \
+              --usrname ${{ secrets.COPERNICUS_USERNAME }}
+              --passwd ${{ secrets.COPERNICUS_PASSWORD }}
+              --domain 11,36,-39,-25 \
+              --run_date env.RUN_DATE_FORMATTED \
+              --hdays inputs.HDAYS \
+              --fdays inputs.FDAYS \
+              --outputDir '/tmp'
