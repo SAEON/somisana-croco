@@ -72,9 +72,9 @@ jobs:
       - name: Download GFS atmospheric data
         uses: nick-fields/retry@master
         with:
-          timeout_minutes: 30 # Script is considered failed if this limit is reached
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
           retry_wait_seconds: 300 # Wait 5 minutes and try again
-          max_attempts: 30
+          max_attempts: 10
           retry_on: any
           warning_on_retry: true
           shell: bash
@@ -96,7 +96,7 @@ jobs:
         with:
           timeout_minutes: 60 # Script is considered failed if this limit is reached
           retry_wait_seconds: 300 # Wait 5 minutes and try again
-          max_attempts: 30
+          max_attempts: 10
           retry_on: any
           warning_on_retry: true
           shell: bash

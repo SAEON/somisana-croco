@@ -1,0 +1,22 @@
+name: Update Table of Contents
+
+on:
+  push:
+    branches: [ main ]  # Adjust the branch name if needed
+    paths:
+      - 'README.md'     # Update the path if your Markdown file(s) are elsewhere 
+
+jobs:
+  update-toc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install doctoc
+        run: npm install -g doctoc
+      - name: Generate Table of Contents
+        run: doctoc README.md --maxlevel 3  # Customize '--maxlevel' for heading depth
+      - name: Commit Changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Automatic TOC update"
+          branch: ${{ github.ref }}
