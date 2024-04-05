@@ -16,12 +16,10 @@ on:
         description: 'number of hindcast days (integer) from T0'
         required: true
         default: 5
-        type: number
       fdays:
         description: 'number of forecast days (interger) from T0'
         required: true
         default: 5
-        type: number
       build_images:
         description: 'Run the image builds?'
         required: true
