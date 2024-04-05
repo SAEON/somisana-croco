@@ -45,7 +45,7 @@ def download_file(fname, outputDir, params):
     fileout = os.path.join(outputDir, fname)
     if not os.path.isfile(fileout):
         try:
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"[{now}] Downloading {fileout}")
             response = urllib.request.urlopen(url, params=params)  # Fetch data
             with open(fileout, 'wb') as f:
