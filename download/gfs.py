@@ -1,11 +1,7 @@
-import asyncio
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
 import urllib.request
-import aiofiles
-import aiohttp
 
 """
 Download GFS forecast data
@@ -36,7 +32,6 @@ def validate_download_or_remove(fileout):
         )
         os.remove(fileout)
 
-
 def set_params(_params, dt, i):
     params = dict(_params)
     params["file"] = "gfs.t{h}{z}{f}".format(
@@ -45,27 +40,22 @@ def set_params(_params, dt, i):
     params["dir"] = "/gfs.{t}".format(t=time_param(dt))
     return params
 
-
-async def download_file(semaphore, fname, outputDir, params):
+def download_file(fname, outputDir, params):
     url = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl"
     fileout = os.path.join(outputDir, fname)
     if not os.path.isfile(fileout):
-        async with semaphore:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        print(f"[{now}] Downloading {fileout}")
-                        async with aiofiles.open(fileout, mode="wb") as f:
-                            async for chunk in response.content.iter_chunked(1024):
-                                if chunk:
-                                    await f.write(chunk)
-                        validate_download_or_remove(fileout)
-                    else:
-                        print(f"Request failed with status code {response.status}")
+        try:
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{now}] Downloading {fileout}")
+            response = urllib.request.urlopen(url, params=params)  # Fetch data
+            with open(fileout, 'wb') as f:
+                f.write(response.read())
+            validate_download_or_remove(fileout)
+
+        except urllib.error.URLError as e:
+            print(f"Request failed: {e}")
     else:
         print("File already exists", fileout)
-
 
 def get_latest_available_dt(dt):
     latest_available_date = datetime(dt.year, dt.month, dt.day, 18, 0, 0)
@@ -110,46 +100,15 @@ def get_latest_available_dt(dt):
 
     return latest_available_date
 
-
-# nomads.ncep.noaa.gov has strict rate limits,
-# so keep this number low
-MAX_CONCURRENT_NET_IO = 2
-
-
-async def download_hindcast(semaphore, start, end, outputDir, params):
-    tasks = []
+def download_hindcast(start, end, outputDir, params):
     while start < end:
         for i in range(1, 7):  # hours 1 to 6
-            tasks.append(
-                asyncio.create_task(
-                    download_file(
-                        semaphore,
-                        create_fname(start, i),
-                        outputDir,
-                        set_params(params, start, i),
-                    )
-                )
-            )
-        start = start + timedelta(hours=6)
-    await asyncio.gather(*tasks)
+            download_file(create_fname(start, i), outputDir, set_params(params, start, i))
+        start = start + datetime.timedelta(hours=6)
 
-
-async def download_forecast(
-    semaphore, total_forecast_hours, latest_available_date, outputDir, params
-):
-    tasks = []
+def download_forecast(total_forecast_hours, latest_available_date, outputDir, params):
     for i in range(1, total_forecast_hours + 1):
-        tasks.append(
-            asyncio.create_task(
-                download_file(
-                    semaphore,
-                    create_fname(latest_available_date, i),
-                    outputDir,
-                    set_params(params, latest_available_date, i),
-                )
-            )
-        )
-    await asyncio.gather(*tasks)
+        download_file(create_fname(latest_available_date, i), outputDir, set_params(params, latest_available_date, i))
 
 def download_gfs_atm(domain, run_date, hdays, fdays, outputDir):
     _now = datetime.now()
@@ -186,28 +145,12 @@ def download_gfs_atm(domain, run_date, hdays, fdays, outputDir):
 
     # Download forcing files up to latest available date
     print("\nDOWNLOADING HINDCAST files")
-    asyncio.run(
-        download_hindcast(
-            asyncio.BoundedSemaphore(MAX_CONCURRENT_NET_IO),
-            start_date,
-            latest_available_date,
-            outputDir,
-            params,
-        )
-    )
+    download_hindcast(start_date, latest_available_date, outputDir, params)
 
     # Download forecast forcing files
     print("\nDOWNLOADING FORECAST files")
     total_forecast_hours = int((fdays - delta_days) * 24)
-    asyncio.run(
-        download_forecast(
-            asyncio.BoundedSemaphore(MAX_CONCURRENT_NET_IO),
-            total_forecast_hours,
-            latest_available_date,
-            outputDir,
-            params,
-        )
-    )
+    download_forecast(total_forecast_hours, latest_available_date, outputDir, params)    
 
     print("GFS download completed (in " + str(datetime.now() - _now) + " h:m:s)")
     
