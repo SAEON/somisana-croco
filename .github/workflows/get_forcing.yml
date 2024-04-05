@@ -65,8 +65,12 @@ jobs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/${{ inputs.RUN_DATE }}
-      RUN_DATE_FORMATTED: ${{ format(inputs.RUN_DATE, 'YYYY-MM-DD HH:00:00') }}
     steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          formatted_date=$(date -d "${{ inputs.RUN_DATE }}" +'%Y-%m-%d %H:00:00')
+          echo "value=$formatted_date" >> $GITHUB_OUTPUT
       - name: download GFS data
         run: >-
           docker run \
@@ -75,7 +79,7 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             download_gfs_atm \
               --domain 11,36,-39,-25 \
-              --run_date ${{ env.RUN_DATE_FORMATTED }} \
+              --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
               --outputDir '/tmp'
@@ -89,7 +93,7 @@ jobs:
               --usrname ${{ secrets.COPERNICUS_USERNAME }}
               --passwd ${{ secrets.COPERNICUS_PASSWORD }}
               --domain 11,36,-39,-25 \
-              --run_date ${{ env.RUN_DATE_FORMATTED }} \
+              --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
               --outputDir '/tmp'
