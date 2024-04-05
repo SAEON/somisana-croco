@@ -72,7 +72,7 @@ jobs:
           docker run \
             --rm \
             -v ${{ env.DATA_DIR }}/GFS:/tmp \
-            ghcr.io/saeon/somisana-croco_run_cli:latest \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             download_gfs_atm \
               --domain 11,36,-39,-25 \
               --run_date ${{ env.RUN_DATE_FORMATTED }} \
@@ -84,7 +84,7 @@ jobs:
           docker run \
             --rm \
             -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
-            ghcr.io/saeon/somisana-croco_run_cli:latest \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             download_mercator \
               --usrname ${{ secrets.COPERNICUS_USERNAME }}
               --passwd ${{ secrets.COPERNICUS_PASSWORD }}
