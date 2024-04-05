@@ -1,18 +1,22 @@
 # SOMISANA croco related tools
 
-`crocotools_mat` contains some matlab code which can be used in conjunction with the official croco-tools to support SOMISANA related activities. 
-`crocotools_py` contains some additional python code which is hopefully useful for some postprocessing, validation and plotting.
-The files can be easily imported into your code as packages e.g.
-```sh
-import crocotools_py.postprocess as post
-import crocotools_py.plotting as crocplot
-import crocotools_py.validation as val
-```
-... but only if you have an environment set up as described below
+This repo is part of the [SOMISANA](https://somisana.ac.za/) initiative, and used for our [CROCO](https://www.croco-ocean.org/) related model development.
 
-## Create the environment
+To clone this repo to your local machine:
+`git clone git@github.com:SAEON/somisana-croco.git`
 
-It's easiest to to create a new conda environment called 'somisana\_croco' with all the required dependencies already built in. This can be done using the `environment.yml` file:
+Directories in the repository: 
+- `crocotools_mat`:    some matlab code which is used in conjunction with the official croco-tools to support some SOMISANA related activities. 
+- `crocotools_py`:     python functions for some postprocessing, validation and plotting CROCO model output
+- `download`:          python functions for downloading global data used for forcing our CROCO configurations
+- `configs`:           configurations used for SOMISANA's hindcast and forecast simulations
+- `.github/workflows`: github workflows for running our forecast models operationally (see `run_ops.yml`)
+
+## Installing the python library for local development
+
+### Create a conda environment
+
+The easiest way to include some of the python functions in your own scripts would be to create a new conda environment called 'somisana\_croco' with all the required dependencies already built in. This can be done using the `environment.yml` file:
 ```sh
 mamba env create -f environment.yml
 ```
@@ -29,17 +33,26 @@ pip install --no-deps -e .
 ```
 Now you do not need to add this directory to your PYTHONPATH as long as you have the somisana\_croco environment activated.
 
-## Adding new packages to the environment
+If you'd prefer to use your own python environment, you'll need to install the dependencies needed by the functions you want to use, you could just do `pip install --no-deps -e .` from the root directory in this repo.
 
-If you want to add more packages to this environment, please add them to `environment.yml` (pls push commits to this repo),
-and you can then update your environment like this 
+### Importing functions into your own environment
 
-You'll also need to run this if packages need to be updated, or of course if some-one else has added to the `environment.yml` file
+If you've got the 'somisana\_croco' environment activated, you should be able to import the libraries you want like this:
+```sh
+import crocotools_py.postprocess as post
+import crocotools_py.plotting as crocplot
+import crocotools_py.validation as val
+```
 
+## Adding new dependencies to the environment
+
+If you develop new functions which need dependencies not already in `environment.yml`, please add them to `environment.yml`, and then do:
 ```sh
 mamba env update -f environment.yml --prune
 ```
 or use `conda` instead of `mamba` if you haven't moved to mamba yet
+
+The same would apply if others have updated `environment.yml`, and you want to get access to the new functions. You would need to `git pull` to get the latest changes and then run run the update line above. 
 
 ## Developing new configurations
 
