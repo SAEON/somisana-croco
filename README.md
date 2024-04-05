@@ -1,5 +1,3 @@
-# SOMISANA croco related tools
-
 This repo is part of the [SOMISANA](https://somisana.ac.za/) initiative, and used for our [CROCO](https://www.croco-ocean.org/) related model development.
 
 To clone this repo to your local machine:
@@ -12,9 +10,9 @@ Directories in the repository:
 - `configs`:           configurations used for SOMISANA's hindcast and forecast simulations
 - `.github/workflows`: github workflows for running our forecast models operationally (see `run_ops.yml`)
 
-## Installing the python library for local development
+# Installing the python library for local development
 
-### Create a conda environment
+## Create a conda environment
 
 The easiest way to include some of the python functions in your own scripts would be to create a new conda environment called 'somisana\_croco' with all the required dependencies already built in. This can be done using the `environment.yml` file:
 ```sh
@@ -35,7 +33,7 @@ Now you do not need to add this directory to your PYTHONPATH as long as you have
 
 If you'd prefer to use your own python environment, you'll need to install the dependencies needed by the functions you want to use, you could just do `pip install --no-deps -e .` from the root directory in this repo.
 
-### Importing functions into your own environment
+## Importing functions into your own environment
 
 If you've got the 'somisana\_croco' environment activated, you should be able to import the libraries you want like this:
 ```sh
@@ -54,7 +52,20 @@ or use `conda` instead of `mamba` if you haven't moved to mamba yet
 
 The same would apply if others have updated `environment.yml`, and you want to get access to the new functions. You would need to `git pull` to get the latest changes and then run run the update line above. 
 
-## Developing new configurations
+# Tutorial: Using `crocotools_py` to postprocess CROCO model output 
 
-We are also using this repo for the development of new croco configurations, in the `configs` directory.
+TODO
+
+# Tutorial: Run a hindcast simulation locally
+
+TODO
+
+# Tutorial: Run a forecast simulation locally
+
+TODO
+
+# Tutorial: Run a dockerised forecast simulation
+
+TODO
+
 
