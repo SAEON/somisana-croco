@@ -24,9 +24,6 @@ on:
         required: true
         type: string
 
-env:
-  REGISTRY: ghcr.io
-
 jobs:
   cleanup-old-dirs:
     runs-on: ${{ inputs.RUNNER_NAME }}
@@ -72,29 +69,49 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-      - name: download GFS data
-        run: >-
-          docker run \
-            --rm \
-            -v ${{ env.DATA_DIR }}/GFS:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-            download_gfs_atm \
-              --domain 11,36,-39,-25 \
-              --run_date ${{ steps.format_date.outputs.value }} \
-              --hdays ${{ inputs.HDAYS }} \
-              --fdays ${{ inputs.FDAYS }} \
-              --outputDir '/tmp'
-      - name: download MERCATOR data
-        run: >-
-          docker run \
-            --rm \
-            -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-            download_mercator \
-              --usrname ${{ secrets.COPERNICUS_USERNAME }}
-              --passwd ${{ secrets.COPERNICUS_PASSWORD }}
-              --domain 11,36,-39,-25 \
-              --run_date ${{ steps.format_date.outputs.value }} \
-              --hdays ${{ inputs.HDAYS }} \
-              --fdays ${{ inputs.FDAYS }} \
-              --outputDir '/tmp'
+      - name: Download GFS atmospheric data
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 30 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 30
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
+          command: >-
+            docker run \
+              --rm \
+              -v ${{ env.DATA_DIR }}/GFS:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_gfs_atm \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --outputDir '/tmp'
+      - name: download MERCATOR
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 30
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+          command: >-
+            docker run \
+              --rm \
+              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_mercator \
+                --usrname ${{ secrets.COPERNICUS_USERNAME }}
+                --passwd ${{ secrets.COPERNICUS_PASSWORD }}
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --outputDir '/tmp'
