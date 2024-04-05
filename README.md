@@ -1,3 +1,16 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [SOMISANA croco related tools](#somisana-croco-related-tools)
+  - [Installing the python library for local development](#installing-the-python-library-for-local-development)
+    - [Create a conda environment](#create-a-conda-environment)
+    - [Importing functions into your own environment](#importing-functions-into-your-own-environment)
+  - [Adding new dependencies to the environment](#adding-new-dependencies-to-the-environment)
+  - [Developing new configurations](#developing-new-configurations)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # SOMISANA croco related tools
 
 This repo is part of the [SOMISANA](https://somisana.ac.za/) initiative, and used for our [CROCO](https://www.croco-ocean.org/) related model development.
