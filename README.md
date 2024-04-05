@@ -3,11 +3,14 @@
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [SOMISANA croco related tools](#somisana-croco-related-tools)
-  - [Installing the python library for local development](#installing-the-python-library-for-local-development)
-    - [Create a conda environment](#create-a-conda-environment)
-    - [Importing functions into your own environment](#importing-functions-into-your-own-environment)
+- [Installing the python library for local development](#installing-the-python-library-for-local-development)
+  - [Create a conda environment](#create-a-conda-environment)
+  - [Importing functions into your own environment](#importing-functions-into-your-own-environment)
   - [Adding new dependencies to the environment](#adding-new-dependencies-to-the-environment)
-  - [Developing new configurations](#developing-new-configurations)
+- [Tutorial: Using `crocotools_py` to postprocess CROCO model output](#tutorial-using-crocotools_py-to-postprocess-croco-model-output)
+- [Tutorial: Run a hindcast simulation locally](#tutorial-run-a-hindcast-simulation-locally)
+- [Tutorial: Run a forecast simulation locally](#tutorial-run-a-forecast-simulation-locally)
+- [Tutorial: Run a dockerised forecast simulation](#tutorial-run-a-dockerised-forecast-simulation)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
