@@ -90,8 +90,7 @@ jobs:
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       HDAYS: ${{ inputs.hdays }}
       FDAYS: ${{ inputs.fdays }}
-      COPERNICUS_USERNAME: ${{ secrets.COPERNICUS_USERNAME }}
-      COPERNICUS_PASSWORD: ${{ secrets.COPERNICUS_PASSWORD }}
+    secrets: inherit
 
   # prep the run directory 
 #  prep_run_dirs:
