@@ -71,7 +71,7 @@ jobs:
         run: |
           run_date=${{ inputs.RUN_DATE }}
           run_date_formatted="${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00"
-          echo "value=$formatted_date" >> $GITHUB_OUTPUT
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: download GFS data
         run: >-
           docker run \
