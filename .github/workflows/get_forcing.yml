@@ -75,9 +75,9 @@ jobs:
             ghcr.io/saeon/somisana-croco_run_cli:latest \
             download_gfs_atm \
               --domain 11,36,-39,-25 \
-              --run_date env.RUN_DATE_FORMATTED \
-              --hdays inputs.HDAYS \
-              --fdays inputs.FDAYS \
+              --run_date ${{ env.RUN_DATE_FORMATTED }} \
+              --hdays ${{ inputs.HDAYS }} \
+              --fdays ${{ inputs.FDAYS }} \
               --outputDir '/tmp'
       - name: download MERCATOR data
         run: >-
@@ -89,7 +89,7 @@ jobs:
               --usrname ${{ secrets.COPERNICUS_USERNAME }}
               --passwd ${{ secrets.COPERNICUS_PASSWORD }}
               --domain 11,36,-39,-25 \
-              --run_date env.RUN_DATE_FORMATTED \
-              --hdays inputs.HDAYS \
-              --fdays inputs.FDAYS \
+              --run_date ${{ env.RUN_DATE_FORMATTED }} \
+              --hdays ${{ inputs.HDAYS }} \
+              --fdays ${{ inputs.FDAYS }} \
               --outputDir '/tmp'
