@@ -88,8 +88,8 @@ jobs:
       RUNNER_NAME: mims1
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      HDAYS: ${{ github.event.inputs.hdays }}
-      FDAYS: ${{ github.event.inputs.fdays }}
+      HDAYS: ${{ inputs.hdays }}
+      FDAYS: ${{ inputs.fdays }}
     secrets: inherit
 
   # prep the run directory 
