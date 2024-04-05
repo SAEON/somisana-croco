@@ -16,13 +16,13 @@ on:
         required: true
         type: string
       HDAYS:
-        description: 'number of hindcast days from T0'
+        description: 'number of hindcast days (integer) from T0'
         required: true
-        type: float
+        type: number
       FDAYS:
-        description: 'number of forecast days from T0'
+        description: 'number of forecast days (integer) from T0'
         required: true
-        type: float
+        type: number
 
 env:
   REGISTRY: ghcr.io

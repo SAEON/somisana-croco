@@ -13,15 +13,15 @@ on:
         default: ''
         type: string
       hdays:
-        description: 'number of hindcast days from T0'
+        description: 'number of hindcast days (integer) from T0'
         required: true
         default: 5
-        type: float
+        type: number
       fdays:
-        description: 'number of forecast days from T0'
+        description: 'number of forecast days (interger) from T0'
         required: true
         default: 5
-        type: float
+        type: number
       build_images:
         description: 'Run the image builds?'
         required: true
