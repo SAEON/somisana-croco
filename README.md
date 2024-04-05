@@ -14,8 +14,6 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-# SOMISANA croco related tools
-
 This repo is part of the [SOMISANA](https://somisana.ac.za/) initiative, and used for our [CROCO](https://www.croco-ocean.org/) related model development.
 
 To clone this repo to your local machine:
@@ -82,7 +80,7 @@ TODO
 
 TODO
 
-# Tutorial: Run a dockerised forecast simulation
+# Tutorial: Run a dockerised forecast simulation locally
 
 TODO
 
