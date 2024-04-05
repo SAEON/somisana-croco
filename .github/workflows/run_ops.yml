@@ -16,10 +16,12 @@ on:
         description: 'number of hindcast days (integer) from T0'
         required: true
         default: 5
+        type: string
       fdays:
         description: 'number of forecast days (interger) from T0'
         required: true
         default: 5
+        type: string
       build_images:
         description: 'Run the image builds?'
         required: true
@@ -91,22 +93,22 @@ jobs:
     secrets: inherit
 
   # prep the run directory 
-  prep_run_dirs:
-    needs: [envs, build_images]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
-    strategy:
-      matrix:
-        # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
-        # for now it's only setting up one domain, so we're not really using the matrix strategy yet, but this will come 
-        domain: ['swcape_02']
-        model: ['croco_v1.3.1']
-    uses: ./.github/workflows/prep_run_dir.yml  # Path to your reusable workflow
-    with:
-      RUNNER_NAME: mims1
-      DOMAIN: ${{ matrix.domain }}
-      MODEL: ${{ matrix.model }}
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+#  prep_run_dirs:
+#    needs: [envs, build_images]
+#    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+#    strategy:
+#      matrix:
+#        # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
+#        # for now it's only setting up one domain, so we're not really using the matrix strategy yet, but this will come 
+#        domain: ['swcape_02']
+#        model: ['croco_v1.3.1']
+#    uses: ./.github/workflows/prep_run_dir.yml  # Path to your reusable workflow
+#    with:
+#      RUNNER_NAME: mims1
+#      DOMAIN: ${{ matrix.domain }}
+#      MODEL: ${{ matrix.model }}
+#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
 #  prep_forcing:
 #    needs: [prep_run_dirs]

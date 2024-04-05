@@ -18,11 +18,11 @@ on:
       HDAYS:
         description: 'number of hindcast days (integer) from T0'
         required: true
-        type: number
+        type: string
       FDAYS:
         description: 'number of forecast days (integer) from T0'
         required: true
-        type: number
+        type: string
 
 env:
   REGISTRY: ghcr.io
