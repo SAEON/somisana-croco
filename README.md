@@ -9,7 +9,8 @@
 - [Tutorial: Using `crocotools_py` to postprocess CROCO model output](#tutorial-using-crocotools_py-to-postprocess-croco-model-output)
 - [Tutorial: Run a hindcast simulation locally](#tutorial-run-a-hindcast-simulation-locally)
 - [Tutorial: Run a forecast simulation locally](#tutorial-run-a-forecast-simulation-locally)
-- [Tutorial: Run a dockerised forecast simulation locally](#tutorial-run-a-dockerised-forecast-simulation-locally)
+- [Tutorial: Use docker containers to run a forecast simulation locally](#tutorial-use-docker-containers-to-run-a-forecast-simulation-locally)
+- [Tutorial: Set up a server to run the forecast workflow](#tutorial-set-up-a-server-to-run-the-forecast-workflow)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
