@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import os
 from pathlib import Path
-import urllib.request
+import urllib
 
 """
 Download GFS forecast data
@@ -13,17 +13,11 @@ The latest initialisation is used at the time this is run, so that if there is a
 side then a slightly older initialization will be found
 """
 
-def yyyymmdd(dt):
-    return dt.strftime("%Y") + dt.strftime("%m") + dt.strftime("%d")
-
-
 def time_param(dt):
-    return yyyymmdd(dt) + "/" + dt.strftime("%H") + "/atmos"
-
+    return dt.strftime("%Y%m%d") + "/" + dt.strftime("%H") + "/atmos"
 
 def create_fname(dt, i):
-    return yyyymmdd(dt) + dt.strftime("%H") + "_f" + str(i).zfill(3) + ".grb"
-
+    return dt.strftime("%Y%m%d") + dt.strftime("%H") + "_f" + str(i).zfill(3) + ".grb"
 
 def validate_download_or_remove(fileout):
     if Path(fileout).stat().st_size < 1000:
@@ -38,16 +32,17 @@ def set_params(_params, dt, i):
         h=dt.strftime("%H"), z="z.pgrb2.0p25.f", f=str(i).zfill(3)
     )
     params["dir"] = "/gfs.{t}".format(t=time_param(dt))
-    return params
+    # return params
+    return urllib.parse.urlencode(params)  # Encode the parameters
 
-def download_file(fname, outputDir, params):
-    url = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl"
+def download_file(fname, outputDir, encoded_params):
+    url = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl?" + encoded_params  # Construct URL
     fileout = os.path.join(outputDir, fname)
     if not os.path.isfile(fileout):
         try:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"[{now}] Downloading {fileout}")
-            response = urllib.request.urlopen(url, params=params)  # Fetch data
+            response = urllib.request.urlopen(url)  # Fetch data
             with open(fileout, 'wb') as f:
                 f.write(response.read())
             validate_download_or_remove(fileout)
@@ -76,7 +71,7 @@ def get_latest_available_dt(dt):
 
         dataset_url = (
             "https://nomads.ncep.noaa.gov/dods/gfs_0p25_1hr/gfs"
-            + yyyymmdd(latest_available_date)
+            + latest_available_date.strftime("%Y%m%d")
             + "/gfs_0p25_1hr_"
             + latest_available_date.strftime("%H")
             + "z"
@@ -104,7 +99,7 @@ def download_hindcast(start, end, outputDir, params):
     while start < end:
         for i in range(1, 7):  # hours 1 to 6
             download_file(create_fname(start, i), outputDir, set_params(params, start, i))
-        start = start + datetime.timedelta(hours=6)
+        start = start + timedelta(hours=6)
 
 def download_forecast(total_forecast_hours, latest_available_date, outputDir, params):
     for i in range(1, total_forecast_hours + 1):

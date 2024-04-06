@@ -79,8 +79,10 @@ TODO
 
 TODO
 
-# Tutorial: Run a dockerised forecast simulation locally
+# Tutorial: Use docker containers to run a forecast simulation locally
 
 TODO
 
+# Tutorial: Set up a server to run the forecast workflow
 
+TODO
