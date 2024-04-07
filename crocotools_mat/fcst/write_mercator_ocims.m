@@ -6,6 +6,10 @@ function write_mercator_ocims(MERCATOR_name,MERCATOR_name_raw,Yorig)
 % but here we adapt it to read the raw mercator files were are downloading 
 % in a seprate step
 %
+% G Fearon Apr 2024:
+% Downloaded files from Mercator no longer have scale_factor and add_offset attributes
+% so I've commented these lines
+%
 % Extract a subset from Marcator using python motu client (cls)
 % Write it in a local file (keeping the classic SODA netcdf format)
 % 
@@ -58,10 +62,10 @@ vname='zos';
 ncc=nc{vname};
 ssh=ncc(:);
 missval=ncc.FillValue_(:);
-scale_factor=ncc.scale_factor(:);
-add_offset=ncc.add_offset(:);
+%scale_factor=ncc.scale_factor(:);
+%add_offset=ncc.add_offset(:);
 ssh(ssh<=missval)=NaN;
-ssh = ssh.*scale_factor + add_offset;
+%ssh = ssh.*scale_factor + add_offset;
 %
 %
 % Get U
@@ -71,10 +75,10 @@ vname='uo';
 ncc=nc{vname};
 u=ncc(:);
 missval=ncc.FillValue_(:);
-scale_factor=ncc.scale_factor(:);
-add_offset=ncc.add_offset(:);
+%scale_factor=ncc.scale_factor(:);
+%add_offset=ncc.add_offset(:);
 u(u<=missval)=NaN;
-u = u.*scale_factor + add_offset;
+%u = u.*scale_factor + add_offset;
 %
 % Get V
 %
@@ -83,10 +87,10 @@ vname='vo';
 ncc=nc{vname};
 v=ncc(:);
 missval=ncc.FillValue_(:);
-scale_factor=ncc.scale_factor(:);
-add_offset=ncc.add_offset(:);
+%scale_factor=ncc.scale_factor(:);
+%add_offset=ncc.add_offset(:);
 v(v<=missval)=NaN;
-v = v.*scale_factor + add_offset;
+%v = v.*scale_factor + add_offset;
 %
 % Get TEMP
 %
@@ -95,10 +99,10 @@ vname='thetao';
 ncc=nc{vname};
 temp=ncc(:);
 missval=ncc.FillValue_(:);
-scale_factor=ncc.scale_factor(:);
-add_offset=ncc.add_offset(:);
+%scale_factor=ncc.scale_factor(:);
+%add_offset=ncc.add_offset(:);
 temp(temp<=missval)=NaN;
-temp = temp.*scale_factor + add_offset;
+%temp = temp.*scale_factor + add_offset;
 %
 % Get SALT
 %
@@ -107,10 +111,10 @@ vname='so';
 ncc=nc{vname};
 salt=ncc(:);
 missval=ncc.FillValue_(:);
-scale_factor=ncc.scale_factor(:);
-add_offset=ncc.add_offset(:);
+%scale_factor=ncc.scale_factor(:);
+%add_offset=ncc.add_offset(:);
 salt(salt<=missval)=NaN;
-salt = salt.*scale_factor + add_offset;
+%salt = salt.*scale_factor + add_offset;
 
 close(nc)
 
