@@ -2,15 +2,27 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [Installing the python library for local development](#installing-the-python-library-for-local-development)
-  - [Create a conda environment](#create-a-conda-environment)
-  - [Importing functions into your own environment](#importing-functions-into-your-own-environment)
+- [Tutorial: installing the python library for local use and/or development](#tutorial-installing-the-python-library-for-local-use-andor-development)
+  - [Create a new conda environment](#create-a-new-conda-environment)
+  - [Prefer to use your own environment?](#prefer-to-use-your-own-environment)
   - [Adding new dependencies to the environment](#adding-new-dependencies-to-the-environment)
-- [Tutorial: Using `crocotools_py` to postprocess CROCO model output](#tutorial-using-crocotools_py-to-postprocess-croco-model-output)
+- [Tutorial: Postprocessing CROCO model output](#tutorial-postprocessing-croco-model-output)
+  - [Importing functions into your own environment](#importing-functions-into-your-own-environment)
+  - [Extracting a variable as an xarray dataarray](#extracting-a-variable-as-an-xarray-dataarray)
+  - [Extracting a subset in time](#extracting-a-subset-in-time)
+  - [Extracting a horizontal slice](#extracting-a-horizontal-slice)
+  - [Extracting velocity vector data](#extracting-velocity-vector-data)
+  - [Extracting time-series data](#extracting-time-series-data)
+  - [Extracting profile data](#extracting-profile-data)
+  - [Extracting a section](#extracting-a-section)
+- [Tutorial: Quick plots and animations](#tutorial-quick-plots-and-animations)
+- [Tutorial: validating CROCO output against observations](#tutorial-validating-croco-output-against-observations)
+- [Tutorial: Running selected python functions via the Command Line Interface (cli.py)](#tutorial-running-selected-python-functions-via-the-command-line-interface-clipy)
 - [Tutorial: Run a hindcast simulation locally](#tutorial-run-a-hindcast-simulation-locally)
 - [Tutorial: Run a forecast simulation locally](#tutorial-run-a-forecast-simulation-locally)
-- [Tutorial: Use docker containers to run a forecast simulation locally](#tutorial-use-docker-containers-to-run-a-forecast-simulation-locally)
-- [Tutorial: Set up a server to run the forecast workflow](#tutorial-set-up-a-server-to-run-the-forecast-workflow)
+- [Tutorial: Introduction to our docker images](#tutorial-introduction-to-our-docker-images)
+- [Tutorial: Use docker images to run a forecast simulation locally](#tutorial-use-docker-images-to-run-a-forecast-simulation-locally)
+- [Tutorial: Set up a server to run the forecast workflow using Github Actions](#tutorial-set-up-a-server-to-run-the-forecast-workflow-using-github-actions)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
