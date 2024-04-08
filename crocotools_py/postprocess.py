@@ -741,6 +741,7 @@ def get_var(fname,var_str,
     da_masked.attrs = da.attrs
     da = da_masked.copy()
     
+    ds.close()
     return da
 
 def get_uv(fname,
