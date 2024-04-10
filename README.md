@@ -26,16 +26,18 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
+# Overview
+
 This repo is part of the [SOMISANA](https://somisana.ac.za/) initiative, and used for our [CROCO](https://www.croco-ocean.org/) related model development.
 
 Directories in the repository: 
 - `crocotools_mat`:    some matlab code which is used in conjunction with the official croco-tools to support some of SOMISANA's model development, particularly the pre-processing. 
 - `crocotools_py`:     python functions for some postprocessing, validation and plotting CROCO model output
 - `download`:          python functions for downloading data used for forcing our CROCO configurations
-- `configs`:           configurations used for SOMISANA's hindcast and forecast simulations (see README's in the sub-directories)
-- `.github/workflows`: github workflows for running our forecast models operationally on a server set up for this purpose on MIMS (see `run_ops.yml`)
+- `configs`:           configurations used for SOMISANA's hindcast and forecast simulations (see README's in the sub-directories for further details)
+- `.github/workflows`: github workflows for running our forecast models operationally on a server set up for this purpose on MIMS (`run_ops.yml` is the `main` workflow)
 
-This is largely a redesign of [this](https://github.com/SAEON/somisana) amazing repo (big shout out to Zach Smith), but the new design is more 'model-centric', and we don't include anything website related, which was integrated into the model development in the previous design. 
+This repo is largely a redesign of [this one](https://github.com/SAEON/somisana) (big shout out to Zach Smith and Matt Carr for their work on this). The new repo is more 'model-centric', and we don't include anything website related, which was integrated into the model development in the previous design.
 
 # Tutorial: installing the python library for local use and/or development
 
@@ -253,4 +255,84 @@ TODO
 
 # Tutorial: Set up a server to run the forecast workflow using Github Actions
 
-TODO
+This is largely taken from [here](https://github.com/SAEON/deployment-platform), but we only use parts of it. Notably we aren’t implementing the docker swarm, because we only deploy the operational models on the server, not any of the web-related stuff. 
+
+## set up your user on the server
+
+When you are able to `ssh <user>@<domain>`, make your life easier by [allowing password-less ssh access](https://www.digitalocean.com/community/tutorials/how-to-configure-ssh-key-based-authentication-on-a-linux-server)
+
+Give your user passwordless-sudo access if you want:
+```sh
+sudo su
+
+# Optionally set the visudo editor to vim
+export EDITOR=vim
+
+visudo # Ensure this line: <name> ALL=(ALL) NOPASSWD:ALL
+```
+
+## install docker
+The server will need to have docker installed, following the [official instructions](https://docs.docker.com/engine/install/ubuntu/). Then add a user to allow docker to run without having use `sudo` every time:
+```sh
+sudo usermod -aG docker <user>
+```
+
+## create a 'somisana' user
+The 'somisana' user will be used for running the models operationally on the server. We also add a 'runners' group (note explicit group ID) which helps with permissions for running our docker images:
+```sh
+sudo groupadd -g 1999 runners 
+sudo adduser --disabled-password --shell /bin/bash --gecos "" somisana
+sudo usermod -aG docker somisana
+sudo usermod -aG runners somisana
+```
+
+## configure ~/.bashrc for non-interactive login
+
+Open `~/.bashrc` for the `somisana` user and delete lines that stop non-interactive users from sourcing this file:
+
+```sh
+sudo su
+su somisana
+vi ~/.bashrc
+```
+
+Make sure the following is **_NOT_** present:
+
+```txt
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+```
+
+## install github runners
+To get the repo's github workflows to run on a particular server, you need to set up a new 'self-hosted runner'. From the online github repo (https://github.com/SAEON/somisana-croco), navigate to Settings->Actions->Runners->New self-hosted runner. And follow the instructions.
+
+As per the instructions, the first thing you have to do is create a directory for the runner to be deployed. Each runner needs a new directory, and you can name it whatever you want. But I've followed the convention of runner<runner-number>:
+```sh
+sudo su
+su somisana
+cd /home/somisana
+mkdir runner1
+# keep adding directories runner2, runner3 as needed
+```
+
+Inside the new directory you just created, follow the instructions to download the installer, unpack it, run ./config.sh with your unique token (you would need a new token for each runner you set up). You will get a few prompts:
+- Runner group: default
+- Runner name: I've been using the `mims<server-number>-runner<runner-number>` convention e.g. mims1-runner1 for the first runner on the first server on mims
+- Then add additional labels where it makes sense. For example, I've been adding the `mims1` label for the first server we were given access to. i.e. mims<server-number> convention. As the operations expand, we may want to run models on multiple servers on mims, so the naming convention allows for this. 
+- Use the default work folder
+
+You can use the same label for different runner names. If your workflow allows for two jobs to be computed at the same time (i.e. one doesn't need to other to first be completed), then having more than one runner with the same label would allow the jobs to be executed in parallel. If the label is only added to a single runner, then you can't use that label to run jobs in parallel (this can actually be used as a strategy to run jobs in series). So the number of runners to add depends on how many workflow jobs you need to be computed in parallel.
+
+As per the instructions, the last step is to run ./run.sh which connects the runner to github, but now you have an open terminal, and if you close the terminal it closes the connection. So I ended up running it as a screen session, which runs it as a background process:
+```sh
+Screen -S runner1
+./run.sh
+Ctrl+a+d # this detaches the screen session - you can re-attach it with screen -r runner1
+```
+
+Now you should see your newly created runner on the github repo (https://github.com/SAEON/somisana-croco) if you navigate to Settings->Actions->Runners. And you can run jobs on this server from a github workflow in this repo by using the `runs_on: mims1`, where `mims1` is the label we provided earlier
+
+
+
