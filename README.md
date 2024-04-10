@@ -2,6 +2,7 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
+- [Overview](#overview)
 - [Tutorial: installing the python library for local use and/or development](#tutorial-installing-the-python-library-for-local-use-andor-development)
   - [Create a new conda environment](#create-a-new-conda-environment)
   - [Prefer to use your own environment?](#prefer-to-use-your-own-environment)
@@ -23,6 +24,11 @@
 - [Tutorial: Introduction to our docker images](#tutorial-introduction-to-our-docker-images)
 - [Tutorial: Use docker images to run a forecast simulation locally](#tutorial-use-docker-images-to-run-a-forecast-simulation-locally)
 - [Tutorial: Set up a server to run the forecast workflow using Github Actions](#tutorial-set-up-a-server-to-run-the-forecast-workflow-using-github-actions)
+  - [set up your user on the server](#set-up-your-user-on-the-server)
+  - [install docker](#install-docker)
+  - [create a 'somisana' user](#create-a-somisana-user)
+  - [configure ~/.bashrc for non-interactive login](#configure-bashrc-for-non-interactive-login)
+  - [install github runners](#install-github-runners)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
