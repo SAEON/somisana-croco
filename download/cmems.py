@@ -15,6 +15,7 @@ import time
 # the lib imports are from the 'lib' directory
 # which is copied in from the original somisana repo Zach set up
 from download.lib.log import log
+import threading
 
 def is_valid_netcdf_file(file_path):
     try:
@@ -118,10 +119,23 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
     
     # all depths
     depths = [0.493, 5727.918]
-
+    
+    # you can loop on the variables to download them in series
+    # for var in VARIABLES:
+    #     download_cmems(usrname, passwd,var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"])
+    
+    # but I'm rather doing them in parallel to save time (thanks Gemini)
+    def download_worker(var):
+        download_cmems(usrname, passwd, var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"])
+    threads = []
     for var in VARIABLES:
-        download_cmems(usrname, passwd,var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"])
-
+        t = threading.Thread(target=download_worker, args=(var,))
+        threads.append(t)
+        t.start()
+    # Wait for all threads to finish
+    for t in threads:
+        t.join()
+    
     # Concatenate the separate NetCDF files
     log("concatenating NetCDF files")
     output_path = os.path.abspath(os.path.join(outputDir, f"mercator_{run_date.strftime('%Y%m%d')}.nc"))
