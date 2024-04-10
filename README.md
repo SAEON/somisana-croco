@@ -55,7 +55,7 @@ Then navigate to the root directory of the repo:
 
 ## Create a new conda environment
 
-The easiest way to includ the python functions in your own scripts would be to create a new conda environment called 'somisana\_croco' with all the required dependencies already built in. This can be done using the `environment.yml` file in the root directory of the repo (this will ensure that all the required dependencies are added in one step):
+The easiest way to include the python functions in your own scripts would be to create a new conda environment called 'somisana\_croco' with all the required dependencies already built in. This can be done using the `environment.yml` file in the root directory of the repo (this will ensure that all the required dependencies are added in one step):
 ```sh
 mamba env create -f environment.yml
 ```
@@ -82,9 +82,9 @@ If you develop new functions which need dependencies not already in `environment
 ```sh
 mamba env update -f environment.yml --prune
 ```
-or use `conda` instead of `mamba` if you haven't moved to mamba yet
+or use `conda` instead of `mamba` if you haven't moved to mamba yet. This will just update your environment, rather than installing everything from scratch. This is preferred over a `conda install ...` command as the `environment.yml` file keeps a record of all the packages needed to run all python functions.
 
-The same would apply if others have updated `environment.yml`, and you want to get access to the new functions. You would need to `git pull` to get the latest changes and then run run the update line above. 
+So if some-one else has updated the `environment.yml` file, and you want to get access to the new functions, you would need to update your local repo with `git pull` and then run the update line above. 
 
 # Tutorial: Postprocessing CROCO model output 
 
@@ -314,7 +314,7 @@ esac
 ## install github runners
 To get the repo's github workflows to run on a particular server, you need to set up a new 'self-hosted runner'. From the online github repo (https://github.com/SAEON/somisana-croco), navigate to Settings->Actions->Runners->New self-hosted runner. And follow the instructions.
 
-As per the instructions, the first thing you have to do is create a directory for the runner to be deployed. Each runner needs a new directory, and you can name it whatever you want. But I've followed the convention of runner<runner-number>:
+As per the instructions, the first thing you have to do is create a directory for the runner to be deployed. Each runner needs a new directory, and you can name it whatever you want. But I've followed the convention of `runner<runner-number>`:
 ```sh
 sudo su
 su somisana
@@ -326,7 +326,7 @@ mkdir runner1
 Inside the new directory you just created, follow the instructions to download the installer, unpack it, run ./config.sh with your unique token (you would need a new token for each runner you set up). You will get a few prompts:
 - Runner group: default
 - Runner name: I've been using the `mims<server-number>-runner<runner-number>` convention e.g. mims1-runner1 for the first runner on the first server on mims
-- Then add additional labels where it makes sense. For example, I've been adding the `mims1` label for the first server we were given access to. i.e. mims<server-number> convention. As the operations expand, we may want to run models on multiple servers on mims, so the naming convention allows for this. 
+- Then add additional labels where it makes sense. For example, I've been adding the `mims1` label for the first server we were given access to. i.e. `mims<server-number>` convention. As the operations expand, we may want to run models on multiple servers on mims, so the naming convention allows for this. 
 - Use the default work folder
 
 You can use the same label for different runner names. If your workflow allows for two jobs to be computed at the same time (i.e. one doesn't need to other to first be completed), then having more than one runner with the same label would allow the jobs to be executed in parallel. If the label is only added to a single runner, then you can't use that label to run jobs in parallel (this can actually be used as a strategy to run jobs in series). So the number of runners to add depends on how many workflow jobs you need to be computed in parallel.
@@ -335,7 +335,7 @@ As per the instructions, the last step is to run ./run.sh which connects the run
 ```sh
 Screen -S runner1
 ./run.sh
-Ctrl+a+d # this detaches the screen session - you can re-attach it with screen -r runner1
+
 ```
 
 Now you should see your newly created runner on the github repo (https://github.com/SAEON/somisana-croco) if you navigate to Settings->Actions->Runners. And you can run jobs on this server from a github workflow in this repo by using the `runs_on: mims1`, where `mims1` is the label we provided earlier
