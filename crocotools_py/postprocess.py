@@ -455,11 +455,16 @@ def find_nearest_time_indx(dt,dts):
 def get_time(fname,ref_date=None,time_lims=slice(None)):
     ''' 
         fname = CROCO output file (or file pattern to use when opening with open_mfdataset())
+                fname can also be an xarray dataset for enhanced functionality
         ref_date = reference date for the croco run as a datetime object
         time_lims = optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
                     If slice(None), then all time-steps are extracted
     '''
-    ds = get_ds(fname)
+    if isinstance(fname, xr.Dataset):
+        ds = fname.copy()
+    else:
+        ds = get_ds(fname)
+
     time = ds.time.values
     
     if ref_date is None:
@@ -480,22 +485,40 @@ def get_time(fname,ref_date=None,time_lims=slice(None)):
     
     ds.close()
     return time_dt
+
+def get_grd_var(fname,var_str,
+                   eta_rho=slice(None),
+                   xi_rho=slice(None)):
+    '''
+    Extract a grid variable
+    '''
+    
+    if isinstance(fname, xr.Dataset):
+        ds = fname.copy()
+    else:
+        # for effeciency we shouldn't use open_mfdataset for this function 
+        # only use the first file
+        if ('*' in fname) or ('?' in fname) or ('[' in fname):
+            fname=glob(fname)[0]
+        ds = get_ds(fname)
+    
+    # subset in space
+    ds = ds.isel(eta_rho=eta_rho,  xi_rho=xi_rho)
+    
+    # extract the requested variable - da is a dataarray
+    da = ds[var_str]
+    
+    ds.close()
+    
+    return da
     
 def get_lonlatmask(fname,type='r',
                    eta_rho=slice(None),
                    xi_rho=slice(None)):
     
-    # for effeciency we shouldn't use open_mfdataset for this function 
-    # only use the first file
-    if ('*' in fname) or ('?' in fname) or ('[' in fname):
-        fname=glob(fname)[0]
-    
-    ds = get_ds(fname)
-    ds = ds.isel(eta_rho=eta_rho,xi_rho=xi_rho)
-    
-    lon = ds.lon_rho.values 
-    lat = ds.lat_rho.values 
-    mask = ds.mask_rho.values
+    lon = get_grd_var(fname,'lon_rho',eta_rho=eta_rho,xi_rho=xi_rho).values
+    lat = get_grd_var(fname,'lat_rho',eta_rho=eta_rho,xi_rho=xi_rho).values
+    mask = get_grd_var(fname,'mask_rho',eta_rho=eta_rho,xi_rho=xi_rho).values
     
     mask[np.where(mask == 0)] = np.nan
     [Mp,Lp]=mask.shape;
@@ -529,7 +552,7 @@ def tstep_to_slice(fname, tstep, ref_date):
         if ref_date is None:
             print('ref_date is not defined - using default of 2000-01-01')
             ref_date=datetime(2000,1,1)
-        time_croco = get_time(fname,ref_date) # get_time actually calls tstep_to_slice (CIRCULAR!), but only inside an if statement which won't be entered no time_lims input. MESSY. Should do better
+        time_croco = get_time(fname,ref_date) # get_time actually calls tstep_to_slice (CIRCULAR!), but only inside an if statement which won't be entered with this input. MESSY. Should do better
         tstep = find_nearest_time_indx(time_croco,tstep)
         
     # get the time indices for input to ds.isel()
@@ -591,6 +614,7 @@ def level_to_slice(level):
     return level_for_isel
 
 def get_var(fname,var_str,
+            grdname=None,
             tstep=slice(None),
             level=slice(None),
             eta_rho=slice(None),
@@ -601,7 +625,9 @@ def get_var(fname,var_str,
     '''
         extract a variable from a CROCO file
         fname = CROCO output file name (or file pattern to be used with open_mfdataset())
+                fname can also be a previously extracted xarray dataset for enhanced functionality
         var_str = variable name (string) in the CROCO output file(s)
+        grdname = option name of your croco grid file (only needed if the grid info is not in fname)
         tstep = time step indices to extract 
                 it can be a single integer (starting at zero) or datetime
                 or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
@@ -641,7 +667,10 @@ def get_var(fname,var_str,
     # Get a subset of the data
     # -------------------------
     #
-    ds = get_ds(fname,var_str)
+    if isinstance(fname, xr.Dataset):
+        ds = fname.copy()
+    else:
+        ds = get_ds(fname,var_str)
     ds = ds.isel(time=tstep,
                        s_rho=level_for_isel,
                        s_w=level_for_isel,
@@ -729,7 +758,9 @@ def get_var(fname,var_str,
     # --------
     print('applying the mask - ' + var_str)
     if isinstance(eta_rho,slice) and isinstance(xi_rho,slice):
-        _,_,mask=get_lonlatmask(fname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
+        if grdname is None:
+            grdname = fname
+        _,_,mask=get_lonlatmask(grdname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
                                 eta_rho=eta_rho,
                                 xi_rho=xi_rho)
     else:
@@ -745,6 +776,7 @@ def get_var(fname,var_str,
     return da
 
 def get_uv(fname,
+           grdname=None,
            tstep=slice(None),
            level=slice(None),
            eta_rho=slice(None),
@@ -763,6 +795,7 @@ def get_uv(fname,
     '''
     
     u=get_var(fname,'u',
+              grdname=grdname,
               tstep=tstep,
               level=level,
               eta_rho=eta_rho,
@@ -771,6 +804,7 @@ def get_uv(fname,
               xi_u=xi_u,
               ref_date=ref_date)
     v=get_var(fname,'v',
+              grdname=grdname,
               tstep=tstep,
               level=level,
               eta_rho=eta_rho,
@@ -788,7 +822,9 @@ def get_uv(fname,
     # -------------------
     
     # grid angle
-    angle=get_var(fname, 'angle',
+    if grdname is None:
+        grdname = fname
+    angle=get_grd_var(grdname, 'angle',
                   eta_rho=eta_rho,
                   xi_rho=xi_rho,
                   )
@@ -817,6 +853,7 @@ def get_uv(fname,
     return u_out, v_out
 
 def get_vort(fname,
+             grdname=None,
              tstep=slice(None),
              level=slice(None),
              ref_date=None):
@@ -833,10 +870,12 @@ def get_vort(fname,
     # start by getting u and v
     # and we'll leave them on their native grids for this calc
     # (i.e. intentionally not regridding to the rho grid)
-    u=get_var(fname,'u',tstep=tstep,level=level,ref_date=ref_date)
-    v=get_var(fname,'v',tstep=tstep,level=level,ref_date=ref_date)
-    pm=get_var(fname, 'pm') # 1/dx on the rho grid
-    pn=get_var(fname, 'pn') # 1/dy on the rho grid
+    u=get_var(fname,'u',grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
+    v=get_var(fname,'v',grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
+    if grdname is None:
+        grdname = fname
+    pm=get_grd_var(grdname, 'pm') # 1/dx on the rho grid
+    pn=get_grd_var(grdname, 'pn') # 1/dy on the rho grid
     
     # this code was taken largely from croco_tools-v1.1/croco_pyvisu/derived_variables.py
     #
@@ -858,13 +897,15 @@ def get_vort(fname,
     # regrid to be on the rho grid
     vort=psi2rho(vort)
     
+    # TODO: rather return an xarray dataarray 
+    
     return vort
 
-def get_boundary(fname):
+def get_boundary(grdname):
     '''
     Return lon,lat of perimeter around a CROCO grid (i.e. coordinates of bounding cells)
     '''
-    lon_rho,lat_rho,_=get_lonlatmask(fname,type='r')
+    lon_rho,lat_rho,_=get_lonlatmask(grdname,type='r')
     lon = np.hstack((lon_rho[0:, 0], lon_rho[-1, 1:-1],
                      lon_rho[-1::-1, -1], lon_rho[0, -2::-1]))
     lat = np.hstack((lat_rho[0:, 0], lat_rho[-1, 1:-1],
@@ -876,7 +917,7 @@ def find_nearest_point(fname, Longi, Latit):
             Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
             
             Parameters:
-            - fname :filename of the model
+            - fname :filename of the model, or the grid file
             - Longi :longitude
             - Latit :latitude
 
@@ -884,16 +925,19 @@ def find_nearest_point(fname, Longi, Latit):
             - j :the nearest eta index
             - i :the nearest xi index
     """
+    
+    if isinstance(fname, xr.Dataset):
+        ds = fname.copy()
+    else:
+        # for effeciency we shouldn't use open_mfdataset for this function 
+        # only use the first file
+        if ('*' in fname) or ('?' in fname) or ('[' in fname):
+            fname=glob(fname)[0]
+        ds = get_ds(fname)
 
-    # for effeciency we shouldn't use open_mfdataset for this function  
-    # only use the first file if fname is specified as a pattern of file names
-    if ('*' in fname) or ('?' in fname) or ('[' in fname):
-        fname = glob(fname)[0]
-
-    with get_ds(fname) as ds:
-        # Calculate the distance between (Longi, Latit) and all grid points
-        distance = ((ds['lon_rho'].values - Longi) ** 2 +
-                    (ds['lat_rho'].values - Latit) ** 2) ** 0.5
+    # Calculate the distance between (Longi, Latit) and all grid points
+    distance = ((ds['lon_rho'].values - Longi) ** 2 +
+                (ds['lat_rho'].values - Latit) ** 2) ** 0.5
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
@@ -902,173 +946,12 @@ def find_nearest_point(fname, Longi, Latit):
 
     j, i = min_index
 
+    ds.close()
+
     return j, i
 
-def get_ts_OLD(fname, var, lon, lat, ref_date, depth=-1, 
-           i_shift=0, j_shift=0, 
-           time_lims=slice(None),
-           write_nc=False,
-           fname_nc='ts.nc'
-           ):
-    """
-           This function has been made redundant for the new get_ts() which also handles profiles            
-           I'm just keeping it here in case we want to check anything from the old function
-           Ultimately this function will be deleted once we're comfortable we don't need it           
-           
-           Extract a timeseries from the model:
-                   
-            Parameters:
-            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
-            - var               :variable name (string) in the CROCO output file(s)
-                                 (not intended for use with u,v variables - rather use get_ts_uv())
-            - lat               :latitude of time-series
-            - lon               :longitude of time-series
-            - ref_date          :reference datetime used in croco runs
-            - depth             :vertical level to extract
-                                 If >= 0 then a sigma level is extracted 
-                                 If <0 then a z level in meters is extracted
-            - i_shift         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
-            - j_shift         :number of grid cells to shift along the eta axis, (similar utility to i_shift)
-            - time_lims         :time step indices to extract 
-                                 two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
-                                 If slice(None), then all time-steps are extracted
-            - write_nc          :write a netcdf file? (True/False)
-            - fname_nc          :netcdf file name. Only used if write_nc = True
-            
-            Returns:
-            - ds, an xarray dataset containing the extracted time-series as well as 'h', the model depth at the model grid cell
-    """
-    
-    if var=='u' or var=='v':
-        print('rather use get_ts_uv() for extracting a time-series of u/v data')
-        sys.exit()
-    
-    # finds the rho grid indices nearest to the input lon, lat
-    j, i = find_nearest_point(fname, lon, lat) 
-    
-    # apply the shifts along the xi and eta axis
-    i = i+i_shift
-    j = j+j_shift
-    
-    # get the data from the model
-    # But first check the model depth against the input depth
-    h = get_var(fname,"h",eta_rho=j,xi_rho=i)
-    if h<-depth:
-        print('The model depth is shallower than input/(in situ) depth!!')
-        print('Were rather extracting the bottom sigma layer of the model.')
-        da = get_var(fname, var,
-                             tstep=time_lims,
-                             level=0, # extracts bottom layer
-                             eta_rho=j,
-                             xi_rho=i,
-                             ref_date=ref_date)
-    else:
-        da = get_var(fname, var,
-                             tstep=time_lims,
-                             level=depth,
-                             eta_rho=j,
-                             xi_rho=i,
-                             ref_date=ref_date)
-    
-    # create a new dataset with the extracted time-series, and add the model depth at this grid cell 
-    ds = xr.Dataset({var: da, 'h': h})
-    
-    # write a netcdf file if specified
-    if write_nc:
-        ds.to_netcdf(fname_nc)
-    
-    return ds
-
-def get_ts_uv_OLD(fname, lon, lat, ref_date, depth=-1, 
-              i_shift=0, j_shift=0, 
-              time_lims=slice(None),
-              write_nc=False,
-              fname_nc='ts_uv.nc'
-              ):
-    """
-            This function has been made redundant for the new get_ts_uv() which also handles profiles            
-            I'm just keeping it here in case we want to check anything from the old function
-            Ultimately this function will be deleted once we're comfortable we don't need it 
-            
-            Extract a timeseries of u,v from the model:
-                   
-            Parameters:
-            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
-            - lat               :latitude of time-series
-            - lon               :longitude of time-series
-            - ref_date          :reference datetime used in croco runs
-            - depth             :vertical level to extract
-                                 If >= 0 then a sigma level is extracted 
-                                 If <0 then a z level in meters is extracted
-            - i_shift         :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
-            - j_shift         :number of grid cells to shift along the eta axis, (similar utility to i_shift)
-            - time_lims         :time step indices to extract 
-                                 two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
-                                 If slice(None), then all time-steps are extracted
-            - write_nc          :write a netcdf file? (True/False)
-            - fname_nc          :netcdf file name. Only used if write_nc = True
-                     
-            Returns:
-            - ds, an xarray dataset containing the extracted time-series as well as 'h', the model depth at the model grid cell
-              (u,v variables are rotated from grid-aligned to east-north components)
-    """
-    
-    # finds the rho grid indices nearest to the input lon, lat
-    j, i = find_nearest_point(fname, lon, lat) 
-    
-    # apply the shifts along the xi and eta axis
-    i = i+i_shift
-    j = j+j_shift
-    
-    # j,i are the eta,xi indices of the rho grid for our time-series extraction
-    # extracting u and v at this location is kind of complicated by the u, and v grids
-    # to get around this, let's consider a 3x3 block of rho grid points 
-    # with j,i in the centre. Then let's define the indices we'll need to extract
-    # for the rho grid, u grid and v grid within this 3x3 block of rho grid cells    
-    i_rho=slice(i-1,i+2) # 3 indices for the xi_rho axis, with i in the middle
-    j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
-    i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
-    j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
-    
-    # get the data from the model
-    # But first check the model depth against the input depth
-    h = get_var(fname,"h",eta_rho=j,xi_rho=i)
-    if h<-depth:
-        print('The model depth is shallower than input/(in situ) depth!!')
-        print('Were rather extracting the bottom sigma layer of the model.')
-        u,v = get_uv(fname,
-                              tstep=time_lims,
-                              level=0, # extracts bottom layer
-                              eta_rho=j_rho,
-                              xi_rho=i_rho,
-                              eta_v=j_v,
-                              xi_u=i_u,
-                              ref_date=ref_date)
-    else:
-        u,v = get_uv(fname,
-                             tstep=time_lims,
-                             level=depth,
-                             eta_rho=j_rho,
-                             xi_rho=i_rho,
-                             eta_v=j_v,
-                             xi_u=i_u,
-                             ref_date=ref_date)
-    
-    # now that u and v on our 3x3 subset of the rho grid, 
-    # let's pull out the time-series from the middle grid cell
-    u = u[:,1,1]
-    v = v[:,1,1]
-    
-    # create a new dataset with the extracted time-series, and add the model depth at this grid cell 
-    ds = xr.Dataset({'u': u, 'v': v, 'h': h})
-    
-    # write a netcdf file if specified
-    if write_nc:
-        ds.to_netcdf(fname_nc)
-    
-    return ds
-
 def get_ts_multivar(fname, lon, lat, ref_date, 
+                grdname=None,
                 vars = ['temp','salt'],
                 i_shift=0, j_shift=0, 
                 time_lims=slice(None),
@@ -1091,12 +974,14 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     all_datasets = []
     for var in vars:
         ds_var = get_ts(fname, var, lon, lat, ref_date, 
+                        grdname=grdname,
                         i_shift=i_shift, j_shift=j_shift, 
                         time_lims=time_lims,
                         depths=depths)
         all_datasets.append(ds_var)
     # add u,v
     ds_uv = get_ts_uv(fname, lon, lat, ref_date, 
+                    grdname=grdname,
                     i_shift=i_shift, j_shift=j_shift, 
                     time_lims=time_lims,
                     depths=depths)
@@ -1104,6 +989,7 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     # add zeta (not added to 'vars' above as we don't want to add 'depths' 
     # as input to get_ts() for obvious reasons)
     ds_zeta = get_ts(fname, 'zeta', lon, lat, ref_date, 
+                    grdname=grdname,
                     i_shift=i_shift, j_shift=j_shift, 
                     time_lims=time_lims)
     all_datasets.append(ds_zeta)
@@ -1133,8 +1019,9 @@ def preprocess_profile_depths(depths,default_to_bottom,h):
             depths[depths<-h.values] = 0
     return depths
 
-def get_ts(fname, var, lon, lat, ref_date, 
-                i_shift=0, j_shift=0, 
+def get_ts(fname, var, lon, lat, ref_date,
+                grdname=None,
+                i_shift=0, j_shift=0,
                 time_lims=slice(None),
                 depths=slice(None),
                 default_to_bottom=False,
@@ -1146,11 +1033,13 @@ def get_ts(fname, var, lon, lat, ref_date,
                    
             Parameters:
             - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
+                                 fname can also be an xarray dataset to enhance functionality
             - var               :variable name (string) in the CROCO output file(s)
                                  (not intended for use with u,v variables - rather use get_ts_uv())
             - lat               :latitude of time-series
             - lon               :longitude of time-series
             - ref_date          :reference datetime used in croco runs
+            - grdname           :optional grid file input - only needed if grid info isn't in the croco output file(s)
             - i_shift           :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
             - j_shift           :number of grid cells to shift along the eta axis, (similar utility to i_shift)
             - time_lims         :time step indices to extract 
@@ -1178,19 +1067,22 @@ def get_ts(fname, var, lon, lat, ref_date,
     time_lims = tstep_to_slice(fname, time_lims, ref_date)
     
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
-    j, i = find_nearest_point(fname, lon, lat) 
+    if grdname is None:
+        grdname = fname
+    j, i = find_nearest_point(grdname, lon, lat) 
     
     # apply the shifts along the xi and eta axis
     i = i+i_shift
     j = j+j_shift
     
     # get the model depth at this location
-    h = get_var(fname,"h",eta_rho=j,xi_rho=i)
+    h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
     
     if isinstance(depths,slice):
         # so we're extracting some or all of the sigma levels
         # (note the case of extracting a single sigma level is handled in the else: below)
         ts_da = get_var(fname, var,
+                              grdname=grdname,
                               tstep=time_lims,
                               level=depths,
                               eta_rho=j,
@@ -1201,10 +1093,14 @@ def get_ts(fname, var, lon, lat, ref_date,
             # we explicitly check for existance of 's_rho' so we can handle 2D variables
             
             # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-            ds = get_ds(fname, var)
+            if isinstance(fname, xr.Dataset):
+                ds = fname.copy()
+            else:
+                ds = get_ds(fname,var)
             ds = ds.isel(time=time_lims,
+                                grdname=grdname,
                                 s_rho=depths,
-                                eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
+                                eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
                                 xi_rho=slice(i,i+1))
             depths_out = np.squeeze(get_depths(ds))
             
@@ -1239,6 +1135,7 @@ def get_ts(fname, var, lon, lat, ref_date,
             if depth>=0:
                 depth=int(depth) # must be an integer for a sigma level
             ts_i = get_var(fname, var,
+                              grdname=grdname,
                               tstep=time_lims,
                               level=depth,
                               eta_rho=j,
@@ -1284,6 +1181,7 @@ def get_ts(fname, var, lon, lat, ref_date,
     return ds
 
 def get_ts_uv(fname, lon, lat, ref_date, 
+                grdname=None,
                 i_shift=0, j_shift=0, 
                 time_lims=slice(None),
                 depths=slice(None),
@@ -1311,7 +1209,9 @@ def get_ts_uv(fname, lon, lat, ref_date,
     time_lims = tstep_to_slice(fname, time_lims, ref_date)
     
     # finds the rho grid indices nearest to the input lon, lat
-    j, i = find_nearest_point(fname, lon, lat) 
+    if grdname is None:
+        grdname = fname
+    j, i = find_nearest_point(grdname, lon, lat) 
     
     # apply the shifts along the xi and eta axis
     i = i+i_shift
@@ -1328,12 +1228,13 @@ def get_ts_uv(fname, lon, lat, ref_date,
     j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
     
     # get the model depth at this location
-    h = get_var(fname,"h",eta_rho=j,xi_rho=i)
+    h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
     
     if isinstance(depths,slice):
         # so we're extracting some or all of the sigma levels
         # (note the case of extracting a single sigma level is actually handled in the else: below)
         u_ts_da,v_ts_da = get_uv(fname,
+                              grdname=grdname,
                               tstep=time_lims,
                               level=depths,
                               eta_rho=j_rho,
@@ -1351,7 +1252,11 @@ def get_ts_uv(fname, lon, lat, ref_date,
         # as we are dealing with u,v which by definition have the 's_rho' coordinate
         
         # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-        ds = get_ds(fname)
+        if isinstance(fname, xr.Dataset):
+            ds = fname.copy()
+        else:
+            ds = get_ds(fname)
+        
         ds = ds.isel(time=time_lims,
                             s_rho=depths,
                             eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
@@ -1387,6 +1292,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
             if depth>=0: 
                 depth=int(depth) # must be an integer for a sigma level
             u_ts_i,v_ts_i = get_uv(fname,
+                                 grdname=grdname,
                                  tstep=time_lims,
                                  level=depth,
                                  eta_rho=j_rho,

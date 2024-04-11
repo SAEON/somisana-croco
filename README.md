@@ -48,6 +48,7 @@ This repo is largely a redesign of [this one](https://github.com/SAEON/somisana)
 # Tutorial: installing the python library for local use and/or development
 
 Start off by cloning this repo to your local machine (do this wherever you would like the code):
+
 `git clone git@github.com:SAEON/somisana-croco.git`
 
 Then navigate to the root directory of the repo:
@@ -107,7 +108,7 @@ The `get_var()` function does most of the heavy lifting, and is called by many o
 import crocotools_py.postprocess as post
 from datetime import datetime
 
-# provide the CROCO files - can be a single file or it can be a file pattern, including wild cards
+# provide the CROCO files - can be a single file or it can be a file pattern, including wild cards. Alternatively `fname` can also be an xarray dataset already extracted as part of your script.
 fname=<your-croco-file(s)>
 
 # define the time origin for the CROCO output files (it's not automatically included in the metadata!)
@@ -118,7 +119,9 @@ da = post.get_var(fname, 'temp', ref_date = ref_date)
 da.time.values
 ```
 
-extracting all the data can take a long time and can be very large, leading to insufficient memory in the case of big hindcasts so it's useful to rather extract a subset that you may want.
+The default behaviour of `get_var()` is to use your CROCO output file to extract the grid information. If your output file does not contain the rho grid variables, `get_var()` has an optional `grdname=<your-grid-file>` input variable, which you can use to specify your croco grid file. 
+
+Extracting all the data can take a long time and can be very large, leading to insufficient memory in the case of big hindcasts so it's useful to rather extract a subset that you may want.
 
 ## Extracting a subset in time
 
