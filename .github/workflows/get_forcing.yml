@@ -95,7 +95,7 @@ jobs:
       - name: create the GFS directory
         run: |
           rm -rf ${{ env.DATA_DIR }}/GFS
-          mkdir -p ${{ env.DATA_DIR }}/GFS
+          mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
           chown -R :runners ${{ env.DATA_DIR }}/GFS
           chmod -R 774 ${{ env.DATA_DIR }}/GFS
       - name: Download GFS atmospheric data
@@ -129,8 +129,9 @@ jobs:
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
             -v ${{ env.DATA_DIR }}/GFS:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
-            ghcr.io/saeon/somisana-croco_mat_${{ inputs.BRANCH_REF }}:latest \
-            -c "cd /home/matlab && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m && matlab -nodisplay -nosplash -nodesktop -r 'start_GFS; reformat_GFS(2000); exit;'"
+            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+            -c "cd /home/matlab && matlab -nodisplay -nosplash -nodesktop -r 'addpath(genpath('/somisana-croco/crocotools_mat')); reformat_GFS(2000); exit;'"
+            #-c "cd /home/matlab && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m && matlab -nodisplay -nosplash -nodesktop -r 'start_GFS; reformat_GFS(2000); exit;'"
 
 #  setup-dirs:
 #    runs-on: ${{ inputs.RUNNER_NAME }}
