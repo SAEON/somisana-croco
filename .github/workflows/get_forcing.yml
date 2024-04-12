@@ -36,7 +36,7 @@ jobs:
         run: >-
           find \
             /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/* \
-            -maxdepth 1 \
+            -maxdepth 0 \
             -type d \
             -ctime +5 \
             -exec \
@@ -54,7 +54,7 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the MERCATOR directory
         run: |
-          rm -rf ${{ env.DATA_DIR }}/MERCATOR
+          # rm -rf ${{ env.DATA_DIR }}/MERCATOR # do we need this? it's anying if you're debugging something later in the workflow!
           mkdir -p ${{ env.DATA_DIR }}/MERCATOR
           chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
           chmod -R 774 ${{ env.DATA_DIR }}/MERCATOR
@@ -94,7 +94,7 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the GFS directory
         run: |
-          rm -rf ${{ env.DATA_DIR }}/GFS
+          # rm -rf ${{ env.DATA_DIR }}/GFS # do we need this? it's anying if you're debugging something later in the workflow!
           mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
           chown -R :runners ${{ env.DATA_DIR }}/GFS
           chmod -R 774 ${{ env.DATA_DIR }}/GFS

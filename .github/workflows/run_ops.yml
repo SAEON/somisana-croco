@@ -111,13 +111,13 @@ jobs:
   
   # generate croco forcing files
   prep_croco_forcing:
-    needs: [envs,prep_run_dirs]
+    needs: [envs,prep_run_dirs,get_forcing]
     strategy:
       matrix:
         domain: ['swcape_02']
         blk: ['GFS']
         frc: ['']
-        ogcm: ['MECATOR']
+        ogcm: ['MERCATOR']
     uses: ./.github/workflows/prep_croco_forcing.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
