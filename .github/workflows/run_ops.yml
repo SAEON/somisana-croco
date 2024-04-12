@@ -111,7 +111,7 @@ jobs:
   
   # generate croco forcing files
   prep_croco_forcing:
-    needs: [prep_run_dirs]
+    needs: [envs,prep_run_dirs]
     strategy:
       matrix:
         domain: ['swcape_02']
