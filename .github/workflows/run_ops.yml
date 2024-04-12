@@ -73,7 +73,7 @@ jobs:
   
   # everything below here runs using the `mims1` self-hosted runner
   # This is the `computecroco01` server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
-  # It is possible that we may want to use an additional modelling server (which will have to be a separate)
+  # It is possible that we may want to use an additional modelling server (which will be a separate node)
   # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
   # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server) 
@@ -93,39 +93,44 @@ jobs:
     secrets: inherit
 
   # prep the run directory 
-#  prep_run_dirs:
-#    needs: [envs, build_images]
-#    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
-#    strategy:
-#      matrix:
-#        # matrix strategy allows us to setup multiple models and domains in parallel using the same reusable workflow
-#        # for now it's only setting up one domain, so we're not really using the matrix strategy yet, but this will come 
-#        domain: ['swcape_02']
-#        model: ['croco_v1.3.1']
-#    uses: ./.github/workflows/prep_run_dir.yml  # Path to your reusable workflow
-#    with:
-#      RUNNER_NAME: mims1
-#      DOMAIN: ${{ matrix.domain }}
-#      MODEL: ${{ matrix.model }}
-#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-
-#  prep_forcing:
-#    needs: [prep_run_dirs]
-#    strategy:
-#      matrix:
-#        domain: ['swcape_02']
-#        model: ['croco_v1.3.1']
-#        blk: ['GFS']
-#        frc: ['']
-#        ogcm: ['MECATOR']
-#    uses: ./.github/workflows/prep_croco_forcing.yml  # Path to your reusable workflow
-#    with:
-#      DOMAIN: ${{ matrix.domain }}
-#      MODEL: ${{ matrix.model }}
-#      BLK: ${{ matrix.blk }}
-#      FRC: ${{ matrix.frc }}
-#      OGCM: ${{ matrix.ogcm }}
+  prep_run_dirs:
+    needs: [envs, build_images]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    strategy:
+      matrix:
+        # matrix strategy allows us to setup multiple domains in parallel using the same reusable workflow
+        # for now it's only setting up one domain, so we're not really using the matrix strategy yet, but this will come 
+        domain: ['swcape_02']
+    uses: ./.github/workflows/prep_run_dir.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+  
+  # generate croco forcing files
+  prep_croco_forcing:
+    needs: [prep_run_dirs]
+    strategy:
+      matrix:
+        domain: ['swcape_02']
+        blk: ['GFS']
+        frc: ['']
+        ogcm: ['MECATOR']
+    uses: ./.github/workflows/prep_croco_forcing.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+      COMP: C01
+      INP: I01
+      BLK: ${{ matrix.blk }}
+      FRC: ${{ matrix.frc }}
+      OGCM: ${{ matrix.ogcm }}
+      HDAYS: ${{ inputs.hdays }}
 
 #  compile_models:
 #    needs: [prep_forcing]

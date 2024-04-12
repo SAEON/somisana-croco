@@ -1,10 +1,10 @@
-name: prepare local directory
+name: prepare croco forcing files
 
 on:
   workflow_call:
     inputs:
       RUN_DATE:
-        description: 'time of T0 of the model run in format YYYYMMDD_HH - defined dynamically in run_ops.yml'
+        description: 'time of T0 of the model run - defined dynamically in run_ops.yml'
         required: true
         type: string
       BRANCH_REF:
@@ -23,6 +23,21 @@ on:
         description: 'directory name used to define the domain e.g. swcape_02' 
         required: true
         type: string
+      BLK:
+        description: 'name of bulk forcing e.g. GFS' 
+        required: true
+        type: string
+      FRC:
+        description: 'name of forcing file (placeholder for now - I think we need it when we start including tides)' 
+        required: true
+        type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR' 
+        required: true
+        type: string
+
+env:
+  RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
 
 jobs:
   cleanup-old-rundirs:
@@ -41,8 +56,6 @@ jobs:
                 -rf {} \;
   setup-rundir:
     runs-on: ${{ inputs.RUNNER_NAME }}
-    env:
-      RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
     steps:
       - name: create the directory
         run: |
@@ -60,3 +73,20 @@ jobs:
             ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
 
+            # DELETE THE JOBS ABOVE HERE - JUST KEEPING THEM HERE FOR NOW. OR WE KEEP THEM HERE AND DELETE THE SETUP_RUN_DIR.YML FILE
+      
+  setup-rundir:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: copy configuration files from the `run` docker image
+        run: >-
+          docker run \
+            --rm \
+            --mac-address 02:42:ff:ff:ff:ff \
+            --entrypoint /bin/bash \
+            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
+            -v ${{ env.RUN_DIR }}:/home/matlab \
+            -e MLM_LICENSE_FILE=/licenses/license.lic \
+            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+              -c "cd /home/matlab/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r 'generate_input; exit;'"
+          

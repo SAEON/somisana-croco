@@ -1,0 +1,138 @@
+name: prepare croco forcing files
+
+on:
+  workflow_call:
+    inputs:
+      RUN_DATE:
+        description: 'time of T0 of the model run in format YYYYMMDD_HH - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      MODEL:
+        description: 'directory name used to define the model e.g.croco_v1.3.1'
+        required: true
+        type: string
+      DOMAIN:
+        description: 'directory name used to define the domain e.g. swcape_02' 
+        required: true
+        type: string
+      COMP:
+        description: 'directory corresponding to the CROCO compilation options e.g. C01' 
+        required: true
+        type: string
+      INP:
+        description: 'directory corresponding to the CROCO run-time input options e.g. I01' 
+        required: true
+        type: string
+      BLK:
+        description: 'name of bulk forcing e.g. GFS' 
+        required: true
+        type: string
+      FRC:
+        description: 'name of forcing file (placeholder for now - I think we need it when we start including tides)' 
+        required: true
+        type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR' 
+        required: true
+        type: string
+      HDAYS:
+        description: 'number of hindcast days (integer) from T0'
+        required: true
+        type: string
+
+env:
+  MODEL_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+  RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
+  RUN_NAME: ${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
+
+jobs:
+  get_restart_file:
+    runs-on: ubuntu-latest
+    outputs:
+      MAKE_INI: ${{ steps.check_restart.outputs.make_ini }}
+      RST_DATE: ${{ steps.check_restart.outputs.rst_date }}
+    steps:
+      - name: Try to find a suitable restart file
+        id: check_restart
+        env:
+          MAX_STEPS: 1 # allow option for looking further back for restart file (although if MAX_STEPS>1 we'll need to edit the .in file to look for the correct time-step!)
+        run: |
+          current_date=${{ inputs.RUN_DATE }}
+          step_count=0
+
+          while [[ $step_count -lt $MAX_STEPS ]]; do
+
+            # Calculate previous date (6 hours back)
+            # Convert the datetime to epoch time (seconds since 1970-01-01)
+            epoch_time=$(date -d "${current_date:0:4}-${current_date:4:2}-${current_date:6:2} ${current_date:9:2}:00:00" +%s)
+            # Subtract 6 hours in seconds (6 hours * 60 minutes * 60 seconds)
+            epoch_minus_6hrs=$((epoch_time - 6 * 60 * 60))
+            # update $current_date
+            current_date=$(date -d "@$epoch_minus_6hrs" +%Y%m%d_%H)
+
+            # restart file to look for
+            rst_file="${{ env.MODEL_DIR }}/$current_date/${{ env.RUN_NAME }}/croco_rst.nc"
+
+            # Check if the file exists
+            if [[ -f "$rst_file" ]]; then
+              echo "restart file found at: $rst_file"
+              echo "copying to ${{ env.MODEL_DIR }}/${{ env.RUN_NAME }}/croco_ini.nc"
+              cp $rst_file ${{ env.MODEL_DIR }}/${{ env.RUN_NAME }}/croco_ini.nc
+              break  # Exit the loop since the restart file is found
+            else
+              echo "restart file not found: $rst_file"
+              step_count=$((step_count + 1))
+            fi
+          done
+
+          if [[ $step_count -eq $MAX_STEPS ]]; then
+            echo "using ${{ inputs.OGCM }} to interpolate initial conditions"
+            echo "make_ini=1" >> $GITHUB_OUTPUT
+            echo "rst_date=NA" >> $GITHUB_OUTPUT 
+          else
+            echo "make_ini=0" >> $GITHUB_OUTPUT
+            echo "rst_date=$current_date" >> $GITHUB_OUTPUT 
+          fi
+            
+  make_ogcm:
+    needs: [get_restart_file]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      make_ini: ${{ needs.get_restart_file.outputs.MAKE_INI}} 
+    steps:
+      - name: generate the OGCM forcing file
+        id: make_ogcm_file
+        run: >-
+          docker run \
+            --rm \
+            --mac-address 02:42:ff:ff:ff:ff \
+            --entrypoint /bin/bash \
+            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
+            -v ${{ env.RUN_DIR }}:/home/matlab \
+            -e MLM_LICENSE_FILE=/licenses/license.lic \
+            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+              -c "cd /home/matlab/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_OGCM_ocims(${{ inputs.RUN_DATE }},${{ inputs.HDAYS }},${make_ini}); exit;'"
+  make_blk:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: generate the BLK forcing file
+        id: make_blk_file
+        run: >-
+          docker run \
+            --rm \
+            --mac-address 02:42:ff:ff:ff:ff \
+            --entrypoint /bin/bash \
+            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
+            -v ${{ env.RUN_DIR }}:/home/matlab \
+            -e MLM_LICENSE_FILE=/licenses/license.lic \
+            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+              -c "cd /home/matlab/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_${{ inputs.BLK }}_ocims; exit;'"
+          

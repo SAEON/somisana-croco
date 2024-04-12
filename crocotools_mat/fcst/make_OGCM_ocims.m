@@ -1,4 +1,4 @@
-function make_OGCM_ocims(NY,NM,ND,NH,hdays,makeini)
+function make_OGCM_ocims(run_date_str,hdays,makeini)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % G Fearon Oct 2020:
@@ -41,10 +41,15 @@ function make_OGCM_ocims(NY,NM,ND,NH,hdays,makeini)
 %clear all
 %close all
 %%%%%%%%%%%%%%%%%%%%% USERS DEFINED VARIABLES %%%%%%%%%%%%%%%%%%%%%%%%
-%
+
 % Common parameters
 %
 crocotools_param;
+%
+% Convert datestring to datenum
+run_date = datenum(run_date_str, 'yyyymmdd_HH');
+% Extract year, month, day, hour
+[NY, NM, ND, NH] = datevec(run_date);
 %
 % name of raw downloaded enviromental data file for this day. This file should be in DATADIR 
 % where all downloaded enviromental data is stored.
