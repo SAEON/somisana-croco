@@ -134,5 +134,5 @@ jobs:
             -v ${{ env.DATA_DIR }}/GFS:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-            -c "cd /home/matlab && matlab -nodisplay -nosplash -nodesktop -r \"addpath(genpath('/somisana-croco/crocotools_mat')); addpath('/croco_tools-v1.3.1/Forecast_tools'); reformat_GFS(2000); exit;\""
+            -c "cd /home/matlab && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m /home/matlab/ && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS.m; reformat_GFS(2000); exit;\""
 

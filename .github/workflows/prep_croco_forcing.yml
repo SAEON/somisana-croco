@@ -119,7 +119,7 @@ jobs:
             -v ${{ env.RUN_DIR }}:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_OGCM_ocims(${{ inputs.RUN_DATE }},${{ inputs.HDAYS }},${make_ini}); exit;'"
+              -c "cd /home/matlab/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_OGCM_ocims(\"${{ inputs.RUN_DATE }}\",${{ inputs.HDAYS }},${make_ini}); exit;'"
   make_blk:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
