@@ -112,6 +112,7 @@ jobs:
   # generate croco forcing files
   prep_croco_forcing:
     needs: [envs,prep_run_dirs,get_forcing]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
         domain: ['swcape_02']
