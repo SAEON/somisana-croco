@@ -85,7 +85,7 @@ jobs:
     steps:
       - name: Try to find a suitable restart file
         id: check_restart
-          run: |
+        run: |
           current_date=${{ inputs.RUN_DATE }}
           step_count=0
 
