@@ -25,17 +25,17 @@ on:
         type: string
 
 env:
-  DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/${{ inputs.RUN_DATE }}
+  DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
 
 jobs:
   cleanup-old-dirs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     continue-on-error: true
     steps:
-      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data
+      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
         run: >-
           find \
-            /home/somisana/ops/${{ inputs.BRANCH_REF }}/downloaded_data/* \
+            /home/somisana/ops/${{ inputs.BRANCH_REF }}/* \
             -maxdepth 0 \
             -type d \
             -ctime +5 \
@@ -96,7 +96,7 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the GFS directory
         run: |
-          # rm -rf ${{ env.DATA_DIR }}/GFS # do we need this? it's anying if you're debugging something later in the workflow!
+          # rm -rf ${{ env.DATA_DIR }}/GFS # do we need this? it's annoying if you're debugging something later in the workflow!
           if [ ! -d "${{ env.DATA_DIR }}/GFS/for_croco" ]; then
             mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
             chown -R :runners ${{ env.DATA_DIR }}/GFS
@@ -134,5 +134,5 @@ jobs:
             -v ${{ env.DATA_DIR }}/GFS:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-            -c "cd /home/matlab && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m /home/matlab/ && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS.m; reformat_GFS(2000); exit;\""
+            -c "cd /home/matlab && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m /home/matlab/ && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
 

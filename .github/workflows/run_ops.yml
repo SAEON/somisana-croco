@@ -91,27 +91,10 @@ jobs:
       HDAYS: ${{ inputs.hdays }}
       FDAYS: ${{ inputs.fdays }}
     secrets: inherit
-
-  # prep the run directory 
-  prep_run_dirs:
-    needs: [envs, build_images]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
-    strategy:
-      matrix:
-        # matrix strategy allows us to setup multiple domains in parallel using the same reusable workflow
-        # for now it's only setting up one domain, so we're not really using the matrix strategy yet, but this will come 
-        domain: ['swcape_02']
-    uses: ./.github/workflows/prep_run_dir.yml  # Path to your reusable workflow
-    with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
-      MODEL: croco_v1.3.1
-      DOMAIN: ${{ matrix.domain }}
   
-  # generate croco forcing files
-  prep_croco_forcing:
-    needs: [envs,prep_run_dirs,get_forcing]
+  # generate croco dirs and forcing files
+  prep_croco:
+    needs: [envs,get_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
@@ -119,7 +102,7 @@ jobs:
         blk: ['GFS']
         frc: ['']
         ogcm: ['MERCATOR']
-    uses: ./.github/workflows/prep_croco_forcing.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/prep_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}

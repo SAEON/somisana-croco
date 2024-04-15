@@ -49,12 +49,35 @@ on:
         type: string
 
 env:
-  MODEL_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
-  RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.RUN_DATE }}
+  BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
+  DATE_DIR: ${{ env.BRANCH_DIR }}/${{ inputs.RUN_DATE }}
+  DATA_DIR: ${{ env.DATE_DIR }}/downloaded_data
+  RUN_DIR: ${{ env.DATE_DIR }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
   RUN_NAME: ${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
 
 jobs:
+  setup-rundir:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    continue-on-error: true
+    steps:
+      - name: create the directory
+        run: |
+          rm -rf ${{ env.RUN_DIR }}/${{ RUN_NAME }}  
+          mkdir -p ${{ env.RUN_DIR }}/${{ RUN_NAME }}/{scratch,output,postprocess}
+          chown -R :runners ${{ env.RUN_DIR }}
+          chmod -R 774 ${{ env.RUN_DIR }}
+
+      - name: copy configuration files from the `run` docker image
+        run: >-
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_run_main:latest \
+            -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
+
   get_restart_file:
+    needs: [setup-rundir]
     runs-on: ubuntu-latest
     outputs:
       MAKE_INI: ${{ steps.check_restart.outputs.make_ini }}
@@ -79,13 +102,13 @@ jobs:
             current_date=$(date -d "@$epoch_minus_6hrs" +%Y%m%d_%H)
 
             # restart file to look for
-            rst_file="${{ env.MODEL_DIR }}/$current_date/${{ env.RUN_NAME }}/croco_rst.nc"
+            rst_file="${{ env.BRANCH_DIR }}/${{ inputs.current_date }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/output/croco_rst.nc"
 
             # Check if the file exists
             if [[ -f "$rst_file" ]]; then
               echo "restart file found at: $rst_file"
-              echo "copying to ${{ env.MODEL_DIR }}/${{ env.RUN_NAME }}/croco_ini.nc"
-              cp $rst_file ${{ env.MODEL_DIR }}/${{ env.RUN_NAME }}/croco_ini.nc
+              echo "copying to ${{ env.RUN_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc"
+              cp $rst_file ${{ env.RUN_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc
               break  # Exit the loop since the restart file is found
             else
               echo "restart file not found: $rst_file"
@@ -116,10 +139,10 @@ jobs:
             --mac-address 02:42:ff:ff:ff:ff \
             --entrypoint /bin/bash \
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.RUN_DIR }}:/home/matlab \
+            -v ${{ env.DATE_DIR }}:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_OGCM_ocims(\"${{ inputs.RUN_DATE }}\",${{ inputs.HDAYS }},${make_ini}); exit;'"
+              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_OGCM_ocims(\"${{ inputs.RUN_DATE }}\",${{ inputs.HDAYS }},${{ env.make_ini }}); exit;'"
   make_blk:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
@@ -131,8 +154,8 @@ jobs:
             --mac-address 02:42:ff:ff:ff:ff \
             --entrypoint /bin/bash \
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.RUN_DIR }}:/home/matlab \
+            -v ${{ env.DATE_DIR }}:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_${{ inputs.BLK }}_ocims; exit;'"
+              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_${{ inputs.BLK }}_ocims; exit;'"
           

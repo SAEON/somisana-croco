@@ -157,7 +157,7 @@ CROCO_files_dir=[pwd,'/'];
 %
 %  Global data directory (etopo, coads, datasets download from ftp, etc..)
 %
-DATADIR=[pwd,'/../downloaded_data/']; % we need to change this when we operationalise on mims 
+DATADIR=[pwd,'/../../../downloaded_data/']; % we need to change this when we operationalise on mims 
 %
 %  Forcing data directory (ncep, quikscat, datasets download with opendap, etc..)
 %
