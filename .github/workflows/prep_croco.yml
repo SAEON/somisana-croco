@@ -85,11 +85,11 @@ jobs:
     steps:
       - name: Try to find a suitable restart file
         id: check_restart
-        env:
-          MAX_STEPS: 1 # allow option for looking further back for restart file (although if MAX_STEPS>1 we'll need to edit the .in file to look for the correct time-step!)
-        run: |
+          run: |
           current_date=${{ inputs.RUN_DATE }}
           step_count=0
+
+          MAX_STEPS=1 # allow option for looking further back for restart file (although if MAX_STEPS>1 we'll need to edit the .in file to look for the correct time-step!)
 
           while [[ $step_count -lt $MAX_STEPS ]]; do
 
