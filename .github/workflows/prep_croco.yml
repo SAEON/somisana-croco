@@ -63,10 +63,10 @@ jobs:
     steps:
       - name: create the run directory
         run: |
-          rm -rf ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}  
-          mkdir -p ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}/{scratch,output,postprocess}
-          chown -R :runners ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}
-          chmod -R 774 ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}
+          rm -rf ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}  
+          mkdir -p ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/{scratch,output,postprocess}
+          chown -R :runners ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
+          chmod -R 774 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
 
   get_restart_file:
     needs: [setup-rundir]
@@ -99,8 +99,8 @@ jobs:
             # Check if the file exists
             if [[ -f "$rst_file" ]]; then
               echo "restart file found at: $rst_file"
-              echo "copying to ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc"
-              cp $rst_file ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc
+              echo "copying to ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch/croco_ini.nc"
+              cp $rst_file ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch/croco_ini.nc
               break  # Exit the loop since the restart file is found
             else
               echo "restart file not found: $rst_file"
