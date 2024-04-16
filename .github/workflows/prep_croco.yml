@@ -49,10 +49,11 @@ on:
         type: string
 
 env:
+  # unfortunately it looks like you can't use this defined here to define others i.e. you can't use {{ env.* }} inside this block, you have to use {{ inputs.* }} for each var
   BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
-  DATE_DIR: ${{ env.BRANCH_DIR }}/${{ inputs.RUN_DATE }}
-  DATA_DIR: ${{ env.DATE_DIR }}/downloaded_data
-  RUN_DIR: ${{ env.DATE_DIR }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+  DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
+  DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
+  CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
   RUN_NAME: ${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
 
 jobs:
@@ -60,21 +61,12 @@ jobs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     continue-on-error: true
     steps:
-      - name: create the directory
+      - name: create the run directory
         run: |
-          rm -rf ${{ env.RUN_DIR }}/${{ RUN_NAME }}  
-          mkdir -p ${{ env.RUN_DIR }}/${{ RUN_NAME }}/{scratch,output,postprocess}
-          chown -R :runners ${{ env.RUN_DIR }}
-          chmod -R 774 ${{ env.RUN_DIR }}
-
-      - name: copy configuration files from the `run` docker image
-        run: >-
-          docker run \
-            --rm \
-            --entrypoint /bin/bash \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_run_main:latest \
-            -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
+          rm -rf ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}  
+          mkdir -p ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}/{scratch,output,postprocess}
+          chown -R :runners ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}
+          chmod -R 774 ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}
 
   get_restart_file:
     needs: [setup-rundir]
@@ -107,8 +99,8 @@ jobs:
             # Check if the file exists
             if [[ -f "$rst_file" ]]; then
               echo "restart file found at: $rst_file"
-              echo "copying to ${{ env.RUN_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc"
-              cp $rst_file ${{ env.RUN_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc
+              echo "copying to ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc"
+              cp $rst_file ${{ env.CONFIG_DIR }}/${{ RUN_NAME }}/scratch/croco_ini.nc
               break  # Exit the loop since the restart file is found
             else
               echo "restart file not found: $rst_file"
@@ -141,8 +133,10 @@ jobs:
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
             -v ${{ env.DATE_DIR }}:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
+            -e RUN_DATE_STRING="${{ inputs.RUN_DATE }}" \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_OGCM_ocims(\"${{ inputs.RUN_DATE }}\",${{ inputs.HDAYS }},${{ env.make_ini }}); exit;'"
+              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_OGCM_ocims(${RUN_DATE_STRING},${{ inputs.HDAYS }},${{ env.make_ini }}); exit;\""
+  
   make_blk:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
@@ -157,5 +151,5 @@ jobs:
             -v ${{ env.DATE_DIR }}:/home/matlab \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r 'start; make_${{ inputs.BLK }}_ocims; exit;'"
+              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.BLK }}_ocims; exit;\""
           

@@ -1,0 +1,51 @@
+name: prepare croco config directory
+# I originally had this step as part of prep_croco.yml, but we need this step first where we copy the relevant configuration data locally for the run. That way different forcing files can be generated in parallel in the next step
+
+on:
+  workflow_call:
+    inputs:
+      RUN_DATE:
+        description: 'time of T0 of the model run in format YYYYMMDD_HH - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      MODEL:
+        description: 'directory name used to define the model e.g.croco_v1.3.1'
+        required: true
+        type: string
+      DOMAIN:
+        description: 'directory name used to define the domain e.g. swcape_02' 
+        required: true
+        type: string
+
+env:
+  CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+
+jobs:
+  setup-config-dir:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    continue-on-error: true
+    steps:
+      - name: create the directory
+        run: |
+          rm -rf ${{ env.CONFIG_DIR }}  
+          mkdir -p ${{ env.CONFIG_DIR }}
+          chown -R :runners ${{ env.CONFIG_DIR }}
+          chmod -R 774 ${{ env.CONFIG_DIR }}
+
+      - name: copy configuration files from the `run` docker image
+        run: >-
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${{ env.CONFIG_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_run_main:latest \
+            -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
+

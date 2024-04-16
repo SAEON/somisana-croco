@@ -92,9 +92,24 @@ jobs:
       FDAYS: ${{ inputs.fdays }}
     secrets: inherit
   
-  # generate croco dirs and forcing files
-  prep_croco:
+  # prepare croco config dirs
+  prep_configdirs:
     needs: [envs,get_forcing]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    strategy:
+      matrix:
+        domain: ['swcape_02']
+    uses: ./.github/workflows/prep_configdir.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+
+  # prepare croco forcing files
+  prep_croco:
+    needs: [envs,get_forcing,prep_configdirs]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
