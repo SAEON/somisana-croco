@@ -37,8 +37,6 @@ jobs:
         run: |
           rm -rf ${{ env.CONFIG_DIR }}  
           mkdir -p ${{ env.CONFIG_DIR }}
-          chown -R :runners ${{ env.CONFIG_DIR }}
-          chmod -R 774 ${{ env.CONFIG_DIR }}
 
       - name: copy configuration files from the `run` docker image
         run: >-
@@ -48,4 +46,10 @@ jobs:
             -v ${{ env.CONFIG_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
+
+      - name: add permissions to the directories we just copied in
+        run: |
+          chown -R :runners ${{ env.CONFIG_DIR }}
+          chmod -R 774 ${{ env.CONFIG_DIR }}
+
 
