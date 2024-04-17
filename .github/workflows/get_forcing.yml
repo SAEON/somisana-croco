@@ -70,7 +70,7 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+          # on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
           command: >-
             docker run \
               --rm \
@@ -112,7 +112,7 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
+          #on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
           command: >-
             docker run \
               --rm \
@@ -134,5 +134,5 @@ jobs:
             -v ${{ env.DATA_DIR }}/GFS:/home/matlab/somisana \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m /home/matlab/ && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
+            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m . && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
 
