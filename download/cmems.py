@@ -30,7 +30,13 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     This is called by other functions in this file
     Input variables should be self-explanatory from the runcommand
     """
-
+    
+    # skip this file if it already exists
+    f = os.path.normpath(os.path.join(outputDir, fname))
+    if is_valid_netcdf_file(f):
+        log("file already exists - ", fname)
+        return  
+    
     variables = f"-v {' -v '.join(varlist)} "
 
     runcommand = f"""
@@ -54,11 +60,10 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     
     # allow for a few retries if there was a temporary download error
     MAX_RETRIES = 3
-    RETRY_WAIT = 10
+    RETRY_WAIT = 10      
     
-    f = os.path.normpath(os.path.join(outputDir, fname))
     i = 0
-    while not is_valid_netcdf_file(f) or i == MAX_RETRIES:
+    while i < MAX_RETRIES:
         log(
             f"Attempt {i+1} of {MAX_RETRIES}"
         )
@@ -66,6 +71,7 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
             os.system(runcommand)
             if is_valid_netcdf_file(f):
                 log("Completed", fname)
+                break
             else:
                 os.unlink(f)
                 raise Exception(f"Mercator download failed (bad NetCDF output): {fname}")
