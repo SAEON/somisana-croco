@@ -131,8 +131,8 @@ jobs:
             --mac-address 02:42:ff:ff:ff:ff \
             --entrypoint /bin/bash \
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.DATA_DIR }}/GFS:/home/matlab \
+            -v ${{ env.DATA_DIR }}/GFS:/home/matlab/somisana \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-            -c "cd /home/matlab && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m /home/matlab/ && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
+            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m /home/matlab/ && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
 

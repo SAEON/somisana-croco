@@ -58,4 +58,5 @@ ENV MW_DDUX_FORCE_ENABLE=true MW_CONTEXT_TAGS=MATLAB:DOCKERFILE:V1
 
 # Set user and work directory
 USER matlab
+RUN mkdir /home/matlab/somisana
 WORKDIR /home/matlab

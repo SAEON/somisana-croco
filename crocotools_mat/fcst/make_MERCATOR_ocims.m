@@ -1,10 +1,10 @@
-function make_OGCM_ocims(run_date_str,hdays,makeini)
+function make_MERCATOR_ocims(run_date_str,hdays,makeini)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % G Fearon Oct 2020:
 % This script is adapted from make_OGCM_frcst.m as part of croco_tools, but here we
-% make it a function to be called from within our over-arching python
-% script. The mercator data is downloaded in a separate previous step.
+% make it a function to be called from within our workflow
+% The mercator data is downloaded in a separate previous step.
 %
 % Create and fill CROCO clim and bry files with OGCM data.
 % for a forecast run
@@ -47,7 +47,7 @@ function make_OGCM_ocims(run_date_str,hdays,makeini)
 crocotools_param;
 %
 % Convert datestring to datenum
-run_date = datenum(run_date_str, 'yyyymmdd_HH');
+run_date = datenum(run_date_str, 'yyyy-mm-dd HH');
 % Extract year, month, day, hour
 [NY, NM, ND, NH] = datevec(run_date);
 %

@@ -94,7 +94,7 @@ jobs:
             current_date=$(date -d "@$epoch_minus_6hrs" +%Y%m%d_%H)
 
             # restart file to look for
-            rst_file="${{ env.BRANCH_DIR }}/${{ inputs.current_date }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/output/croco_rst.nc"
+            rst_file="${{ env.BRANCH_DIR }}/${current_date}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/output/croco_rst.nc"
 
             # Check if the file exists
             if [[ -f "$rst_file" ]]; then
@@ -123,6 +123,13 @@ jobs:
     env:
       make_ini: ${{ needs.get_restart_file.outputs.MAKE_INI}} 
     steps:
+      # consider writing a *.env file as part of the download process so we don't have to pass make_${OGCM}_ocims.m any input arguments, like it's done with GFS?
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: generate the OGCM forcing file
         id: make_ogcm_file
         run: >-
@@ -131,11 +138,10 @@ jobs:
             --mac-address 02:42:ff:ff:ff:ff \
             --entrypoint /bin/bash \
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.DATE_DIR }}:/home/matlab \
+            -v ${{ env.DATE_DIR }}:/home/matlab/somisana \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
-            -e RUN_DATE_STRING="${{ inputs.RUN_DATE }}" \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_OGCM_ocims(${RUN_DATE_STRING},${{ inputs.HDAYS }},${{ env.make_ini }}); exit;\""
+              -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},${{ env.make_ini }}); exit;\""
   
   make_blk:
     runs-on: ${{ inputs.RUNNER_NAME }}
@@ -148,8 +154,8 @@ jobs:
             --mac-address 02:42:ff:ff:ff:ff \
             --entrypoint /bin/bash \
             -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.DATE_DIR }}:/home/matlab \
+            -v ${{ env.DATE_DIR }}:/home/matlab/somisana \
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.BLK }}_ocims; exit;\""
+              -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.BLK }}_ocims; exit;\""
           

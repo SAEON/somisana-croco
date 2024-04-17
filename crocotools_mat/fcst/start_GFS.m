@@ -59,3 +59,50 @@ if ( strcmp(mysystem(end-1:end),'86') )
  mysystem2='32';
 elseif ( strcmp(mysystem(end-1:end),'64') )
  mysystem2='64';
+end
+
+fclose(fid);
+matversion=version('-release');
+myversion=str2num(matversion(1:2));
+!rm -f .mysystem
+disp(['Arch : ',mysystem,' - Matlab version : ',matversion])
+
+
+if ((myversion > 13)    )
+  disp(['Use of mexnc and loaddap in ',mysystem2,' bits.'])
+  addpath([myutilpath,'mexcdf/mexnc'])   % 32 and 64 bits version of mexnc
+%
+% - If these directories are already in your matlab native path,
+% you can comment these lines
+  addpath([myutilpath,'mexcdf/netcdf_toolbox/netcdf'])
+  addpath([myutilpath,'mexcdf/netcdf_toolbox/netcdf/ncsource'])
+  addpath([myutilpath,'mexcdf/netcdf_toolbox/netcdf/nctype'])
+  addpath([myutilpath,'mexcdf/netcdf_toolbox/netcdf/ncutility'])
+%
+% Use of built in opendap libraries (no loaddap) - S. Illig 2015
+%
+  addpath([tools_path,'Opendap_tools_no_loaddap'])
+%
+%-------------------------------------------------------
+elseif (myversion <= 13)
+  disp('Use of mex60 and loaddap in 32 bits.')
+  addpath([myutilpath,'mex60'])         % Older/32 bits version of mexcdf
+
+% - If these directories are already in your matlab native path,
+% you can comment these lines
+% - In this case, if problems with subsrefs.m ans subsasign.m,
+% it is because there is a conflict with another native subs.m routines in the
+% symbolic native toolbox
+
+  addpath([myutilpath,'netcdf_matlab_60'])
+  addpath([myutilpath,'netcdf_matlab_60/nctype'])
+  addpath([myutilpath,'netcdf_matlab_60/ncutility'])
+%
+% Use of loaddap  (older versions of matlab)
+%
+  addpath([tools_path,'Opendap_tools'])
+
+else
+  disp(['Arch : ',mysystem,...
+       ' you should provide the paths of your own loaddap and mexcdf directories'])
+end
