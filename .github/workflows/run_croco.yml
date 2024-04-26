@@ -131,7 +131,7 @@ jobs:
   
   # make the boundary forcing          
   get_ogcm:
-    needs: [setup_rundir,get_restart_file]
+    needs: [setup_rundir,get_rst]
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
