@@ -135,7 +135,7 @@ jobs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-      make_ini: ${{ needs.get_restart_file.outputs.MAKE_INI}} 
+      make_ini: ${{ needs.get_rst.outputs.MAKE_INI}} 
     steps:
       - name: make temporary directory for the reformatted OGCM file
         # fyi this is not needed for the blk files as the reformated blk file is saved in the directory where the data are downloaded
