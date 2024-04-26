@@ -59,24 +59,30 @@ env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
   RUN_NAME: ${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
-  SCRATCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/scratch
 
 jobs:
-  setup-rundir:
+  setup_rundir:
     runs-on: ${{ inputs.RUNNER_NAME }}
+    outputs:
+      SCRATCH_DIR: ${{ steps.make_dir.outputs.scratch_dir }}
     continue-on-error: true
     steps:
       - name: create the run directory
+        id: make_dir
         run: |
           rm -rf ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}  
           mkdir -p ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/{scratch,output,postprocess}
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
           chmod -R 774 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
+          # output the scratch dir for use in other jobs
+          echo "scratch_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch" >> $GITHUB_OUTPUT 
   
   # see if we can restart from a previous run
   get_rst:
-    needs: [setup-rundir]
+    needs: [setup_rundir]
     runs-on: ubuntu-latest
+    env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     outputs:
       MAKE_INI: ${{ steps.check_restart.outputs.make_ini }}
       RST_DATE: ${{ steps.check_restart.outputs.rst_date }}
@@ -125,7 +131,9 @@ jobs:
   
   # make the boundary forcing          
   get_ogcm:
-    needs: [setup-rundir,get_restart_file]
+    needs: [setup_rundir,get_restart_file]
+    env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       make_ini: ${{ needs.get_restart_file.outputs.MAKE_INI}} 
@@ -170,7 +178,9 @@ jobs:
 
   # make the surface forcing
   get_blk:
-    needs: [setup-rundir]
+    needs: [setup_rundir]
+    env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: generate the BLK forcing file
@@ -192,7 +202,9 @@ jobs:
   
 #  # get the runtime input file        
 #  get_inp:
-#    needs: [setup-rundir]
+#    needs: [setup_rundir]
+#    env:
+#      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
 #    runs-on: ${{ inputs.RUNNER_NAME }}
 #    steps:
 #      - name: get the runtime input file
