@@ -132,10 +132,9 @@ jobs:
   # make the boundary forcing          
   get_ogcm:
     needs: [setup_rundir,get_restart_file]
-    env:
-      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
       make_ini: ${{ needs.get_restart_file.outputs.MAKE_INI}} 
     steps:
       - name: make temporary directory for the reformatted OGCM file
