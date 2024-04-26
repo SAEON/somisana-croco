@@ -1,5 +1,5 @@
 name: prepare croco config directory
-# I originally had this step as part of prep_croco.yml, but we need this step first where we copy the relevant configuration data locally for the run. That way different forcing files can be generated in parallel in the next step
+# I originally had this step as part of run_croco.yml, but we need this step first where we copy the relevant configuration data locally for the run. That way different forcing files and models can be run in parallel using the 'matrix strategy' on run_croco.yml
 
 on:
   workflow_call:

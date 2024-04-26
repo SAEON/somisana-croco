@@ -47,14 +47,19 @@ on:
         description: 'number of hindcast days (integer) from T0'
         required: true
         type: string
+      FDAYS:
+        description: 'number of forecast days (integer) from T0'
+        required: true
+        type: string
 
 env:
-  # unfortunately it looks like you can't use this defined here to define others i.e. you can't use {{ env.* }} inside this block, you have to use {{ inputs.* }} for each var
+  # unfortunately it looks like you can't use vars defined here to define others i.e. you can't use {{ env.* }} inside this block, you have to use {{ inputs.* }} for each var
   BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
   DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
   RUN_NAME: ${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
+  SCRATCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/scratch
 
 jobs:
   setup-rundir:
@@ -67,8 +72,9 @@ jobs:
           mkdir -p ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/{scratch,output,postprocess}
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
           chmod -R 774 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
-
-  get_restart_file:
+  
+  # see if we can restart from a previous run
+  get_rst:
     needs: [setup-rundir]
     runs-on: ubuntu-latest
     outputs:
@@ -99,8 +105,8 @@ jobs:
             # Check if the file exists
             if [[ -f "$rst_file" ]]; then
               echo "restart file found at: $rst_file"
-              echo "copying to ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch/croco_ini.nc"
-              cp $rst_file ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch/croco_ini.nc
+              echo "linking to ${{ env.SCRATCH_DIR }}/croco_ini.nc"
+              ln -s $rst_file ${{ env.SCRATCH_DIR }}/croco_ini.nc
               break  # Exit the loop since the restart file is found
             else
               echo "restart file not found: $rst_file"
@@ -116,9 +122,10 @@ jobs:
             echo "make_ini=0" >> $GITHUB_OUTPUT
             echo "rst_date=$current_date" >> $GITHUB_OUTPUT 
           fi
-            
-  make_ogcm:
-    needs: [get_restart_file]
+  
+  # make the boundary forcing          
+  get_ogcm:
+    needs: [setup-rundir,get_restart_file]
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       make_ini: ${{ needs.get_restart_file.outputs.MAKE_INI}} 
@@ -138,7 +145,7 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'"
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-      - name: generate the OGCM forcing file
+      - name: generate the OGCM forcing file (and ini file if restart file is not available)
         id: make_ogcm_file
         run: >-
           docker run \
@@ -150,8 +157,20 @@ jobs:
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
               -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},${{ env.make_ini }}); exit;\""
-  
-  make_blk:
+      - name: link OGCM file to scratch dir
+        run: |
+          ogcm_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_clm_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
+          ln -s ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_clm.nc
+      - name: link ini file to scratch dir, if made from OGCM
+        run: |
+          ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
+          if [[ -f "$ini_file" ]]; then
+            ln -s ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
+          fi
+
+  # make the surface forcing
+  get_blk:
+    needs: [setup-rundir]
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: generate the BLK forcing file
@@ -166,4 +185,19 @@ jobs:
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
               -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.BLK }}_ocims; exit;\""
-          
+      - name: link BLK file to scratch dir
+        run: |
+          blk_file="${{ env.CONFIG_DIR }}/${{ inputs.BLK }}/croco_blk_${{ inputs.BLK }}_${{ inputs.RUN_DATE }}.nc"
+          ln -s ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
+  
+#  # get the runtime input file        
+#  get_inp:
+#    needs: [setup-rundir]
+#    runs-on: ${{ inputs.RUNNER_NAME }}
+#    steps:
+#      - name: get the runtime input file
+#        run: |
+#          in_file="${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in"
+#          cp ${in_file} ${{ env.SCRATCH_DIR }}/croco.in
+#          # HERE I HAVE TO DO SED REPLACEMENT ON PLACEHOLDERS - STILL NEED TO DESIGN croco_fcst.in
+# 

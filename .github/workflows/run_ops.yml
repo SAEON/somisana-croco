@@ -29,6 +29,10 @@ on:
         type: boolean
 
 jobs:
+  # note that the jobs aren't executed in the order they are written below
+  # they are executed in the order depending on the 'needs' attribute of each job
+
+  # start by building our docker images needed in the workflow
   build_images:
     if: ${{ github.event.inputs.build_images == 'true' }}  # Conditional execution (saves time when testing something else and we don't want to build it every time)
     strategy:
@@ -38,7 +42,7 @@ jobs:
     with:
       IMAGE_ID: ${{ matrix.image_id }}
 
-  # start by setting some environment variables
+  # set some environment variables
   envs:
     runs-on: ubuntu-latest
     outputs:
@@ -107,8 +111,8 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
 
-  # prepare croco forcing files
-  prep_croco:
+  # prepare croco forcing files, run the model, do the postprocessing
+  run_croco:
     needs: [envs,get_forcing,prep_configdirs]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
@@ -117,7 +121,7 @@ jobs:
         blk: ['GFS']
         frc: ['']
         ogcm: ['MERCATOR']
-    uses: ./.github/workflows/prep_croco.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
@@ -130,53 +134,5 @@ jobs:
       FRC: ${{ matrix.frc }}
       OGCM: ${{ matrix.ogcm }}
       HDAYS: ${{ inputs.hdays }}
+      FDAYS: ${{ inputs.fdays }}
 
-#  compile_models:
-#    needs: [prep_forcing]
-#    strategy:
-#      matrix:
-#        domain: ['swcape_02']
-#        model: ['croco_v1.3.1']
-#        compile: ['C01']
-#        mpi_num_x: [3]
-#        mpi_num_y: [10]
-#        blk: ['GFS']
-#        frc: ['']
-#        ogcm: ['MECATOR']
-#        infile: ['I99']
-#    uses: ./.github/workflows/run_models.yml  # Path to your reusable workflow
-#    with:
-#      DOMAIN: ${{ matrix.domain }}
-#      MODEL: ${{ matrix.model }}
-#      COMPILE: ${{ matrix.compile }}
-#      MPI_NUM_X: ${{ matrix.mpi_num_x }}
-#      MPI_NUM_Y: ${{ matrix.mpi_num_y }}
-#      BLK: ${{ matrix.blk }}
-#      FRC: ${{ matrix.frc }}
-#      OGCM: ${{ matrix.ogcm }}
-#      INFILE: ${{ matrix.infile }}
-#
-#  run_models:
-#    needs: [prep_forcing_1]
-#    strategy:
-#      matrix:
-#        domain: ['swcape_02']
-#        model: ['croco_v1.3.1']
-#        compile: ['C01']
-#        mpi_num_x: [3]
-#        mpi_num_y: [10]
-#        blk: ['GFS']
-#        frc: ['']
-#        ogcm: ['MECATOR']
-#        infile: ['I99']
-#    uses: ./.github/workflows/run_models.yml  # Path to your reusable workflow
-#    with:
-#      DOMAIN: ${{ matrix.domain }}
-#      MODEL: ${{ matrix.model }}
-#      COMPILE: ${{ matrix.compile }}
-#      MPI_NUM_X: ${{ matrix.mpi_num_x }}
-#      MPI_NUM_Y: ${{ matrix.mpi_num_y }}
-#      BLK: ${{ matrix.blk }}
-#      FRC: ${{ matrix.frc }}
-#      OGCM: ${{ matrix.ogcm }}
-#      INFILE: ${{ matrix.infile }}
