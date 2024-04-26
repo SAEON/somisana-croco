@@ -51,13 +51,12 @@ run_date = datenum(run_date_str, 'yyyy-mm-dd HH');
 % Extract year, month, day, hour
 [NY, NM, ND, NH] = datevec(run_date);
 %
-% name of raw downloaded enviromental data file for this day. This file should be in DATADIR 
-% where all downloaded enviromental data is stored.
-MERCATOR_name_raw=[My_OGCM_dir,'mercator_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.nc'];
+% name of raw downloaded enviromental data file for this day. 
+MERCATOR_name_raw=[My_OGCM_dir,'mercator_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.nc'];
 %
 % write it into a more croco_tools friendly format. The output goes to forcing file folder FORC_DATA_DIR
 % where dynamic forcing files are created
-MERCATOR_name=[OGCM_dir,OGCM_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'.cdf'];
+MERCATOR_name=[OGCM_dir,OGCM_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.cdf'];
 write_mercator_ocims(MERCATOR_name,MERCATOR_name_raw,Yorig);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -119,7 +118,7 @@ if makeini==1
   % thereafter we're initialising from the previous model solution, so I'm
   % guessing this is no big deal
   [~,tndx]=min(abs(time-tini)); % using the nearest indx to the start time
-  ininame=[ini_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),nc_suffix];
+  ininame=[ini_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),nc_suffix];
   %disp(['Create an initial file for ',num2str(NY),num2str(NM),num2str(ND);])
   create_inifile(ininame,grdname,CROCO_title,...
                  theta_s,theta_b,hc,N,...
@@ -136,7 +135,7 @@ end
 %
 if makeclim==1 | makebry==1
   if makebry==1
-    bryname=[bry_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),nc_suffix];
+    bryname=[bry_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),nc_suffix];
     create_bryfile(bryname,grdname,CROCO_title,[1 1 1 1],...
                    theta_s,theta_b,hc,N,...
                    time,time_cycle,'clobber',vtransform);
@@ -145,7 +144,7 @@ if makeclim==1 | makebry==1
     nc_bry=[];
   end
   if makeclim==1
-    clmname=[clm_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),nc_suffix];
+    clmname=[clm_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),nc_suffix];
     create_climfile(clmname,grdname,CROCO_title,...
                     theta_s,theta_b,hc,N,...
                     time,time_cycle,'clobber',vtransform);
@@ -175,37 +174,5 @@ end
   end
 %
 end
-%---------------------------------------------------------------
-% Make a few plots
-%---------------------------------------------------------------
-% if makeplot==1
-%   disp(' ')
-%   disp(' Make a few plots...')
-%   if makeini==1
-%     ininame=[ini_prefix,num2str(rundate),nc_suffix];
-%     figure
-%     test_clim(ininame,grdname,'temp',1,coastfileplot)
-%     figure
-%     test_clim(ininame,grdname,'salt',1,coastfileplot)
-%   end
-%   if makeclim==1
-%     clmname=[clm_prefix,num2str(rundate),nc_suffix];
-%     figure
-%     test_clim(clmname,grdname,'temp',1,coastfileplot)
-%     figure
-%     test_clim(clmname,grdname,'salt',1,coastfileplot)
-%   end
-%   if makebry==1
-%     bryname=[bry_prefix,num2str(rundate),nc_suffix];
-%     figure
-%     test_bry(bryname,grdname,'temp',1,obc)
-%     figure
-%     test_bry(bryname,grdname,'salt',1,obc)
-%     figure
-%     test_bry(bryname,grdname,'u',1,obc)
-%     figure
-%     test_bry(bryname,grdname,'v',1,obc)
-%   end
-% end
 
 end

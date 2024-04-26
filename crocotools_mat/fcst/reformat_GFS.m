@@ -44,7 +44,7 @@ fileID = fopen(gfs_env, 'r');
 
 % filename for reformatted GFS data
 %
-gfs_name=[pwd,'/for_croco/','GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'.nc'];
+gfs_name=[pwd,'/for_croco/','GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.nc'];
 
 % set up toolbox for reading grib files
 setup_nctoolbox

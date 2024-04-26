@@ -98,28 +98,28 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
             "#": "Salinity in psu",
             "id": "cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m",
             "vars": ["so"],
-            "fname": f"mercator_so_{run_date.strftime('%Y%m%d')}.nc"
+            "fname": f"mercator_so_{run_date.strftime('%Y%m%d_%H')}.nc"
         },
         {
             "name": "thetao",
             "#": "Temperature in degrees C",
             "id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m",
             "vars": ["thetao"],
-            "fname": f"mercator_thetao_{run_date.strftime('%Y%m%d')}.nc"
+            "fname": f"mercator_thetao_{run_date.strftime('%Y%m%d_%H')}.nc"
         },
         {
             "name": "zos",
             "#": "SSH in m",
             "id": "cmems_mod_glo_phy_anfc_0.083deg_P1D-m",
             "vars": ["zos"],
-            "fname": f"mercator_zos_{run_date.strftime('%Y%m%d')}.nc"
+            "fname": f"mercator_zos_{run_date.strftime('%Y%m%d_%H')}.nc"
         },
         {
             "name": "uo_vo",
             "#": "uo:Eastward velocity in m/s | vo:Northward velocity in m/s",
             "id": "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m",
             "vars": ["uo", "vo"],
-            "fname": f"mercator_uo_vo_{run_date.strftime('%Y%m%d')}.nc"
+            "fname": f"mercator_uo_vo_{run_date.strftime('%Y%m%d_%H')}.nc"
         },
     ]
     
@@ -144,7 +144,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
     
     # Concatenate the separate NetCDF files
     log("concatenating NetCDF files")
-    output_path = os.path.abspath(os.path.join(outputDir, f"mercator_{run_date.strftime('%Y%m%d')}.nc"))
+    output_path = os.path.abspath(os.path.join(outputDir, f"mercator_{run_date.strftime('%Y%m%d_%H')}.nc"))
     with xr.open_mfdataset([os.path.abspath(os.path.join(outputDir, var["fname"])) for var in VARIABLES]) as ds:
         ds.to_netcdf(output_path, mode="w")
 

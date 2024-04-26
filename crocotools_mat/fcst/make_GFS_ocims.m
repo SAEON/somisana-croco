@@ -66,7 +66,7 @@ blk_prefix=[blk_prefix,'_GFS_'];
 %
 % GFS data name
 %
-gfs_name=[GFS_dir,'GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),'.nc'];
+gfs_name=[GFS_dir,'GFS_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.nc'];
 %
 % Extract data from the already downloaded enviromental data files and write 
 % into a more croco_tools friendly format.
@@ -103,7 +103,7 @@ tlen=length(time);
 %
 % bulk and forcing files
 %
-blkname=[blk_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),num2str(NH,'%02.f'),nc_suffix];
+blkname=[blk_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),nc_suffix];
 disp(['Create a new bulk file: ' blkname])
 create_bulk(blkname,grdname,CROCO_title,time,0);
 nc_blk=netcdf(blkname,'write');
