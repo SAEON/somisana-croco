@@ -210,8 +210,8 @@ def make_WASA3_from_blk(wasa_grid,
             # 'Time' in ds_wasa_now is now the same length as 'bulk_time' in ds_blk
             
             # rotate the wasa vectors to be east,north components
-            u = ds_wasa_now.U
-            v = ds_wasa_now.V
+            u = ds_wasa_now.U10
+            v = ds_wasa_now.V10
             u_wasa = u * cosa - v * sina
             v_wasa = v * cosa + u * sina
             
