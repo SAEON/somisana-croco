@@ -1,176 +1,180 @@
 import numpy as np
-import xarray as xr 
-from glob import glob
-from datetime import datetime
+import xarray as xr
 import crocotools_py.postprocess as post
-import netCDF4 as nc
-import pandas as pd
-import os
-from colorama import Fore, Style
+# from glob import glob
+# from datetime import datetime
+# import netCDF4 as nc
+# import pandas as pd
+# import os
+# import numpy as np
+# import cftime
+# from colorama import Fore, Style
 
-def get_ts_obs(fname_obs, var):
+# %% rho statistics
+
+def statistics(model_data,data_obs_model_timeaxis):
     """
-           The next Function is for loading IN SITU time series:
-
+            This Function calculates all model validation statistics
+            
             Parameters:
-            - fname_obs         :filename of the observations
-            - var               :variable input by the user. should be the same in both the modeland obs netCDFs.
-
+            - model_data:                       Dataset of the CROCO model
+            - data_obs_model_timeaxis:          Dataset of the insitu station already modigied to the 
+                                                model time axis and depth levels are matching
             Returns:
-            - time_obs, data_obs, long_obs, lat_obs               
-    """
-    # print("1. Im in get_ts_obs")
-    # obs: uses the given filename to open the file using xarray funtion
-    obs = xr.open_dataset(fname_obs)
-    # data_obs: uses obs[var] it retrieves obs data array
-    data_obs = np.squeeze(obs[var].values)
-    var_units = obs[var].units
-    time_obs = obs.time.values
-    # time_obs  : uses the traditional dot method to retrieve time array from obs and corrects it from
-    # a datetime64 datatype to a datetime.datetime object to ensure compliance with model time 
-    # astype methos can be found at: https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.astype.html
-    time_obs = time_obs.astype('datetime64[s]').astype(datetime)
-    # lat_obs: uses the dot method to extract latitude values. the same applieas to long_obs
-    #But First it must handle an exception for an example, if the obs data defines lats and lons in full names    
-    try:
-        long_obs = obs.longitude.values
-        lat_obs = obs.latitude.values
+            - insitu_correlation, insitu_rmse, insitu_mean_diff, insitu_min_value, insitu_max_value,
+                    model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias
+        """
+    # Convert xarray DataArrays to numpy arrays        
+    model_data = model_data.values
+    insitu_data = data_obs_model_timeaxis.values   
+
+    # Find rows where all values are not NaN in insitu_data & Filter both model_data and insitu_data using the non-NaN indices
+    non_nan_indices = ~np.isnan(insitu_data)
+    model_data = model_data[non_nan_indices]
+    insitu_data = insitu_data[non_nan_indices]
     
-        if (long_obs == [0]).any():
-            raise ValueError("Undesired output detected in 'longitude': array([0])")
-        if (lat_obs == [0]).any():
-            raise ValueError("Undesired output detected in 'latitude': array([0])")
-        
-    except ValueError as ve:
-        print(f"Caught an exception: {ve}")
-        # Handle the exception, provide default values
-        long_obs = obs.lon.values
-        lat_obs = obs.lat.values
-    except ValueError as ve:
-        print(f"Caught an exception: {ve}")
-        # Handle the exception, provide default values
-        long_obs = obs.Lon.values
-        lat_obs = obs.Lat.values
-    except ValueError as ve:
-        print(f"Caught an exception: {ve}")
-        # Handle the exception, provide default values
-        long_obs = obs.Longitude.values
-        lat_obs = obs.Latitude.values
-    else:
-        print("Longitude and latitude successfully retrieved.")
+    # Calculate statistics for insitu_data
+    insitu_correlation = np.corrcoef(insitu_data.flatten(), model_data.flatten())[0, 1]
+    insitu_squared_diff = (insitu_data - model_data) ** 2
+    insitu_rmse = np.sqrt(np.mean(insitu_squared_diff))
+    insitu_mean_diff = np.mean(insitu_data)
+    insitu_min_value = np.min(insitu_data) if len(insitu_data) > 0 else np.nan # This handles the cases where min is calculated from an empty dataset
+    insitu_max_value = np.max(insitu_data) if len(insitu_data) > 0 else np.nan # This handles the cases where max is calculated from an empty dataset
+    
+    # Calculate statistics for model_data
+    model_correlation = np.corrcoef(model_data.flatten(), insitu_data.flatten())[0, 1]
+    model_squared_diff = (model_data - insitu_data) ** 2
+    model_rmse = np.sqrt(np.mean(model_squared_diff))
+    model_mean_diff = np.mean(model_data)
+    model_min_value = np.min(model_data) if len(model_data) > 0 else np.nan # This handles the cases where min is calculated from an empty dataset
+    model_max_value = np.max(model_data) if len(model_data) > 0 else np.nan # This handles the cases where max is calculated from an empty dataset
+    model_total_bias = np.mean(np.abs(model_data - insitu_data))
+    
+    return (insitu_correlation, insitu_rmse, insitu_mean_diff, insitu_min_value, insitu_max_value,
+            model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias)
 
-    return time_obs, data_obs, long_obs, lat_obs, var_units
+# %% Interpolate to model time step and average across depth levels
 
-def obs_2_model_timeaxis(fname_obs,time_model,model_frequency,var):
+def obs_2_model_timeaxis(da_obs, ds_mod):
     """
-           This Function is for matching time axis of both the insitu and model datasets:
+            This Function is for matching time axis of both the insitu and model datasets:
             obs_2_model_timeaxis function is designed to put the observation array on the model time axis.
             This is achieved by reading the obs dataset using 
-              
             Parameters:
             - fname_obs:        filename of observations
             - time_model:       numpy array or list, corresponding time values
-            - model_frequency:  user input, it is the model frequency if the model is an average model output
             - var:              variable input by the user. should be the same in both the modeland obs netCDFs.
 
             Returns:
             - data_obs_model_timeaxis
     """
-    # print("4. Im in obs_2_new_timeaxis")
-    # xarray (https://docs.xarray.dev/en/stable/generated/xarray.open_dataset.html) imported as xr 
-    obs = xr.open_dataset(fname_obs)
-    # resample that array by taking daily means at base=12, which means daily means of the hourly 
-    # obs dataset at 12:00 midday. here is the resample function source:
-    # https://www.geeksforgeeks.org/python-pandas-dataframe-resample/
-    obs_formatted = obs.resample(time=model_frequency, base=int(model_frequency[:-1])/2).mean()
-    #print("base=",int(model_frequency[:-1])/2)
-    data_obs = np.squeeze(obs_formatted[var].values)
-    time_obs = obs_formatted.time.values
-    # the operationof converting the datetime64 to datetime.datetime is performed to get the obs 
-    # time array onto the same data type as the model time array.
-    time_obs = time_obs.astype('datetime64[s]').astype(datetime)
-    # the data_obs_model_timeaxis is first created as an empty array of null values of length 
-    # time_model. this empty list is populated by the for loop that appends to each index at each
-    # model index (index_mod) based on each time of the model index (time_model_now)
-    data_obs_model_timeaxis = [None for i in range(len(time_model))]
-    # Convert the NumPy array to a list of datetime objects
-    formatted_time_obs = time_obs.tolist()
-    formatted_time_obs
+    print("Coordinates of ds_obs:", da_obs.coords)
+            
+    ds_mod = np.squeeze(ds_mod)
+
+    # Interpolate onto the time axis of ds_model
+    data_obs_model_timeaxis = da_obs.interp(time=ds_mod['time'])
+        
+    # Create a new dataset by interpolating based on both time and depth
+    data_obs_model_timeaxis = np.squeeze(data_obs_model_timeaxis)
+    model_time = ds_mod['time']     
     
-    if var == 'u' or 'v':
-        for index_mod, time_model_now in enumerate(time_model):
-            if time_model_now in formatted_time_obs:            
-                index_obs = formatted_time_obs.index(time_model_now)
-                data_obs_model_timeaxis[index_mod] = data_obs[index_obs]
+    # Here we check if the datasets (model and insitu) are the same shapes and correct them if they are not  
+    if data_obs_model_timeaxis.dims != ds_mod.dims:
+        data_obs_model_timeaxis.transpose(*(data_obs_model_timeaxis.dims))
+    
+    # Here we calculate the half time step window to make the insitu data averaged at 00:00 to be averaged at 12:00 noon like the croco model
+    window_half_tstep = (model_time[1] - model_time[0]) / 2
+
+    obs_out = np.zeros_like(data_obs_model_timeaxis)
+    
+    # The if statement applies to multilayered insitu data like Wirewalker data, 
+    # the else part applies to single layer or single depth station data like ATAP 
+    if "depth" in data_obs_model_timeaxis.dims:
+        for t_indx, t in enumerate(model_time):
+            model_depth = ds_mod['depth'] 
+            data_avg_list = []
+            for d_indx, d in enumerate(model_depth):
+                start_time = t - window_half_tstep
+                end_time = t + window_half_tstep
+                data_avg = data_obs_model_timeaxis[:,d_indx].sel(time=slice(start_time, end_time))
+                data_avg_list.append(np.nanmean(data_avg.values))
+            obs_out[t_indx] = data_avg_list
+
     else:
-        for index_mod, time_model_now in enumerate(time_model):
-            # the if statement selects conditions at which the for loop applies which are: at every 
-            # time step of the time model that also exists in the observations time array.
-            # Step through index: Checks the time component in time_obs and in each record if it is contained in time_obs then.
-            if time_model_now in formatted_time_obs:            
-            # Step: If contained then replace that time value in with a value in time_model in the same index.
-            # when the above condition is met, a new index_obs is computed as the index when time obs and
-            # time model are identical times. That index output represents a location of the obervation that 
-            # is to be placed on the model time axis on that time axis array. the x.index method is a in https://www.w3schools.com/python/ref_list_index.asp
-                
-                index_obs = formatted_time_obs.index(time_model_now)
-                data_obs_model_timeaxis[index_mod] = data_obs[index_obs]
-       
-    return np.array(data_obs_model_timeaxis)
-  
-# %% Statistical analysis section
-    """
-    Calculate model statistical elements: model_mean,obs_mean,model_min,obs_min,model_max,obs_max all 
-    rounded to 3 decimal places
-
-    Parameters:
-    - model_data: numpy array or list, var values
-    - obs data: numpy array or list, of observation values
-
-    Returns:
-    - model_mean,obs_mean,model_min,obs_min,model_max,obs_max
-    """    
-
-
-def calculate_seasonal_means(model_data, time_model,var):
-    """
-    Calculate seasonal means (JFM, AMJ, JAS, OND) from variable and time arrays.
-
-    Parameters:
-    - model_data: numpy array or list, var values
-    - time_model: numpy array or list, corresponding time values
-    - var: variable input by the user. should be the same in both the modeland obs netCDFs.
-
-    Returns:
-    - seasonal means for JFM, AMJ, JAS, OND
-    """
-    # Convert time_model to datetime format
-    time_model = pd.to_datetime(time_model)
-
-    # Create a DataFrame with time and var columns
-    df = pd.DataFrame({'Time': time_model, var: model_data})
-
-    # Set the time column as the index
-    df.set_index('Time', inplace=True)
-
-    # Resample data to get monthly means
-    monthly_mean = df.resample('M').mean()
-
-    # Extract specific columns for each season
-    JFM_mean = monthly_mean[monthly_mean.index.month.isin([1, 2, 3])][var].mean()
-    AMJ_mean = monthly_mean[monthly_mean.index.month.isin([4, 5, 6])][var].mean()
-    JAS_mean = monthly_mean[monthly_mean.index.month.isin([7, 8, 9])][var].mean()
-    OND_mean = monthly_mean[monthly_mean.index.month.isin([10, 11, 12])][var].mean()
-
-    return JFM_mean, AMJ_mean, JAS_mean, OND_mean
+        for t_indx, t in enumerate(model_time):
+            start_time = t - window_half_tstep
+            end_time = t + window_half_tstep
+            data_avg = da_obs.sel(time=slice(start_time, end_time))
+            obs_out[t_indx] = np.nanmean(data_avg.values)
+ 
+    # return data_obs_model_timeaxis
+    obs_out_xr = xr.DataArray(obs_out, dims=data_obs_model_timeaxis.dims, coords=data_obs_model_timeaxis.coords)
+    obs_out_xr = obs_out_xr.squeeze(drop=True)  # Drop extra dimensions that are not changing 
+    
+    return obs_out_xr
 
 
 # %%
-def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_shifted=0,j_shifted=0,ref_date=None,lon_extract=None):
+
+def extract_lat_lon(ds):
+    """
+            This Function extracts longitudes and latitudes from a dataset. The reason why it is important is 
+            because you never know what numecluture structure was used for writing the grid coordinates
+            it could be full names or lat and lon, or first letter could be capitalized if not all letters.
+
+            Parameters:
+            - dataset:          Dataset usually the insitu ds as this is where for validation we extract
+                                the location parameters of the validation station.
+
+            Returns:
+            - long_obs, lat_obs
+        """
+    try:
+        long_obs = ds.longitude.values
+        lat_obs = ds.latitude.values
+
+        if long_obs.size > 0 and (long_obs == [0]).any():
+            raise ValueError(
+                "Undesired output detected in 'longitude': array([0])")
+        if lat_obs.size > 0 and (lat_obs == [0]).any():
+            raise ValueError(
+                "Undesired output detected in 'latitude': array([0])")
+
+    except ValueError as ve:
+        print(f"Caught an exception: {ve}")
+        # Handle the exception, provide default values
+        try:
+            long_obs = ds.lon.values
+            lat_obs = ds.lat.values
+        except ValueError as ve:
+            print(f"Caught an exception: {ve}")
+            # Handle the exception, provide default values
+            try:
+                long_obs = ds.Lon.values
+                lat_obs = ds.Lat.values
+            except ValueError as ve:
+                print(f"Caught an exception: {ve}")
+                # Handle the exception, provide default values
+                try:
+                    long_obs = ds.Longitude.values
+                    lat_obs = ds.Latitude.values
+                except ValueError as ve:
+                    print(f"Caught an exception: {ve}")
+                    # Handle the exception, provide default values
+                    long_obs = ds.lon.item()
+                    lat_obs = ds.lat.item()
+    else:
+        print("Longitude and latitude successfully retrieved.")
+    return long_obs, lat_obs
+
+# %%
+
+def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, j_shifted=0, ref_date=None, lon_extract=None):
     """
            This Function is for retrieving all datasets from the other functions and package them into a netCDF 
            file on the same time axis: 
-               
+
             Parameters:
             - fname             :filename of the model
             - fname_obs         :filename of observations
@@ -180,236 +184,373 @@ def get_model_obs_ts(fname,fname_obs,output_path,model_frequency,var,depth=-1,i_
             - lon               :lon read from the insitu input
             - ref_date          :static user input
             - depth             :user input based on insitu sensor depth
-            - model_frequency   :user input, it is the model frequency if the model is an average model output
             - i_shifted         :optional user inputs if the z level of the model does not match the input lon depth
             - j_shifted         :optional user inputs if the z level of the model does not match the input lat depth
             - time_lims         :limits are computed based on the length of the insitu data that matches model span
     """
-    # print("5. Im in get_model_obs_ts")
-    # the output of this function is a netcdf file 'output_path'
-    # which will have the model and observations on the same time axis
+
+    # Load the NetCDF dataset
+    ds_obs = xr.open_dataset(fname_obs)
     
-    # get the observations time-series
-    time_obs, data_obs, long_obs, lat_obs, var_units = get_ts_obs(fname_obs,var)   
+    # Some observations have a different time format, that makes tem compatible
+    ds_obs['time'] = ds_obs['time'].astype('datetime64[ns]') 
 
-    # get the model time-series
-    time_model, data_model,lat_mod,lon_mod,h = post.get_ts(fname,var,long_obs,lat_obs,ref_date,depth=depth,i_shifted=i_shifted,j_shifted=j_shifted,time_lims=[time_obs[0].replace(hour=12, minute=0, second=20, microsecond=0),time_obs[-1].replace(hour=12, minute=0, second=20, microsecond=0)]) # Change the 10 back to -1
 
-    # get the observations onto the model time axis
-    data_obs_model_timeaxis = obs_2_model_timeaxis(fname_obs,time_model, model_frequency,var)
+    # # Define the time limits
+    # time_lims = [datetime(2017, 1, 1), datetime(2018, 12, 31)]
+
+    # # Slice the dataset based on the time limits
+    # ds_obs = ds_obs.sel(time=slice(*time_lims))
     
-    print("data_model shape:", data_model.shape)
-    print("data_obs_model_timeaxis shape:", data_obs_model_timeaxis.shape)
-    
-    data_obs_model_timeaxis = data_obs_model_timeaxis.astype(float)
-    insitu_no_nan =  data_obs_model_timeaxis[~np.isnan( data_obs_model_timeaxis)]  
-    model_no_nan = data_model[~np.isnan(data_obs_model_timeaxis)]  
+        
+    # The following if statement handles the u,v grid. The else part handles the rho grid points computation. 
+    if var=='u' or var=='v':
+        long_obs, lat_obs = extract_lat_lon(ds_obs)
+        model_data = post.get_ts_uv(fname, long_obs, lat_obs, ref_date, 
+                        i_shift=0, j_shift=0, 
+                        time_lims=slice(None),
+                        depths=depth,
+                        default_to_bottom=False,
+                        write_nc=False,
+                        fname_nc='ts_uv.nc'
+                        )
+        
+        da_obs_u = ds_obs.u
+        da_obs_v = ds_obs.v
+        
+        insitu_u_orig = obs_2_model_timeaxis(da_obs_v, model_data)
+        insitu_v_orig = obs_2_model_timeaxis(da_obs_u, model_data)
 
-    # # Create a NetCDF file
-    with nc.Dataset(output_path, 'w', format='NETCDF4') as nc_file:
-        # Create dimensions
-        nc_file.createDimension('time', len(time_model))
+        # Convert xarray DataArrays to numpy arrays      
+        model_u_orig = model_data.u.values
+        model_v_orig = model_data.v.values
+        
+        # longitude ,latitude = extract_lat_lon(ds_obs)
+        longitude = ds_obs.lon.values
+        latitude = ds_obs.lat.values
 
-        if j_shifted != 0:
-            lat_mod = np.array([lat_mod], dtype=np.float32)
-            nc_file.createDimension('latitude', len(lat_mod))
+
+        # Find rows where all values are not NaN in insitu_data, Filter both model_data and insitu_data using the non-NaN indices
+        non_nan_indices = ~np.isnan(insitu_u_orig).any(axis=1)
+        model_u = model_u_orig[non_nan_indices]
+        insitu_u = insitu_u_orig[non_nan_indices]
+        
+        # Find rows where all values are not NaN in insitu_data
+        non_nan_indices_ = ~np.isnan(insitu_v_orig).any(axis=1)
+        model_v = model_v_orig[non_nan_indices_]
+        insitu_v = insitu_v_orig[non_nan_indices_]
+        
+        # Assuming insitu_u and model_u are xarray DataArrays
+        insitu_u_np = insitu_u.values.flatten()
+        model_u_np = model_u.flatten()
+        insitu_v_np = insitu_v.values.flatten()
+        model_v_np = model_v.flatten()
+        
+        # Calculate statistics for insitu_data u component
+        # insitu_correlation_coefficient_u = np.corrcoef(insitu_u.flatten(), model_u.flatten())[0, 1]
+        insitu_correlation_coefficient_u = np.corrcoef(insitu_u_np, model_u_np)[0, 1]
+        insitu_squared_diff_u = (insitu_u_np - model_u_np) ** 2
+        insitu_rmse_u = np.sqrt(np.mean(insitu_squared_diff_u))
+        insitu_mean_difference_u = np.mean(insitu_u_np)
+        insitu_min_value_u = np.min(insitu_u_np)
+        insitu_max_value_u = np.max(insitu_u_np)
+        # insitu_total_bias_u = np.mean(np.abs(insitu_u - model_u))
+        
+        # Calculate statistics for model_data u component
+        model_correlation_coefficient_u = np.corrcoef(insitu_u_np, model_u_np)[0, 1]
+        model_squared_diff_u = (model_u_np - insitu_u_np) ** 2
+        model_rmse_u = np.sqrt(np.mean(model_squared_diff_u))
+        model_mean_difference_u = np.mean(model_u_np)
+        model_min_value_u = np.min(model_u_np)
+        model_max_value_u = np.max(model_u_np)
+        model_total_bias_u = np.mean(np.abs(model_u_np - insitu_u_np))
+        
+        # Calculate statistics for insitu_data v component
+        insitu_correlation_coefficient_v = np.corrcoef(insitu_v_np, model_v_np)[0, 1]
+        insitu_squared_diff_v = (insitu_v - model_v) ** 2
+        insitu_rmse_v = np.sqrt(np.mean(insitu_squared_diff_v))
+        insitu_mean_difference_v = np.mean(insitu_v)
+        insitu_min_value_v = np.min(insitu_v)
+        insitu_max_value_v = np.max(insitu_v)
+        
+        # Calculate statistics for model_data v component
+        model_correlation_coefficient_v = np.corrcoef(insitu_v_np, model_v_np)[0, 1]
+        model_squared_diff_v = (model_v - insitu_v) ** 2
+        model_rmse_v = np.sqrt(np.mean(model_squared_diff_v))
+        model_mean_difference_v = np.mean(model_v)
+        model_min_value_v = np.min(model_v)
+        model_max_value_v = np.max(model_v)
+        model_total_bias_v = np.mean(np.abs(model_v - insitu_v))
+        
+        # Create xarray DataArrays for u component
+        depth = np.arange(insitu_u.shape[1])
+        time = model_data.time.values
+        insitu_da_u = xr.DataArray(insitu_u_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        model_da_u = xr.DataArray(model_u_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        
+        # Create xarray DataArrays for v component
+        insitu_da_v = xr.DataArray(insitu_v_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        model_da_v = xr.DataArray(model_v_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        
+        # Create a Dataset with the DataArrays for u and v components
+        ds = xr.Dataset({"insitu_u": insitu_da_u, "insitu_v": insitu_da_v, "model_u": model_da_u, "model_v": model_da_v})
+        
+        ds = ds.assign_coords({"longitude":longitude})
+        ds = ds.assign_coords({"latitude":latitude})
+        # ds = ds.assign_coords({"depth":depth})
+        
+        #Global attributes        
+        ds.attrs["longitude"] = longitude
+        ds.attrs["latitude"] = latitude       
+        
+        # Add attributes for statistics to the Dataset for u component
+        ds.attrs["insitu_correlation_coefficient_u"] = str(insitu_correlation_coefficient_u)
+        ds.attrs["insitu_rmse_u"] = str(insitu_rmse_u)
+        ds.attrs["insitu_mean_difference_u"] = str(insitu_mean_difference_u)
+        ds.attrs["insitu_min_value_u"] = str(insitu_min_value_u)
+        ds.attrs["insitu_max_value_u"] = str(insitu_max_value_u)
+        
+        ds.attrs["model_correlation_coefficient_u"] = str(model_correlation_coefficient_u)
+        ds.attrs["model_rmse_u"] = str(model_rmse_u)
+        ds.attrs["model_mean_difference_u"] = str(model_mean_difference_u)
+        ds.attrs["model_min_value_u"] = str(model_min_value_u)
+        ds.attrs["model_max_value_u"] = str(model_max_value_u)
+        ds.attrs["model_total_bias_u"] = str(model_total_bias_u)
+        
+        # Add attributes for statistics to the Dataset for v component
+        ds.attrs["insitu_correlation_coefficient_v"] = str(insitu_correlation_coefficient_v)
+        ds.attrs["insitu_rmse_v"] = str(insitu_rmse_v)
+        ds.attrs["insitu_mean_difference_v"] = str(insitu_mean_difference_v)
+        ds.attrs["insitu_min_value_v"] = str(insitu_min_value_v)
+        ds.attrs["insitu_max_value_v"] = str(insitu_max_value_v)
+        
+        ds.attrs["model_correlation_coefficient_v"] = str(model_correlation_coefficient_v)
+        ds.attrs["model_rmse_v"] = str(model_rmse_v)
+        ds.attrs["model_mean_difference_v"] = str(model_mean_difference_v)
+        ds.attrs["model_min_value_v"] = str(model_min_value_v)
+        ds.attrs["model_max_value_v"] = str(model_max_value_v)
+        ds.attrs["model_total_bias_v"] = str(model_total_bias_v)
+        
+        # Calculate seasonal means for insitu_data
+        insitu_seasonal_means = {}
+        for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
+            seasonal_data_u = insitu_da_u.sel(time=insitu_da_u.time.dt.month.isin(months))
+            seasonal_data_v = insitu_da_v.sel(time=insitu_da_v.time.dt.month.isin(months))
+            seasonal_data_magnitude = np.sqrt(seasonal_data_u**2 + seasonal_data_v**2)
+            insitu_seasonal_means[season] = seasonal_data_magnitude.mean(dim=["time", "depth"]).item()
+        
+        # Calculate seasonal means for model_data
+        model_seasonal_means = {}
+        for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
+            seasonal_data_u = model_da_u.sel(time=model_da_u.time.dt.month.isin(months))
+            seasonal_data_v = model_da_v.sel(time=model_da_v.time.dt.month.isin(months))
+            seasonal_data_magnitude = np.sqrt(seasonal_data_u**2 + seasonal_data_v**2)
+            model_seasonal_means[season] = seasonal_data_magnitude.mean(dim=["time", "depth"]).item()
+        
+        # Add attributes for seasonal means to the Dataset
+        ds.attrs.update({
+            f"insitu_seasonal_mean_{season}": mean_value for season, mean_value in insitu_seasonal_means.items()
+        })
+        ds.attrs.update({
+            f"model_seasonal_mean_{season}": mean_value for season, mean_value in model_seasonal_means.items()
+        })
+        
+        # Save the Dataset to a NetCDF file
+        # output_path = 'Validation_Test_Wirewalker.nc'
+        output_path = 'Validation_Test_ADCP.nc'
+        ds.to_netcdf(output_path)
+        
+        print("______________________________________________________________")
+        print("______________________________________________________________")            
+        print("Your output file will look like this",ds)    
+        print("______________________________________________________________")
+        print("______________________________________________________________")
+        print("NetCDF file saved successfully: This is a u,v grid, full water column dataset i.e. ADCP.")
+        
+    else:
+        if "depth" in ds_obs.dims and len(ds_obs.coords["depth"]) > 1:
+            long_obs = ds_obs.lon.values
+            lat_obs = ds_obs.lat.values
         else:
-            lat_obs = np.array([lat_obs], dtype=np.float32)
-            nc_file.createDimension('latitude', len(lat_obs))
-
-        if i_shifted != 0:
-            lon_mod = np.array([lon_mod], dtype=np.float32)
-            nc_file.createDimension('longitude', len(lon_mod))
-        else:
-            long_obs = np.array([long_obs], dtype=np.float32)
-            nc_file.createDimension('longitude', len(long_obs))
-        
-        # print(f"5.1 NetCDF file created at: {output_path}")
-        # Create variables
-        time_var = nc_file.createVariable('time', 'f8', ('time'))
-        lat_var = nc_file.createVariable('latitude_insitu', 'f4', ('latitude'))
-        lon_var = nc_file.createVariable('longitude_insitu', 'f4', ('longitude'))        
-        lat_mod_var = nc_file.createVariable('latitude_on_model', 'f4', ('latitude'))
-        lon_mod_var = nc_file.createVariable('longitude_on_model', 'f4', ('longitude'))        
-        model_var = nc_file.createVariable('data_model', 'f4', ('time', 'latitude', 'longitude'))
-        obs_model_var = nc_file.createVariable('data_obs_model_timeaxis', 'f4', ('time', 'latitude', 'longitude'))
-    
-        # Convert datetime objects to Unix timestamps (floats)
-        float_time_model = np.array([dt.timestamp() for dt in time_model], dtype=int)
-        
-        # Convert each float timestamp to datetime
-        # for dt in time_model:
-        #     print(dt)
-        
-        # Assign data to variables
-        time_var[:] = float_time_model
-        lat_var[:] = lat_obs
-        lon_var[:] = long_obs        
-        lat_mod_var[:] = lat_mod
-        lon_mod_var[:] = lon_mod        
-        model_var[:, :, :] = data_model
-        obs_model_var[:, :, :] = data_obs_model_timeaxis
- 
-        # Add attributes if needed
-        time_var.units = 'seconds since 1970-01-01 00:00:00'    
-        time_var.calendar = 'standard'        
-        time_var.long_name = 'time'
-        lat_var.units = 'degrees_north'
-        lon_var.units = 'degrees_east'
-        lat_mod_var.units = 'degrees_north'
-        lon_mod_var.units= 'degrees_east'
-        model_var.units = var_units     # SHOULDN'T BE HARD CODED
-        obs_model_var.units = var_units
-        
-        
-                
-        # calculate model seasonal means:
-        # seasonal_mean = calculate_seasonal_means(data_model, time_model,var)
-        # nc_file.setncattr('seasonal_mean', seasonal_mean)
-        JFM_mean, AMJ_mean, JAS_mean, OND_mean = calculate_seasonal_means(data_model, time_model,var)
-        nc_file.setncattr('JFM', round(JFM_mean,3))
-        nc_file.setncattr('AMJ', round(AMJ_mean,3))
-        nc_file.setncattr('JAS', round(JAS_mean,3))
-        nc_file.setncattr('OND', round(OND_mean,3))
-         
-        nc_file.setncattr('depth',depth)
-        nc_file.setncattr('h',h)
-        nc_file.setncattr('i_shift',i_shifted)
-        nc_file.setncattr('j_shift',j_shifted)
-        
-        decimal = 3
-        
-        # Calculate and add correlations as attributes
-        model_in_situ_corr = np.corrcoef(np.array(insitu_no_nan),np.array(model_no_nan))[1][0]
-        model_in_situ_corr = round(model_in_situ_corr, decimal)
-        nc_file.setncattr('correlation_model_obs', model_in_situ_corr)
-        
-        # Calculate and add standard deviations as attributes
-        std_dev_model = round(np.std(model_no_nan),decimal)
-        std_dev_obs_model = round(np.std(insitu_no_nan),decimal)        
-        nc_file.setncattr('std_dev_model', std_dev_model)
-        nc_file.setncattr('std_dev_obs_model', std_dev_obs_model)
-        
-        # Calculate RMSE and add it as an attribute
-        rmse_model_obs = round(np.sqrt(np.mean((insitu_no_nan - model_no_nan)**2)),decimal)
-        nc_file.setncattr('rmse_model_obs', rmse_model_obs)
-        
-        # Calculate and add total bias as an attribute
-        total_bias = round(np.mean(insitu_no_nan - model_no_nan),decimal)
-        nc_file.setncattr('total_bias', total_bias)
-        
-        # Calculate model, obs mean,min and max ignoring NaN values
-        model_mean = round(np.mean(model_no_nan),decimal)
-        obs_mean = round(np.mean(insitu_no_nan),decimal)
-        model_min = round(np.min(model_no_nan),decimal)
-        obs_min = round(np.min(insitu_no_nan),decimal)
-        model_max = round(np.max(model_no_nan),decimal)
-        obs_max = round(np.max(insitu_no_nan),decimal)
-                       
-        # Write total bias as an attribute
-        nc_file.setncattr('model_mean', model_mean)
-        nc_file.setncattr('obs_mean', obs_mean)
-        nc_file.setncattr('model_min', model_min)
-        nc_file.setncattr('obs_min', obs_min)
-        nc_file.setncattr('model_max', model_max)
-        nc_file.setncattr('obs_max', obs_max)
-        
-        # Console feedback to the user
-        if -depth<h:
-            print('')
-            print('----------------------------------------------------------------')
-            print(f'{Fore.GREEN}{Style.BRIGHT} Successfully Done!!!{Style.RESET_ALL}')
-            print('----------------------------------------------------------------')
-            print(f'Find your evaluation output netCDF file at: {output_directory}')
-        elif i_shifted == 0 and j_shifted == 0 and h<-depth:
-            print('')
-            print('----------------------------------------------------------------')
-            print(f'{Fore.GREEN}{Style.BRIGHT} Successfully Done!!!{Style.RESET_ALL}')
-            print('----------------------------------------------------------------')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} WARNING: {Style.RESET_ALL}')
-            print(f'{Fore.CYAN}{Style.BRIGHT} The following issue is caused by lower resolution bathymetry data used in the model, not very well suited for coastal areas* {Style.RESET_ALL}')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} The model is shallower than the in situ data due to bathymetric inconsistencies, your model height is (h = {-round(h)} m), {Style.RESET_ALL}')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} while in situ data is at (depth = {depth} m). Your model output is therefore taken at the deepest model point since model is shallower.  {Style.RESET_ALL}')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} Alternatively; if prefered, the user can consider changing/shifting i_shift, j_shift or both from zero to deeper parts of the ocean {Style.RESET_ALL}')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} REMEMBER:  {Style.RESET_ALL}')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} i_shifted :optional user input for shifting input lon/xi by a grid point at a time on function get_model_obs_ts() {Style.RESET_ALL}')
-            print(f'{Fore.YELLOW}{Style.BRIGHT} j_shifted :optional user input for shifting input lat/eta by a grid point at a time on function get_model_obs_ts() {Style.RESET_ALL}')
-            print('')
-            print(f'Find your evaluation output netCDF file at: {output_directory}')            
-        else:
-            print('')
-            print('----------------------------------------------------------------')
-            print(f'{Fore.RED}{Style.BRIGHT} Evaluation FAILED!!!{Style.RESET_ALL}')
-            print('----------------------------------------------------------------')
-            print(f"{Fore.MAGENTA}{Style.BRIGHT} But don't panic, here's how you can fix it: {Style.RESET_ALL}")
-            print('Consider changing i_shift, j_shift or both from zero to deeper parts of the ocean or change the station')
-            print(f'the given input is of observation depth ={Fore.GREEN}{Style.BRIGHT} {-depth} m {Style.RESET_ALL}> h = -{round(h)} m, this means you are evaluating below sea-floor; remember h is model sea-height')
-            print('')
-            print('Remember:')
-            print('i_shifted :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time')
-            print('j_shifted :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time')
+            long_obs,lat_obs =extract_lat_lon(ds_obs)
             
-    # print('')
-    # print('----------------------------------------------------------------')
-    # print(f'{Fore.RED}{Style.BRIGHT} Evaluation FAILED!!!{Style.RESET_ALL}')
-    # print('----------------------------------------------------------------')
-    # print(f"{Fore.MAGENTA}{Style.BRIGHT} But don't panic, here's how you can fix it: {Style.RESET_ALL}")
-    # print('Consider changing i_shift, j_shift or both from zero to deeper parts of the ocean or change the station')
-    # print(f'the given input is of observation depth ={Fore.GREEN}{Style.BRIGHT} {-depth} m {Style.RESET_ALL}> h = -{round(h)} m, this means you are evaluating below sea-floor; remember h is model sea-height')
-    # print('')
-    # print('Remember:')
-    # print('i_shifted :optional user inputs useful for shifting input lon or specifically xi by a grid point at a time')
-    # print('j_shifted :optional user inputs useful for shifting input lat or specifically eta by a grid point at a time')
-                       
-# %%
+        model_data = post.get_ts(fname, var, long_obs, lat_obs, ref_date,
+                             i_shift=0, j_shift=0,
+                             time_lims=slice(None),
+                             depths=depth,  # slice(None),
+                             default_to_bottom=True
+                             )
+
+        da_obs = ds_obs[var][:]        
+        data_obs_model_timeaxis  = obs_2_model_timeaxis(da_obs, model_data)    
+        
+        if "depth" in ds_obs.dims and len(ds_obs.coords["depth"]) > 1:
+            longitude = ds_obs.lon.values
+            latitude = ds_obs.lat.values
+        else:
+            longitude,latitude =extract_lat_lon(ds_obs)
+        
+        if data_obs_model_timeaxis.dims == ("time",):            
+            model_data = model_data[var][:]
+            
+            # Calling the statistics function
+            (insitu_correlation, insitu_rmse, insitu_mean_diff,
+             insitu_min_value, insitu_max_value,
+             model_correlation, model_rmse, model_mean_diff,
+             model_min_value, model_max_value, model_total_bias
+            ) = statistics(model_data, data_obs_model_timeaxis)
+            
+            model_data = model_data.values
+            insitu_data = data_obs_model_timeaxis.values            
+            time = data_obs_model_timeaxis.time.values
+            insitu_da = xr.DataArray(insitu_data, dims=("time"), coords={"time": time})
+            model_da = xr.DataArray(model_data, dims=("time"), coords={"time": time})
+            
+            # Create a Dataset with the DataArrays
+            ds = xr.Dataset({f"insitu_data_{var}": insitu_da, f"model_data_{var}": model_da})
+            
+            #Global attributes        
+            ds.attrs["longitude"] = longitude
+            ds.attrs["latitude"] = latitude 
+            
+            ds = ds.assign_coords({"longitude":longitude})
+            ds = ds.assign_coords({"latitude":latitude})
+            ds = ds.assign_coords({"depth":depth})
+            
+            # Add attributes for statistics to the Dataset
+            ds.attrs["insitu_correlation_coefficient"] = insitu_correlation
+            ds.attrs["insitu_rmse"] = insitu_rmse
+            ds.attrs["insitu_mean_difference"] = insitu_mean_diff
+            ds.attrs["insitu_min_value"] = insitu_min_value
+            ds.attrs["insitu_max_value"] = insitu_max_value
+            
+            ds.attrs["model_correlation_coefficient"] = model_correlation
+            ds.attrs["model_rmse"] = model_rmse
+            ds.attrs["model_mean_difference"] = model_mean_diff
+            ds.attrs["model_min_value"] = model_min_value
+            ds.attrs["model_max_value"] = model_max_value
+            ds.attrs["model_total_bias"] = model_total_bias
+            
+            # Calculate seasonal means for insitu_data
+            insitu_seasonal_means = {}
+            for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
+                seasonal_data = insitu_da.sel(time=insitu_da.time.dt.month.isin(months))
+                insitu_seasonal_means[season] = seasonal_data.mean(dim=["time"]).item()
+            
+            # Calculate seasonal means for model_data
+            model_seasonal_means = {}
+            for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
+                seasonal_data = model_da.sel(time=model_da.time.dt.month.isin(months))
+                model_seasonal_means[season] = seasonal_data.mean(dim=["time"]).item()
+            
+            # Add attributes for seasonal means to the Dataset
+            ds.attrs.update({
+                f"insitu_seasonal_mean_{season}": mean_value for season, mean_value in insitu_seasonal_means.items()
+            })
+            ds.attrs.update({
+                f"model_seasonal_mean_{season}": mean_value for season, mean_value in model_seasonal_means.items()
+            })
+            
+            # Save the Dataset to a NetCDF file
+            output_path = 'Validation_Test_ATAP.nc'
+            ds.to_netcdf(output_path)
+            
+            print("______________________________________________________________")
+            print("______________________________________________________________")            
+            print("Your output file will look like this",ds)        
+            print("______________________________________________________________")
+            print("______________________________________________________________")
+            print("NetCDF file saved successfully: This is a rho grid, single water depth dataset i.e. ATAP.")
+            
+        else:
+
+            depth_levels = data_obs_model_timeaxis.depth.values
+            
+            # Assuming the number of depth levels is `n_depth_levels`
+            n_depth_levels = len(depth_levels)
+            
+            # Initialize empty arrays for each statistical measure. This will append on the for loop runs.
+            insitu_correlation = np.empty(n_depth_levels)
+            insitu_rmse = np.empty(n_depth_levels)
+            insitu_mean_diff = np.empty(n_depth_levels)
+            insitu_min_value = np.empty(n_depth_levels)
+            insitu_max_value = np.empty(n_depth_levels)
+            
+            model_correlation = np.empty(n_depth_levels)
+            model_rmse = np.empty(n_depth_levels)
+            model_mean_diff = np.empty(n_depth_levels)
+            model_min_value = np.empty(n_depth_levels)
+            model_max_value = np.empty(n_depth_levels)
+            model_total_bias = np.empty(n_depth_levels)          
+            
+            # Loop through depth levels
+            for idx_depth, depth_level in enumerate(depth_levels):
+                model_data_depth = model_data[var][:, idx_depth]
+                obs_data_depth = data_obs_model_timeaxis[:, idx_depth]
+                            
+                (insitu_correlation[idx_depth], insitu_rmse[idx_depth], insitu_mean_diff[idx_depth],
+                 insitu_min_value[idx_depth], insitu_max_value[idx_depth],
+                 model_correlation[idx_depth], model_rmse[idx_depth], model_mean_diff[idx_depth],
+                 model_min_value[idx_depth], model_max_value[idx_depth], model_total_bias[idx_depth]
+                 ) = statistics(model_data_depth, obs_data_depth)
+
+            model_data = model_data[var].values
+            insitu_data = data_obs_model_timeaxis.values
+            depth = np.arange(insitu_data.shape[1])
+            
+            # Create a new time array based on the insitu data timeseries
+            time = data_obs_model_timeaxis.time.values
+
+            # Create xarray DataArrays for the entire dataset  
+            model_da = xr.DataArray(model_data , dims=("time", "depth"), coords={"time": time, "depth": depth})
+            insitu_da = xr.DataArray(insitu_data, dims=("time", "depth"), coords={"time": time, "depth": depth})
+            
+            # Create a Dataset with the DataArrays
+            ds = xr.Dataset({f"insitu_{var}": insitu_da, f"model_{var}": model_da})
+            
+            # Add statistics as variables to the Dataset
+            ds["insitu_correlation"] = insitu_correlation
+            ds["insitu_rmse"] = insitu_rmse
+            ds["insitu_mean_difference"] = insitu_mean_diff
+            ds["insitu_min_value"] = insitu_min_value
+            ds["insitu_max_value"] = insitu_max_value
+            
+            ds["model_correlation"] = model_correlation
+            ds["model_rmse"] = model_rmse
+            ds["model_mean_difference"] = model_mean_diff
+            ds["model_min_value"] = model_min_value
+            ds["model_max_value"] = model_max_value
+            ds["model_total_bias"] = model_total_bias
+            
+            # Calculate seasonal means for insitu_data & model_data
+            insitu_seasonal_means = {}
+            for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
+                seasonal_data = insitu_da.sel(time=insitu_da.time.dt.month.isin(months))
+                insitu_seasonal_means[season] = seasonal_data.mean(dim=["time"]).values
+
+            model_seasonal_means = {}
+            for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
+                seasonal_data = model_da.sel(time=model_da.time.dt.month.isin(months))
+                model_seasonal_means[season] = seasonal_data.mean(dim=["time"]).values
+            
+            # Add attributes for seasonal means to the Dataset
+            ds.attrs.update({
+                f"insitu_seasonal_mean_{season}": mean_value for season, mean_value in insitu_seasonal_means.items()
+            })
+            ds.attrs.update({
+                f"model_seasonal_mean_{season}": mean_value for season, mean_value in model_seasonal_means.items()
+            })
+            
+            # Save the Dataset to a NetCDF file
+            output_path = 'Validation_Test_Wirewalker.nc'
+            ds.to_netcdf(output_path)
+            
+            print("______________________________________________________________")
+            print("______________________________________________________________")            
+            print("Your output file will look like this",ds)    
+            print("______________________________________________________________")
+            print("______________________________________________________________")
+            print("NetCDF file saved successfully.")
     
-if __name__ == "__main__":
-
-    # Define the input parameters:  
-    # fname_out is the file name you want your output netCDF file to be labelled as.
-    # fname_out = 'CapePoint_CP002.nc' # or 'CapePoint_CP003.nc'  'FalseBay_FB001.nc'
-    fname_out = 'wirewalker_mooring_1.nc' # or 'adcp_mooring_2.nc'  'adcp_mooring_3.nc'
-    # dir_model is the directory at which your model files are located.
-    dir_model = '/home/nkululeko/somisana-croco/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/output/croco_avg_Y2011M0*.nc'
-
-    # fname_obs is the file name of your observations
-    # fname_obs = f'/mnt/d/DATA-20231010T133411Z-003/DATA/ATAP/Processed/Processed_Station_Files/{fname_out}'
-    # fname_obs = f'/home/nkululeko/insitu-data/ALUCAS_SHB/adcp_mooring/{fname_out}'
-    fname_obs = f'/home/nkululeko/insitu-data/ALUCAS_SHB/wirewalker_mooring/{fname_out}'
-
-    # Output file name and directory:
-    # Be sure to change the following directory to the one in which you are working
-    # output_directory = '/mnt/d/Run_False_Bay_2008_2018_SANHO/Validation/ATAP/model_validation/'#'i-j_Shifted/'
-    output_directory = '/home/nkululeko/somisana-croco/configs/swcape_02/croco_v1.3.1/C01_I01_GLORYS_ERA5/postprocess/'
-    fname_out = os.path.join(output_directory, 'Validation_'+fname_out )
-
-    # Other parameters:
-    # The model frequency is the rate at which the model produces average outputs. usualy an attribute in the model
-    model_frequency='24H'
-    # The variable of interest during validation. Should idealy be extracted accurately from the observations file
-    var = 'temp'
-    # The depth you are providing should be the in situ station depth
-    depth=-50
-    # The following ref_date corrasponds to the refdate of croco SWCC model, 
-    # change it if you model has a different ref date
-    # ref_date = datetime(1990, 1, 1, 0, 0, 0)
-    ref_date = datetime(1993, 1, 1, 0, 0, 0)
-    
-    get_model_obs_ts(dir_model,fname_obs,
-                      fname_out,model_frequency=model_frequency,
-                      var=var,
-                      ref_date=ref_date,
-                      depth=depth,
-                      # The following are optional user inputs. Should be left as 0 on both, otherwise if the output
-                      # netCDF file returns empty arrays, then what has happened is that the model z level is 
-                      # modelled to be beneath bathymetry for the above statn depth. in this case the 
-                      #i_shifted and j_shifted can be used to machanically shift the obs station to a deeper ocean.
-                       i_shifted=0,j_shifted=0   #CapePoint_CP001.nc , depth=-32
-                       # i_shifted=0,j_shifted=-3  #CapePoint_CP002.nc, depth=-50
-                       # i_shifted=3,j_shifted=-3  #CapePoint_CP003.nc, depth=-58
-                      # i_shifted=0,j_shifted=0   #FalseBay_FB001.nc , depth=-40
-                       # i_shifted=-1,j_shifted=0  #FalseBay_FB002.nc, depth=-50
-                       # i_shifted=-2,j_shifted=0  #FalseBay_FB003.nc, depth=-58
-                      # i_shifted=0,j_shifted=0  #WalkerBay_WB003.nc, depth=-23
-                      )
+    print("Good Job!!!.")
     
