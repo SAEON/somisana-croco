@@ -50,8 +50,12 @@ nc = netcdf(MERCATOR_name_raw);
 lon = nc{'longitude'}(:);
 lat = nc{'latitude'}(:);
 depth = nc{'depth'}(:);
-time = nc{'time'}(:);
-time = time / 24 + datenum(1950,1,1) - datenum(Yorig,1,1);
+time = nc{'time'}(:); % days since origin
+time_origin=ncreadatt(MERCATOR_name_raw,'time','units');
+time_origin=strsplit(time_origin);
+time_origin=char(time_origin(3));
+time_origin=datenum(time_origin);
+time = time + time_origin - datenum(Yorig,1,1);
 
 %
 % Get SSH
