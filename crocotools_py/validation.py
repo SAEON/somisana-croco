@@ -10,7 +10,7 @@ from datetime import datetime
 # import cftime
 from colorama import Fore, Style
 
-# %% rho statistics
+# %% rho & uv statistics
 
 def statistics(model_data,data_obs_model_timeaxis):
     """
@@ -201,7 +201,6 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
     # Some observations have a different time format, that makes tem compatible
     ds_obs['time'] = ds_obs['time'].astype('datetime64[ns]') 
 
-
     # Define the time limits
     time_lims = [datetime(2011, 3, 1), datetime(2011, 3, 31)]
     # time_lims = [datetime(2013, 1, 1), datetime(2011, 12, 31)]
@@ -358,14 +357,6 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
         
         # Create a Dataset with the DataArrays for u and v components
         ds = xr.Dataset({"insitu_u": insitu_da_u, "insitu_v": insitu_da_v, "model_u": model_da_u, "model_v": model_da_v})
-        
-        ds = ds.assign_coords({"longitude":longitude})
-        ds = ds.assign_coords({"latitude":latitude})
-        # ds = ds.assign_coords({"depth":depth})
-        
-        #Global attributes        
-        ds.attrs["longitude"] = longitude
-        ds.attrs["latitude"] = latitude       
         
         # Calculate seasonal means for insitu_data
         insitu_seasonal_means = {}
