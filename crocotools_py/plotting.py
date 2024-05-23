@@ -25,7 +25,8 @@ def setup_plot(ax, fname, extents=[]):
     #
     # first need to get the domain extents if it's not set autmatically
     if len(extents) == 0:
-        lon,lat,_ = post.get_lonlatmask(fname)
+        lon = post.get_grd_var(fname,'lon_rho')
+        lat = post.get_grd_var(fname,'lat_rho')
         lon_min = min(np.ravel(lon))
         lon_max = max(np.ravel(lon))
         lat_min = min(np.ravel(lat))
@@ -194,8 +195,12 @@ def plot(fname,
     # if no level provided then default to the surface level
     if level is None:
         print('no vertical level provided - defaulting to surface layer')
-        with xr.open_dataset(fname) as ds: 
-            level = len(ds.s_rho) - 1
+        if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+            ds = fname.copy()
+        else:
+            ds = post.get_ds(fname,var)
+        level = len(ds.s_rho) - 1
+        ds.close()
     
     var_plt = plot_var(ax,fname,var,
              tstep=tstep,

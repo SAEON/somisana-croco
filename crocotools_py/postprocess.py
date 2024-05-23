@@ -460,22 +460,27 @@ def get_time(fname,ref_date=None,time_lims=slice(None)):
         time_lims = optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
                     If slice(None), then all time-steps are extracted
     '''
-    if isinstance(fname, xr.Dataset):
+    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
         ds = get_ds(fname)
 
     time = ds.time.values
     
-    if ref_date is None:
-        print('ref_date is not defined - using default of 2000-01-01')
-        ref_date=datetime(2000,1,1)
-
-    # convert 'time' (in seconds since ref_date) to a list of datetimes
-    time_dt = []
-    for t in time:
-        date_now = ref_date + timedelta(seconds=np.float64(t))
-        time_dt.append(date_now)
+    # convert time from floats to datetimes, if not already converted in the input ds object
+    if all(isinstance(item, float) for item in np.atleast_1d(time)):
+        
+        if ref_date is None:
+            print('ref_date is not defined - using default of 2000-01-01')
+            ref_date=datetime(2000,1,1)
+    
+        # convert 'time' (in seconds since ref_date) to a list of datetimes
+        time_dt = []
+        for t in time:
+            date_now = ref_date + timedelta(seconds=np.float64(t))
+            time_dt.append(date_now)
+    else:
+        time_dt = time.astype('datetime64[s]').astype(datetime)
     
     # subset based in time_lims input
     if not isinstance(time_lims,slice):
@@ -493,7 +498,7 @@ def get_grd_var(fname,var_str,
     Extract a grid variable
     '''
     
-    if isinstance(fname, xr.Dataset):
+    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
         # for effeciency we shouldn't use open_mfdataset for this function 
@@ -573,11 +578,39 @@ def tstep_to_slice(fname, tstep, ref_date):
     
     return tstep
 
+def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
+    '''
+    Take the domain reltaed input to get_var, and return slice objects to be used to
+    subset the dataset using ds.isel()
+    '''
+    if subdomain is None:
+        eta_rho = eta_or_xi_to_slice(eta_rho,var_str)
+        xi_rho = eta_or_xi_to_slice(xi_rho,var_str)
+        eta_v = eta_or_xi_to_slice(eta_v,var_str)
+        xi_u = eta_or_xi_to_slice(xi_u,var_str)
+    else:
+        # using subdomain input to do the spatial subset - [lon0,lon1,lat0,lat1]
+        # get the indices corresponding to the four corners of the requested subdomain
+        j_bl,i_bl = find_nearest_point(grdname, subdomain[0], subdomain[2])
+        j_br,i_br = find_nearest_point(grdname, subdomain[1], subdomain[2])
+        j_tr,i_tr = find_nearest_point(grdname, subdomain[1], subdomain[3])
+        j_tl,i_tl = find_nearest_point(grdname, subdomain[0], subdomain[3])
+        # get extreme indices for slicing (using all to be safe in the case of a curvilinear grid)
+        j_min = min(j_bl,j_br,j_tr,j_tl)
+        j_max = max(j_bl,j_br,j_tr,j_tl)
+        i_min = min(i_bl,i_br,i_tr,i_tl)
+        i_max = max(i_bl,i_br,i_tr,i_tl)
+        # create the slice objects
+        eta_rho = slice(j_min,j_max+1) # adding one as slice is non-inclusive of the end index
+        xi_rho = slice(i_min,i_max+1) # adding one as slice is non-inclusive of the end index
+        eta_v = slice(j_min,j_max) # not adding one to keep the correct v-grid indices
+        xi_u = slice(i_min,i_max) # not adding one to keep the correct u-grid indices
+        
+    return eta_rho,eta_v,xi_rho,xi_u # all as slice objects
+
 def eta_or_xi_to_slice(eta_or_xi,var_str):
     '''
-    Take the input to get_var, and return a slice object to be used to
-    subset the dataset using ds.isel()
-    see get_var() for how this is used
+    simple function used in domain_to_slice()
     '''
     # as per time, make sure we keep the eta_rho/xi dimensions after the ds.isel() step, even if we specify a single value
     # this greatly simplifies further functions for depth interpolation 
@@ -621,6 +654,7 @@ def get_var(fname,var_str,
             eta_v=slice(None),
             xi_rho=slice(None),
             xi_u=slice(None),
+            subdomain=None,
             ref_date=None):
     '''
         extract a variable from a CROCO file
@@ -646,11 +680,16 @@ def get_var(fname,var_str,
         xi_u = index/indices of the eta_rho axis
               If slice(None), then all indices are extracted
               this is only needed for extracting a subset of 'u'
+        subdomain = extents used to do a spatial subset, as a list in format [lon0,lon1,lat0,lat1]
+              If None, then no subsetting will get done
         ref_date = reference datetime used in croco runs
         
         Retruns an xarray dataarray object of the requested data
     '''
     
+    if grdname is None:
+        grdname = fname
+        
     print('extracting the data from croco file(s) - ' + var_str)
     # ----------------------------------------------
     # Prepare indices for slicing in ds.isel() below
@@ -659,15 +698,14 @@ def get_var(fname,var_str,
     # for each of the input dimensions we check the format of the input 
     # and construct the appropriate slice to extract using ds.isel() below
     tstep = tstep_to_slice(fname, tstep, ref_date)
-    eta_rho = eta_or_xi_to_slice(eta_rho,var_str)
-    xi_rho = eta_or_xi_to_slice(xi_rho,var_str)
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str)
     level_for_isel = level_to_slice(level)
 
     # -------------------------
     # Get a subset of the data
     # -------------------------
     #
-    if isinstance(fname, xr.Dataset):
+    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
         ds = get_ds(fname,var_str)
@@ -677,12 +715,16 @@ def get_var(fname,var_str,
                        eta_rho=eta_rho,
                        xi_rho=xi_rho,
                        xi_u=xi_u,
-                       eta_v=eta_v
+                       eta_v=eta_v,
+                       missing_dims='ignore' # handle case where input is a previously extracted dataset/dataarray
                        )
-    # extract data for the requested variable
-    # da is a dataarray object
-    # all dimensions not related to var_str are dropped in da
-    da = ds[var_str]
+    if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
+        # extract data for the requested variable
+        # da is a dataarray object
+        # all dimensions not related to var_str are dropped in da
+        da = ds[var_str]
+    else:
+        da = ds.copy()
     # da = da.values # avoiding this at all costs as it's slow!!!
     
     # replace the time dimension with a list of datetimes
@@ -692,10 +734,13 @@ def get_var(fname,var_str,
     
     # regrid u/v data onto the rho grid
     if var_str == 'u' or var_str == 'v':
-        if var_str=='u':
-            data_rho=u2rho(da)   
-        if var_str=='v':
-            data_rho=v2rho(da) 
+        if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
+            if var_str=='u':
+                data_rho=u2rho(da)   
+            if var_str=='v':
+                data_rho=v2rho(da) 
+        else:
+            data_rho=da.copy() 
         # Create a new xarray DataArray with correct dimensions
         # now that u/v data is on the rho grid
         if len(data_rho.shape)==4:
@@ -757,12 +802,10 @@ def get_var(fname,var_str,
     # Masking
     # --------
     print('applying the mask - ' + var_str)
-    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice):
-        if grdname is None:
-            grdname = fname
-        _,_,mask=get_lonlatmask(grdname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
-                                eta_rho=eta_rho,
-                                xi_rho=xi_rho)
+    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.DataArray):
+            _,_,mask=get_lonlatmask(grdname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
+                                    eta_rho=eta_rho,
+                                    xi_rho=xi_rho)
     else:
         mask=1
     # it looks like xarray and numpy are clever enough to use the 2D mask on a 3D or 4D variable
@@ -864,7 +907,9 @@ def get_vort(fname,
     see get_var() for a description of the inputs   
     
     subsetting in space not perimitted for this. makes no sense for a single
-    point, and doing it on a subset of the domain is a proper edge case
+    point, and doing it on a subset of the domain is a proper edge case.
+    Actually, the subdomain input to get_var does in fact allow for you to compute
+    vorticity on a subset easily... just need to implement here
     '''
     
     # start by getting u and v
@@ -926,7 +971,7 @@ def find_nearest_point(fname, Longi, Latit):
             - i :the nearest xi index
     """
     
-    if isinstance(fname, xr.Dataset):
+    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
         # for effeciency we shouldn't use open_mfdataset for this function 
@@ -1093,7 +1138,7 @@ def get_ts(fname, var, lon, lat, ref_date,
             # we explicitly check for existance of 's_rho' so we can handle 2D variables
             
             # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-            if isinstance(fname, xr.Dataset):
+            if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
                 ds = fname.copy()
             else:
                 ds = get_ds(fname,var)
@@ -1252,7 +1297,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
         # as we are dealing with u,v which by definition have the 's_rho' coordinate
         
         # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-        if isinstance(fname, xr.Dataset):
+        if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
             ds = fname.copy()
         else:
             ds = get_ds(fname)
