@@ -65,10 +65,10 @@ time = time + time_origin - datenum(Yorig,1,1);
 vname='zos';
 ncc=nc{vname};
 ssh=ncc(:);
-%missval=ncc._FillValue(:);
+missval=ncc._FillValue(:);
 %scale_factor=ncc.scale_factor(:);
 %add_offset=ncc.add_offset(:);
-%ssh(ssh<=missval)=NaN;
+ssh(ssh<=missval)=NaN;
 %ssh = ssh.*scale_factor + add_offset;
 %
 %
@@ -78,10 +78,10 @@ ssh=ncc(:);
 vname='uo';
 ncc=nc{vname};
 u=ncc(:);
-%missval=ncc._FillValue(:);
+missval=ncc._FillValue(:);
 %scale_factor=ncc.scale_factor(:);
 %add_offset=ncc.add_offset(:);
-%u(u<=missval)=NaN;
+u(u<=missval)=NaN;
 %u = u.*scale_factor + add_offset;
 %
 % Get V
@@ -90,10 +90,10 @@ u=ncc(:);
 vname='vo';
 ncc=nc{vname};
 v=ncc(:);
-%missval=ncc._FillValue(:);
+missval=ncc._FillValue(:);
 %scale_factor=ncc.scale_factor(:);
 %add_offset=ncc.add_offset(:);
-%v(v<=missval)=NaN;
+v(v<=missval)=NaN;
 %v = v.*scale_factor + add_offset;
 %
 % Get TEMP
@@ -102,10 +102,10 @@ v=ncc(:);
 vname='thetao';
 ncc=nc{vname};
 temp=ncc(:);
-%missval=ncc._FillValue(:);
+missval=ncc._FillValue(:);
 %scale_factor=ncc.scale_factor(:);
 %add_offset=ncc.add_offset(:);
-%temp(temp<=missval)=NaN;
+temp(temp<=missval)=NaN;
 %temp = temp.*scale_factor + add_offset;
 %
 % Get SALT
@@ -114,10 +114,10 @@ temp=ncc(:);
 vname='so';
 ncc=nc{vname};
 salt=ncc(:);
-%missval=ncc._FillValue(:);
+missval=ncc._FillValue(:);
 %scale_factor=ncc.scale_factor(:);
 %add_offset=ncc.add_offset(:);
-%salt(salt<=missval)=NaN;
+salt(salt<=missval)=NaN;
 %salt = salt.*scale_factor + add_offset;
 
 close(nc)
