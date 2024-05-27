@@ -54,7 +54,7 @@ run_date = datenum(run_date_str, 'yyyy-mm-dd HH');
 % name of raw downloaded enviromental data file for this day. 
 MERCATOR_name_raw=[My_OGCM_dir,'mercator_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.nc'];
 %
-% write it into a more croco_tools friendly format. The output goes to forcing file folder FORC_DATA_DIR
+% write it into a more croco_tools friendly format
 % where dynamic forcing files are created
 MERCATOR_name=[OGCM_dir,OGCM_prefix,num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.cdf'];
 write_mercator_ocims(MERCATOR_name,MERCATOR_name_raw,Yorig);

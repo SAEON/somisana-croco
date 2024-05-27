@@ -34,7 +34,10 @@ jobs:
 
   # start by building our docker images needed in the workflow
   build_images:
-    if: ${{ github.event.inputs.build_images == 'true' }}  # Conditional execution (saves time when testing something else and we don't want to build it every time)
+    # conditional execution when run manually as a workflow_dispatch 
+    # saves time when testing something and we don't want to build the images every time
+    # but it'll get executed every time when run as a scheduled workflow
+    if: ${{ github.event.schedule || github.event.inputs.build_images == 'true' }}  
     strategy:
       matrix: # the 'matrix' strategy allows us to build all three docker images in parallel using the same reusable workflow
         image_id: ['cli', 'run', 'matlab']
@@ -77,7 +80,7 @@ jobs:
   
   # everything below here runs using the `mims1` self-hosted runner
   # This is the `computecroco01` server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
-  # It is possible that we may want to use an additional modelling server (which will be a separate node)
+  # It is possible that we may want to use an additional modelling server (which will be a separate node on MIMS)
   # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
   # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server) 
@@ -99,10 +102,11 @@ jobs:
   # prepare croco config dirs
   prep_configdirs:
     needs: [envs,get_forcing]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
-        domain: ['swcape_02']
+        # running as a matrix strategy allows us to handle different domains in parallel
+        domain: ['swcape_02'] 
     uses: ./.github/workflows/prep_configdir.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -117,6 +121,7 @@ jobs:
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
+        # running as a matrix strategy allows us to handle different domains and/or model forcings in parallel
         domain: ['swcape_02']
         blk: ['GFS']
         frc: ['']

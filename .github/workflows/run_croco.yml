@@ -53,6 +53,7 @@ on:
         type: string
 
 env:
+  # define the directory names for this configuration
   # unfortunately it looks like you can't use vars defined here to define others i.e. you can't use {{ env.* }} inside this block, you have to use {{ inputs.* }} for each var
   BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
   DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
@@ -90,9 +91,12 @@ jobs:
       - name: Try to find a suitable restart file
         id: check_restart
         run: |
-          current_date=${{ inputs.RUN_DATE }}
+          # get the run_date as an epoch time (seconds since 1970-01-01)
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_epoch_time=$(date -d "${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00" +%s)
+          # current_date gets changed iteratively in the while loop below
+          current_date=${{ inputs.RUN_DATE }} 
           step_count=0
-
           MAX_STEPS=1 # allow option for looking further back for restart file (although if MAX_STEPS>1 we'll need to edit the .in file to look for the correct time-step!)
 
           while [[ $step_count -lt $MAX_STEPS ]]; do
@@ -104,6 +108,7 @@ jobs:
             epoch_minus_6hrs=$((epoch_time - 6 * 60 * 60))
             # update $current_date
             current_date=$(date -d "@$epoch_minus_6hrs" +%Y%m%d_%H)
+            current_date_epoch_time=$(date -d "${current_date:0:4}-${current_date:4:2}-${current_date:6:2} ${current_date:9:2}:00:00" +%s)
 
             # restart file to look for
             rst_file="${{ env.BRANCH_DIR }}/${current_date}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/output/croco_rst.nc"
@@ -113,7 +118,11 @@ jobs:
               echo "restart file found at: $rst_file"
               echo "linking to ${{ env.SCRATCH_DIR }}/croco_ini.nc"
               ln -s $rst_file ${{ env.SCRATCH_DIR }}/croco_ini.nc
-              break  # Exit the loop since the restart file is found
+              # compute the seconds between run_date and current_date - this is needed to edit the .ini file so we initialise from the correct time-step in the restart file
+              rst_offset_seconds=$((run_date_epoch_time - current_date_epoch_time))
+
+              # Exit the loop since the restart file is found
+              break
             else
               echo "restart file not found: $rst_file"
               step_count=$((step_count + 1))
@@ -126,7 +135,8 @@ jobs:
             echo "rst_date=NA" >> $GITHUB_OUTPUT 
           else
             echo "make_ini=0" >> $GITHUB_OUTPUT
-            echo "rst_date=$current_date" >> $GITHUB_OUTPUT 
+            echo "rst_date=$current_date" >> $GITHUB_OUTPUT
+            echo "rst_offset_seconds=$rst_offset_seconds" >> $GITHUB_OUTPUT
           fi
   
   # make the boundary forcing          
