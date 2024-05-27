@@ -211,4 +211,11 @@ jobs:
 #          in_file="${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in"
 #          cp ${in_file} ${{ env.SCRATCH_DIR }}/croco.in
 #          # HERE I HAVE TO DO SED REPLACEMENT ON PLACEHOLDERS - STILL NEED TO DESIGN croco_fcst.in
+#
+# compile the code (no dependencies needed)
+#
+# run the model
 # 
+# do the postprocessing and copying to a thredds (or other) server
+#
+#
