@@ -25,6 +25,9 @@ def validate_download_or_remove(fileout):
             "WARNING:", fileout, "< 1kB (flagged as invalid)", open(fileout, "r").read()
         )
         os.remove(fileout)
+        return False
+    else:
+        return True
 
 def set_params(_params, dt, i):
     params = dict(_params)
@@ -39,16 +42,25 @@ def download_file(fname, outputDir, encoded_params):
     url = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl?" + encoded_params  # Construct URL
     fileout = os.path.join(outputDir, fname)
     if not os.path.isfile(fileout):
-        try:
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{now}] Downloading {fileout}")
-            response = urllib.request.urlopen(url)  # Fetch data
-            with open(fileout, 'wb') as f:
-                f.write(response.read())
-            validate_download_or_remove(fileout)
+        max_retries = 3
+        delay = 60
+        download_success = False
+        for attempt in range(1,max_retries+1):
+            try:
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{now}] Downloading {fileout}")
+                response = urllib.request.urlopen(url)  # Fetch data
+                with open(fileout, 'wb') as f:
+                    f.write(response.read())
+                download_success = validate_download_or_remove(fileout)
 
-        except urllib.error.URLError as e:
-            print(f"Request failed: {e}")
+            except urllib.error.URLError as e:
+                print(f"Download of {fileout} failed: {e}")
+
+            if download_success:
+                return
+            else:
+                print(f"Retrying {fileout} download in {delay} seconds...")
     else:
         print("File already exists", fileout)
 
