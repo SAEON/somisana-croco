@@ -134,7 +134,7 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
       COMP: C01
-      INP: I01
+      INP: I99
       BLK: ${{ matrix.blk }}
       FRC: ${{ matrix.frc }}
       OGCM: ${{ matrix.ogcm }}

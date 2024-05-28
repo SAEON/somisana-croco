@@ -3,13 +3,13 @@
 # environment variables related to the runtime input file(s)
 # these would typically be in the croco run script, but we're putting
 # them here as they relate directly to what gets written to 
-# the runtime input file(s)
+# the runtime input (i.e. *.in) file
 # 
 #
 # Model time step [seconds]
 #
-DT=40
-DTFAST=40
+DT=60
+DTFAST=60
 #      Number of hours for averages files
 #      24 is 1 days
 #      48 is 2 days
@@ -31,11 +31,11 @@ T_REF=3
 NLEVEL=1
 #
 # these are the time extents for this run
-#NY_START=2009
-#NY_END=2013
+#NY_START=1993
+#NY_END=2019
 #NM_START=1
 #NM_END=12
-# but we had to run it in fits and starts due to copying over forcings files inbetween load shedding :(
+# but we had to run it in fits and starts due to CHPC max wall time of 48 hrs
 # so these settings get changed as we execute bits at a time
 NY_START=2013
 NY_END=2013

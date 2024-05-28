@@ -1,8 +1,8 @@
 Here is where we prepare all the files to be used in our CROCO configuration and where we run the model
 
-This directory includes a `jobcomp` file for compiling the croco code and a `run_croco_inter.bash` file for initialising the simulation. Both of these scripts use environment variables which are set up in `myenv_inter.bash`.
+For inter-annual runs, there is a `jobcomp_inter` file for compiling the croco code and a `run_croco_inter.bash` file for initialising the simulation. Both of these scripts use environment variables which are set up in `myenv_inter.bash`
 
-You'll need to have some directories in place with all of the required inputs, as described below. 
+Similar files exist for forecast simulations, although the operational workflow gets done in `.github/workflows/run_croco.yml`
 
 None of the netcdf files are copied to the remote repo, only the scripts used to generate them. 
 
@@ -14,12 +14,14 @@ Grid input
 Compile options
 ---------------
 `C**`
- 01 - baseline compile options
+01 - baseline compile options
 
 Runtime input (\*.in files)
 ---------------------------
 `I**`
- 01 - baseline runtime options
+01 - baseline runtime options, for an inter-annual hindcast, writing daily averaged outputs for the full domain, and hourly outputs for the surface
+02 - as per 01, but a shorter 3 month run, writing hourly averaged outputs for the full domain
+99 - baseline runtime options for running a forecast simulation
 
 Surface and boundary forcing
 ----------------------------

@@ -87,6 +87,7 @@ jobs:
     outputs:
       MAKE_INI: ${{ steps.check_restart.outputs.make_ini }}
       RST_DATE: ${{ steps.check_restart.outputs.rst_date }}
+      RST_STEP: ${{ steps.check_restart.outputs.rst_step }}
     steps:
       - name: Try to find a suitable restart file
         id: check_restart
@@ -94,7 +95,7 @@ jobs:
           # get the run_date as an epoch time (seconds since 1970-01-01)
           run_date=${{ inputs.RUN_DATE }}
           run_date_epoch_time=$(date -d "${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00" +%s)
-          # current_date gets changed iteratively in the while loop below
+          # current_date starts at run_date and gets changed iteratively in the while loop below
           current_date=${{ inputs.RUN_DATE }} 
           step_count=0
           MAX_STEPS=1 # allow option for looking further back for restart file (although if MAX_STEPS>1 we'll need to edit the .in file to look for the correct time-step!)
@@ -105,10 +106,9 @@ jobs:
             # Convert the datetime to epoch time (seconds since 1970-01-01)
             epoch_time=$(date -d "${current_date:0:4}-${current_date:4:2}-${current_date:6:2} ${current_date:9:2}:00:00" +%s)
             # Subtract 6 hours in seconds (6 hours * 60 minutes * 60 seconds)
-            epoch_minus_6hrs=$((epoch_time - 6 * 60 * 60))
+            current_date_epoch_time=$((epoch_time - 6 * 60 * 60))
             # update $current_date
-            current_date=$(date -d "@$epoch_minus_6hrs" +%Y%m%d_%H)
-            current_date_epoch_time=$(date -d "${current_date:0:4}-${current_date:4:2}-${current_date:6:2} ${current_date:9:2}:00:00" +%s)
+            current_date=$(date -d "@$current_date_epoch_time" +%Y%m%d_%H)
 
             # restart file to look for
             rst_file="${{ env.BRANCH_DIR }}/${current_date}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ env.RUN_NAME }}/output/croco_rst.nc"
@@ -118,8 +118,10 @@ jobs:
               echo "restart file found at: $rst_file"
               echo "linking to ${{ env.SCRATCH_DIR }}/croco_ini.nc"
               ln -s $rst_file ${{ env.SCRATCH_DIR }}/croco_ini.nc
-              # compute the seconds between run_date and current_date - this is needed to edit the .ini file so we initialise from the correct time-step in the restart file
-              rst_offset_seconds=$((run_date_epoch_time - current_date_epoch_time))
+              # compute the number of 6 hourly intervals between run_date and current_date - 
+              # this is needed to edit the .in file so we initialise from the correct time-step in the restart file
+              # (I guess I could have rather used $step_count + 1 here... should be same difference)
+              rst_step=$(((run_date_epoch_time - current_date_epoch_time) / (3600*6)))
 
               # Exit the loop since the restart file is found
               break
@@ -132,11 +134,13 @@ jobs:
           if [[ $step_count -eq $MAX_STEPS ]]; then
             echo "using ${{ inputs.OGCM }} to interpolate initial conditions"
             echo "make_ini=1" >> $GITHUB_OUTPUT
-            echo "rst_date=NA" >> $GITHUB_OUTPUT 
+            echo "rst_date=NA" >> $GITHUB_OUTPUT
+            # since we're using an ini file, set rst_step to 1, which means we'll use the first value in the ini file 
+            echo "rst_step=1" >> $GITHUB_OUTPUT
           else
             echo "make_ini=0" >> $GITHUB_OUTPUT
             echo "rst_date=$current_date" >> $GITHUB_OUTPUT
-            echo "rst_offset_seconds=$rst_offset_seconds" >> $GITHUB_OUTPUT
+            echo "rst_step=$rst_step" >> $GITHUB_OUTPUT
           fi
   
   # make the boundary forcing          
@@ -209,20 +213,35 @@ jobs:
           blk_file="${{ env.CONFIG_DIR }}/${{ inputs.BLK }}/croco_blk_${{ inputs.BLK }}_${{ inputs.RUN_DATE }}.nc"
           ln -s ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
   
-#  # get the runtime input file        
-#  get_inp:
-#    needs: [setup_rundir]
-#    env:
-#      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-#    runs-on: ${{ inputs.RUNNER_NAME }}
-#    steps:
-#      - name: get the runtime input file
-#        run: |
-#          in_file="${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in"
-#          cp ${in_file} ${{ env.SCRATCH_DIR }}/croco.in
-#          # HERE I HAVE TO DO SED REPLACEMENT ON PLACEHOLDERS - STILL NEED TO DESIGN croco_fcst.in
-#
+  # get the runtime input file        
+  get_inp:
+    needs: [setup_rundir,get_rst]
+    env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
+      RST_STEP: ${{ needs.get_rst.outputs.RST_STEP}} 
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: prepare the runtime input file
+        run: |
+          # compute the time parameters, using the my_env_in.sh file for this configuration
+          source ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/myenv_in.sh
+          HDAYS=${{ inputs.HDAYS }}
+          FDAYS=${{ inputs.FDAYS }}
+          NDAYS=$((HDAYS + FDAYS))
+          NUMTIMES=$((NDAYS * 24 * 3600 / DT))
+          NUMAVG=$((NH_AVG * 3600 / DT))
+          NUMHIS=$((NH_HIS * 3600 / DT))
+          # NUMSTA=$((NH_STA * 3600 / DT)) - station output not getting used as we can easily extract time-series as a postprocessing step
+          NUMAVGSURF=$((NH_AVGSURF * 3600 / DT))
+          NUMHISSURF=$((NH_HISSURF * 3600 / DT))
+          NUMRST=$((NH_RST * 3600 / DT)) # frequency of output in restart file to be written
+          RST_STEP=${{ env.RST_STEP }} # which time-step to restart from in this run
+
+          # do a sed replacement on the template .in file, and write the output to the scratch dir
+          sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
+
 # compile the code (no dependencies needed)
+# need to use the croco docker image to compile and run the model
 #
 # run the model
 # 

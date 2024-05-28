@@ -8,8 +8,8 @@
 #
 # Model time step [seconds]
 #
-DT=40
-DTFAST=40
+DT=60
+DTFAST=60
 #      Number of hours for averages files
 #      24 is 1 days
 #      48 is 2 days
@@ -33,7 +33,7 @@ NLEVEL=1
 # these are the time extents for this run
 NY_START=2011
 NY_END=2011
-NM_START=4
+NM_START=2
 NM_END=4
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
