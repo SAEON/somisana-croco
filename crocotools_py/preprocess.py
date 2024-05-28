@@ -96,6 +96,8 @@ def make_WASA3_from_blk(wasa_grid,
                  croco_blk_dir,
                  out_wasa_dir,
                  ref_date,
+                 start_date,
+                 end_date,
                  croco_atmos='ERA5',
                  interp_method='linear'
                  ):
@@ -181,10 +183,10 @@ def make_WASA3_from_blk(wasa_grid,
     # flatten lon,lat arays for use in interpolation later
     source_points = np.column_stack((np.array(lon_wasa).flatten(), np.array(lat_wasa).flatten()))
 
-    # Loop through croco blk files
-    croco_blk_files = sorted(fnmatch.filter(os.listdir(croco_blk_dir), '*blk*.nc*'))
-    for croco_blk_file in croco_blk_files:
-            
+    date_now=start_date
+    while date_now <= end_date:
+        croco_blk_file = 'croco_blk_'+croco_atmos+str(date_now.strftime('_Y%YM%m'))+'.nc'
+   
         # get the corresponding WASA blk filename
         croco_blk_file_splt=croco_blk_file.split(croco_atmos)
         croco_blk_file_WASA=croco_blk_file_splt[0]+'WASA3'+croco_blk_file_splt[1]
@@ -222,6 +224,8 @@ def make_WASA3_from_blk(wasa_grid,
             # ultimately, we need to get a un-corrupted copy of the data!
             if np.any(np.isnan(u_wasa.values.flatten())):
                 print('wasa contains missing data for '+croco_blk_file_WASA+'. Check this out!')
+            elif np.any(np.isnan(v_wasa.values.flatten())):
+                print('wasa contains missing data for '+croco_blk_file_WASA+'. Check this out!')
             
             # interpolate the wasa u,v wind vectors onto the croco grid   
             # I tried to find an in-built xarray interpolation method to do the job
@@ -242,7 +246,32 @@ def make_WASA3_from_blk(wasa_grid,
                 # flattening for use in griddata
                 u_wasa_now = u_wasa.isel(Time=t).values.flatten()
                 v_wasa_now = v_wasa.isel(Time=t).values.flatten()
-            
+#                # ---- DEBUGGING ------------
+#                # if np.any(np.isnan(u_wasa_now)):
+#                #     print('wasa contains missing u data for '+croco_blk_file_WASA+', '+t.strftime("%m/%d/%Y, %H:%M:%S"))
+#                # if np.any(np.isnan(v_wasa_now)):
+#                #     print('wasa contains missing v data for '+croco_blk_file_WASA+', '+t.strftime("%m/%d/%Y, %H:%M:%S"))
+#                
+#                import matplotlib.pyplot as plt
+#                import matplotlib.colors as mplc
+#                import matplotlib.cm as cm
+#                from matplotlib.animation import FuncAnimation
+#                import cartopy
+#                import cartopy.crs as ccrs
+#                import cartopy.feature as cfeature
+#                
+#                # u_temp=u_wasa.isel(Time=t)
+#                
+#                # fig = plt.figure() 
+#                # ax = plt.axes(projection=ccrs.Mercator())
+#                # u_temp=u_wasa.isel(Time=t).values
+#                # v_temp=v_wasa.isel(Time=t).values
+#                # ax.pcolormesh(lon_wasa,lat_wasa,u_temp)
+#                
+#                return
+#                
+#                # ------ END ----------------
+                
                 # Perform interpolation 
                 # 'nearest' method speeds it up a bit
                 # but I guess 'linear' is better
@@ -305,6 +334,9 @@ def make_WASA3_from_blk(wasa_grid,
                              encoding=encoding)
             
             ds_blk.close()
+            
+        date_now=date_now+timedelta(days=32) # 32 days ensures we get to the next month
+        date_now=datetime(date_now.year, date_now.month, 1) # set the first day of the month 
         
     ds_wasa.close()
     ds_wasa_grd.close()

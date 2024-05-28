@@ -298,7 +298,6 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
     # get an array of datetimes for this file
     ds_blk_days = np.float64(ds_blk.bulk_time.values)
     blk_time = ref_date + timedelta(days = ds_blk_days[tstep])
-    # blk_time = np.array([ref_date + timedelta(days=day) for day in ds_blk_days])
     ds_blk_t = ds_blk.isel(bulk_time=tstep)
 
     var_data=ds_blk_t[var].values
