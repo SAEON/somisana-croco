@@ -9,16 +9,12 @@ import crocotools_py.postprocess as post
 def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
     '''
     This is a little hack function to help us getting around the specific problem
-    of having a block of missing data in the WASA3 zarr files for about 13 days in April 2010
-    So we're just using this function to interpolate over this block.
-    Maybe this function will be usefull in other cases too?
+    of having random blocks of missing data in the WASA3 zarr files 
+    So we're just using this function to interpolate over these blocks.
     
     I'm specifically not doing this automatically in make_WASA3_from_blk()
     as the user should really know exactly where the missing data are and 
     first see if this hack is appropriate
-    
-    If the block of missing data is too big, maybe filling with ERA5 would be more appropriate
-    Or maybe we have to make another plan
     
     Parameters
     ----------
@@ -55,12 +51,12 @@ def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
             # get the indices for which we have valid data
             idx = np.logical_not(np.isnan(u_blk_now))
             # Perform interpolation using valid data
-            u_blk_filled[t,:,:] = griddata(source_points_u[idx,:], u_blk_now[idx], (lon_u, lat_u), method='linear')
+            u_blk_filled[t,:,:] = griddata(source_points_u[idx,:], u_blk_now[idx], (lon_u, lat_u), method='nearest')
         if np.any(np.isnan(v_blk_now)):
             # get the indices for which we have valid data
             idx = np.logical_not(np.isnan(v_blk_now))
             # Perform interpolation using valid data
-            v_blk_filled[t,:,:] = griddata(source_points_v[idx,:], v_blk_now[idx], (lon_v, lat_v), method='linear')
+            v_blk_filled[t,:,:] = griddata(source_points_v[idx,:], v_blk_now[idx], (lon_v, lat_v), method='nearest')
         
     # update wspd (on the rho grid)
     spd_blk_filled = np.hypot(post.u2rho(u_blk_filled), post.v2rho(v_blk_filled))

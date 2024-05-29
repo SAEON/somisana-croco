@@ -1,0 +1,16 @@
+these months were flagged as having missing data over the wasa spatial subset to use in the interpolation onto our grid
+(not all missing data impacts our domain)
+Y1995M06-08
+Y1997M02-05
+Y1998M04-05
+Y1998M08-09
+Y1998M11-12
+Y1999M02-04
+Y1999M12
+Y2000M11-12
+Y2011M04-05 (not visible in our domain - not adjusted)
+Y2012M04-05 (not visible in our domain - not adjusted)
+Y2012M07-08 impact is on the north-east part of the domain... filled these months in
+Y2014M07-08 (not visible in our domain - not adjusted)
+Y2017M08 impact is on the north-east part of the domain... filled these months in
+Y2017M12 impact is on the south-east part of the domain... filled these months in
