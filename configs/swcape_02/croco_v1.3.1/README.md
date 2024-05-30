@@ -2,7 +2,7 @@ Here is where we prepare all the files to be used in our CROCO configuration and
 
 For inter-annual runs, there is a `jobcomp_inter` file for compiling the croco code and a `run_croco_inter.bash` file for initialising the simulation. Both of these scripts use environment variables which are set up in `myenv_inter.bash`
 
-Similar files exist for forecast simulations, although the operational workflow gets done in `.github/workflows/run_croco.yml`
+Similar files exist for forecast simulations, although the environment variables are set in our operational workflow - see `.github/workflows/run_croco.yml` 
 
 None of the netcdf files are copied to the remote repo, only the scripts used to generate them. 
 

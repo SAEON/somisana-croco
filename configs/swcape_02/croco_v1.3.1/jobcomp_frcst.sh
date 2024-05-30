@@ -20,13 +20,10 @@
 # Note that environment variables overwrite hard-coded
 # options
 
-#
-# set source, compilation and run directories
-#
 source myenv_frcst.sh
+# for a forecast run, the compile option name is set in the workflow, and so is passed as command line inputs here
+EXENAME=$1 # e.g. C01
 
-# need to edit this to where it gets compiled inside the docker image
-# probably /somisana?
 RUNDIR=`pwd`/$EXENAME
 cd $RUNDIR
 SCRDIR=$RUNDIR/Compile

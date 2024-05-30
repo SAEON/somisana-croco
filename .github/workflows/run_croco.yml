@@ -240,7 +240,25 @@ jobs:
           # do a sed replacement on the template .in file, and write the output to the scratch dir
           sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
 
-# compile the code (no dependencies needed)
+# compile the code
+  compile_croco:
+    needs: [setup_rundir]
+    env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: compile the code
+        run: |
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${{ env.CONFIG_DIR }}:/home/somisana \
+            ghcr.io/saeon/somisana-croco_run_main:latest \
+              -c "cd /home/somisana && ./jobcomp_frcst.sh ${{ inputs.COMP }}"
+      - name: copy executable to scratch dir
+        run: |
+          cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
+
 # need to use the croco docker image to compile and run the model
 #
 # run the model

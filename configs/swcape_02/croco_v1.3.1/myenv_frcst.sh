@@ -2,12 +2,11 @@
 
 # Set the environment variables for a forecast run
 # just putting in the variables which we may want to make configurable
-# we can always add more here if we want
+# A lot of variables in myenv_inter.sh aren't here as they are already defined as part of the operational workflow
 
-# source code
-# this is the path inside our docker image used to run the model
+# provide the path to the croco source code
 export SOURCE=/croco-v1.3.1/OCEAN/
-#
+
 # MPI partitioning
 export MPI_NUM_X=3
 export MPI_NUM_Y=10
