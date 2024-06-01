@@ -108,7 +108,7 @@ The `get_var()` function does most of the heavy lifting, and is called by many o
 import crocotools_py.postprocess as post
 from datetime import datetime
 
-# provide the CROCO files - can be a single file or it can be a file pattern, including wild cards. Alternatively `fname` can also be an xarray dataset already extracted as part of your script.
+# provide the CROCO files - can be a single file or it can be a file pattern, including wild cards. Alternatively `fname` can also be an xarray dataset/dataarray already extracted as part of your script.
 fname=<your-croco-file(s)>
 
 # define the time origin for the CROCO output files (it's not automatically included in the metadata!)
@@ -122,6 +122,15 @@ da.time.values
 The default behaviour of `get_var()` is to use your CROCO output file to extract the grid information. If your output file does not contain the rho grid variables, `get_var()` has an optional `grdname=<your-grid-file>` input variable, which you can use to specify your croco grid file. 
 
 Extracting all the data can take a long time and can be very large, leading to insufficient memory in the case of big hindcasts so it's useful to rather extract a subset that you may want.
+
+## Extracting a subset in space
+
+This is done using the 'subdomain = [lon0,lon1,lat0,lat1]` optional input
+
+```sh
+subdomain=[18,19,-34.5,-34]
+da = post.get_var(fname, 'temp', ref_date = ref_date, subdomain=subdomain)
+```
 
 ## Extracting a subset in time
 
@@ -252,7 +261,203 @@ TODO
 
 # Tutorial: Run a forecast simulation locally
 
-TODO
+You can run a forecast simulation locally in a similar way to running a hindcast simulation. For this tutorial, we'll provide the instructions to run a 10 day simulation comprised of a 5 day hindcast component and a 5 day forecast component. In this example, we'll use the `swcape_02` domain and we'll use the CMEMS global ocean forecast model run by Mercator for the boundaries, and GFS for the atmospheric forcing.
+
+## download data from global operational models
+
+First step is to download the forcing files. You can download them locally wherever you want (you'll just need to keep track of your directories in the relevant `crocotools_param.m` files when it comes to generating the CROCO forcing files later).
+
+We have a command line interface (cli.py) for running selected python functions from the command line. This is particularly useful in an operational context. You may need to update your environment so that the cli uses the latest versions of the packages (especially copernicusmarine, which gets updated often as not always backwards compatible):
+
+```sh
+mamba env update -f environment.yml --prune
+```
+
+Then you should be able to run the download functions:
+
+```sh    
+export my_repo_dir='~/code/somisana-croco' # or wherever your local repo is
+
+# data are downloaded over a time period ranging from `run_date - hdays` to `run_date + fdays`
+# so define these variables
+export run_date=$(date -u +'%Y-%m-%d %H:00:00') # or whatever time you want, in this format (our operational system can be initialised 6 hourly, i.e. %H would be 00, 06, 12 or 18)
+export hdays=5 # assuming a 5 day hindcast component
+export fdays=5 # assuming a 5 day forecast component
+
+# Mercator download
+# It doesn't matter where you download the data locally. In this example we'll download data to `${my_repo_dir}/DATASETS_CROCOTOOLS/`. `DATASETS_CROCOTOOLS` is in the .gitignore file for the repo, so anything you do there can't be pushed to the remote repo.
+export mercator_dir=${my_repo_dir}/DATASETS_CROCOTOOLS/MERCATOR # or wherever you want to download mercator data
+mkdir ${mercator_dir}
+python $my_repo_dir/cli.py download_mercator \
+                --usrname <your-copernicus-username> \
+                --passwd <your-copernicus-password> \
+                --domain 11,23,-39,-25 \ # just enough to cover your domain
+                --run_date  "${run_date}"\
+                --hdays $hdays \
+                --fdays $fdays \
+                --outputDir ${mercator_dir}
+
+# GFS download
+export gfs_dir=${my_repo_dir}/DATASETS_CROCOTOOLS/GFS # or wherever you want to download GFS data
+mkdir ${gfs_dir}
+python $my_repo_dir/cli.py download_gfs_atm \
+                --domain 11,23,-39,-25 \ # just enough to cover your domain
+                --run_date  "${run_date}"\
+                --hdays $hdays \
+                --fdays $fdays \
+                --outputDir ${gfs_dir}
+```
+
+The GFS download step above gives us a bunch of `.grb` files - one for each hourly time-step. Don't worry about files which can't be downloaded after the `f120.grb` - after 120 forecast hours (5 days), the data are available as 3 hourly intervals, not hourly, so we don't expect data for `f121.grb`, `f122.grb`,`f124.grb` etc. 
+
+We have a matlab routine to convert these `.grb` files into a single nc file. 
+TODO: convert this to python!
+
+```sh
+# copy a start file to the GFS download dir, so we can define our paths
+cd ${my_repo_dir}/DATASETS_CROCOTOOLS/GFS
+cp $my_repo_dir/crocotools_mat/fcst/start_GFS.m . 
+# you have to open `start_GFS.m` and change the paths to where your repo's are in your local environment (see instructions in file)
+# create a directory for writing the CROCO-friendly nc file
+mkdir for_croco
+# then you can run the matlab command
+# (this will read the gfs.env file created during the download step) 
+matlab -nodisplay -nosplash -nodesktop -r "start_GFS; reformat_GFS(2000); exit;" # assuming you're using a Yorig of 2000
+``` 
+
+## make CROCO foring files
+
+Let's create a local directory (could be anywhere you want), where we want to run the model
+
+```sh
+# create a directory locally 
+echo run_dir=~/tmp/croco_forecast_YYYYMMDD_HH/ # obviously change YYYMMDD_HH to whatever date you're running
+mkdir -p ${run_dir}
+cd ${run_dir}
+```
+
+Now we'll copy over configuration files from the repo which we'll use to generate forcing files, compile the code and run the model. The configuration we are using in this example is this one:
+
+```sh
+echo config_dir=$my_repo_dir/configs/swcape_02/croco_v1.3.1/ 
+```
+
+Have a look at the README in that directory - it explains what all the different directories represent. Let's start by copying over the grid file, which is stored in the repo: 
+
+```sh
+cd ${run_dir}
+cp -r ${config_dir}/GRID .
+```
+
+Then copy over the MERCATOR directory, as that is what we're using to initialise and force our model boundaries.
+
+```sh
+# copy over the configuration files for generating MERCATOR forcing
+cp -r ${config_dir}/MERCATOR .
+cd MERCATOR
+
+# you need to edit start.m to make sure the paths point to where your repo's are in your local environment
+# you also need to edit `crocotools_param.m`, specifically `CROCOTOOLS_dir` and `DATADIR`
+# `DATADIR` should point to `${my_repo_dir}/DATASETS_CROCOTOOLS` in this example, or wherever you downloaded your data
+
+# then create a directory for storing temporary nc files used in processing global data into croco forcing files
+mkdir tmp_for_croco
+# get the `run_date` in the format required by the `make_MERCATOR_ocimsi` function
+export run_date_formatted=$(date -u +'%Y-%m-%d %H') # whatever date you want - just make sure it is in the right format and that it's the same as the one you used in the download steps above 
+
+# and lastly run the matlab command to create the forcing files
+matlab -nodisplay -nosplash -nodesktop -r "start; make_MERCATOR_ocims('${run_date_formatted}',$hdays,1); exit;"
+```
+
+And then the GFS forcing files
+
+```sh
+# copy over the configuration files for generating MERCATOR forcing
+cd ${run_dir}
+cp -r ${config_dir}/GFS .
+cd GFS
+
+# as per the MERCATOR configuration, you need to edit the same paths in start.m and `crocotools_param.m`
+# then the matlab script should create the blk forcing file
+matlab -nodisplay -nosplash -nodesktop -r "start; make_GFS_ocims; exit;"
+```
+
+## prepare the runtime options
+
+There is a I99 directory which includes the runtime options we are using in our forecasts
+
+```sh
+# copy over the runtime input files
+cd ${run_dir}
+cp -r ${config_dir}/I99 .
+cd I99
+
+# compute the time parameters, using the `myenv_in.sh` file for this configuration
+source myenv_in.sh
+HDAYS=5
+FDAYS=5
+NDAYS=$((HDAYS + FDAYS))
+NUMTIMES=$((NDAYS * 24 * 3600 / DT))
+NUMAVG=$((NH_AVG * 3600 / DT))
+NUMHIS=$((NH_HIS * 3600 / DT))
+NUMAVGSURF=$((NH_AVGSURF * 3600 / DT))
+NUMHISSURF=$((NH_HISSURF * 3600 / DT))
+NUMRST=$((NH_RST * 3600 / DT)) # frequency of output in restart file to be written
+RST_STEP=1 # this is relevant if we want to initialise from a specific time-step in a restart file, since we're initialising from a ini file in this example, we'll use the first and only time-step
+
+# do a sed replacement on the template .in file, and write the output to the scratch dir
+sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' < croco_fcst.in > croco.in
+
+```
+
+## compile the code
+
+We'll use the C01 compile options for this example. Of course, you're free to try out your own compile options, and just copy and rename the C01 to keep track of your changes: 
+
+```sh
+# copy over the files for compiling CROCO
+cd ${run_dir}
+cp -r ${config_dir}/C01 .
+cp ${config_dir}/myenv_frcst.sh .
+cp ${config_dir}/jobcomp_frcst.sh .
+```
+
+You'll need to edit `myenv_frcst.sh` according to your configuration. Then compile the code, providing the directory with the compile options directory as a command line input (this isn't put in the `myenv_frcst.sh` file as it is dynamically defined elsewhere in our operational workflow):
+
+```sh
+./jobcomp_frcst.sh C01
+```
+
+## run the model
+
+Now we've got all the inputs needed to run the model, we can create a directory to do this. In our operational workflow we use a directory name which reflects all of the inputs. For example, in this example it would be `C01_I99_MERCATOR_GFS`:
+
+```sh
+cd ${run_dir}
+mkdir -p C01_I99_MERCATOR_GFS/{scratch,output,postprocess}
+cd C01_I99_MERCATOR_GFS/scratch
+# get the compiled code
+cp ../../C01/croco .
+# get the runtime input file
+cp ../../I99/croco.in .
+# get the grid file
+cp ../../GRID/croco_grd.nc .
+# get the forcing files (using symbolic links to avoid wasting disk space)
+ln -s ../../GFS/croco_blk_GFS_20240527_12.nc croco_blk.nc
+ln -s ../../MERCATOR/croco_ini_MERCATOR_20240527_12.nc croco_ini.nc
+ln -s ../../MERCATOR/croco_clm_MERCATOR_20240527_12.nc croco_clm.nc
+```
+
+We have a simple bash script to run the model - you need to give it the directory name where the model will run (as per `jobcomp_frcst.sh` the command line input is needed as the run directory dynamically defined elsewhere in our operational workflow):
+
+```sh
+cd ${run_dir}
+cp ${config_dir}/run_croco_frcst.bash .
+./run_croco_frcst.bash C01_I99_MERCATOR_GFS
+```
+
+If all went according to plan, the model would have run and the output moved to `C01_I99_MERCATOR_GFS/output`. The `C01_I99_MERCATOR_GFS/postprocess` directory is reserved for any analysis you may want to do
+
 
 # Tutorial: Introduction to our docker images
 
