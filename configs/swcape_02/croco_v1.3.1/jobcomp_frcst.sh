@@ -20,9 +20,15 @@
 # Note that environment variables overwrite hard-coded
 # options
 
-source myenv_frcst.sh
+if [ -z "$1" ]; then
+  echo "Error: Missing argument. Please provide the directory directory name with the compile options e.g. C01"
+  exit 1
+fi
+
 # for a forecast run, the compile option name is set in the workflow, and so is passed as command line inputs here
 EXENAME=$1 # e.g. C01
+
+source myenv_frcst.sh
 
 RUNDIR=`pwd`/$EXENAME
 cd $RUNDIR
