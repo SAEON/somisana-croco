@@ -178,15 +178,15 @@ jobs:
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
               -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},${{ env.make_ini }}); exit;\""
-      - name: link OGCM file to scratch dir
+      - name: copy OGCM file to scratch dir
         run: |
           ogcm_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_clm_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
-          ln -s ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_clm.nc
-      - name: link ini file to scratch dir, if made from OGCM
+          cp ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_clm.nc
+      - name: copy ini file to scratch dir, if made from OGCM
         run: |
           ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
           if [[ -f "$ini_file" ]]; then
-            ln -s ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
+            cp ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
           fi
 
   # make the surface forcing
@@ -208,10 +208,10 @@ jobs:
             -e MLM_LICENSE_FILE=/licenses/license.lic \
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
               -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.BLK }}_ocims; exit;\""
-      - name: link BLK file to scratch dir
+      - name: copy BLK file to scratch dir
         run: |
           blk_file="${{ env.CONFIG_DIR }}/${{ inputs.BLK }}/croco_blk_${{ inputs.BLK }}_${{ inputs.RUN_DATE }}.nc"
-          ln -s ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
+          cp ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
   
   # get the runtime input file        
   get_inp:
