@@ -75,6 +75,13 @@ jobs:
     needs: [envs,build-and-push-image]
     runs-on: mims1
     steps:
+      - name: clean up locally existing images and containers
+        run: |
+          imageid=${{ inputs.IMAGE_ID }}
+          # containers
+          docker rm $(docker ps -a --filter name=*${imageid}* --quiet=true)
+          # images
+          docker rmi *${imageid}*
       - name: pull latest docker image to mims server
         run: |
           docker pull ${{ needs.envs.outputs.IMAGE_NAME }}:latest
