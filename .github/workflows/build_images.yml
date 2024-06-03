@@ -79,9 +79,9 @@ jobs:
         run: |
           imageid=${{ inputs.IMAGE_ID }}
           # containers
-          docker rm $(docker ps -a --filter name=*${imageid}* --quiet=true)
+          docker rm $(docker ps -a --filter name=*${imageid}* --quiet=true) || true # the || true part means it'll continue in case of an error, like if no containers exist
           # images
-          docker rmi *${imageid}*
+          docker rmi *${imageid}* || true
       - name: pull latest docker image to mims server
         run: |
           docker pull ${{ needs.envs.outputs.IMAGE_NAME }}:latest
