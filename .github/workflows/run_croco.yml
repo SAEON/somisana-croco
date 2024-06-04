@@ -67,8 +67,6 @@ jobs:
     outputs:
       RUN_DIR: ${{ steps.make_dir.outputs.run_dir }}
       SCRATCH_DIR: ${{ steps.make_dir.outputs.scratch_dir }}
-      OUTPUT_DIR: ${{ steps.make_dir.outputs.output_dir }}
-      POSTPROCESS_DIR: ${{ steps.make_dir.outputs.postprocess_dir }}
     continue-on-error: true
     steps:
       - name: create the run directory
@@ -104,7 +102,7 @@ jobs:
           # current_date starts at run_date and gets changed iteratively in the while loop below
           current_date=${{ inputs.RUN_DATE }} 
           step_count=0
-          MAX_STEPS=1 # allow option for looking further back for restart file (although if MAX_STEPS>1 we'll need to edit the .in file to look for the correct time-step!)
+          MAX_STEPS=8 # number of 6 hour steps back to look for a restart file - preferred to restarting from global data  
 
           while [[ $step_count -lt $MAX_STEPS ]]; do
 
@@ -122,8 +120,8 @@ jobs:
             # Check if the file exists
             if [[ -f "$rst_file" ]]; then
               echo "restart file found at: $rst_file"
-              echo "linking to ${{ env.SCRATCH_DIR }}/croco_ini.nc"
-              ln -s $rst_file ${{ env.SCRATCH_DIR }}/croco_ini.nc
+              echo "copy to ${{ env.SCRATCH_DIR }}/croco_ini.nc"
+              cp $rst_file ${{ env.SCRATCH_DIR }}/croco_ini.nc
               # compute the number of 6 hourly intervals between run_date and current_date - 
               # this is needed to edit the .in file so we initialise from the correct time-step in the restart file
               # (I guess I could have rather used $step_count + 1 here... should be same difference)
@@ -288,11 +286,9 @@ jobs:
   # postprocess the raw croco output files into something more user-friendly
   postprocess:
     needs: [setup_rundir,run_croco]
-    runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
-      OUTPUT_DIR: ${{ needs.setup_rundir.outputs.OUTPUT_DIR}}
-      POSTPROCESS_DIR: ${{ needs.setup_rundir.outputs.POSTPROCESS_DIR}}
+    runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: subset the raw CROCO NetCDF file for archiving
         continue-on-error: true
@@ -317,36 +313,36 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
-              --rm \
-              -v ${{ env.RUN_DIR }}:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier1 \
                 --fname /tmp/output/croco_avg.nc \
-                --fname_out /tmp/postprocess/croco_avg_tier1.nc \ 
-                --ref_date '2000-01-01 00:00:00' \
+                --fname_out /tmp/postprocess/croco_avg_tier1.nc \
+                --ref_date '2000-01-01 00:00:00'
       # interpolate data to constant vertical levels (tier 2)
       - name: Tier 2 regridding
         continue-on-error: true
         run: |
           docker run \
-              --rm \
-              -v ${{ env.RUN_DIR }}:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier2 \
                 --fname /tmp/postprocess/croco_avg_tier1.nc \
-                --fname_out /tmp/postprocess/croco_avg_tier2.nc \ 
+                --fname_out /tmp/postprocess/croco_avg_tier2.nc \
                 --depths 0,-5,-10,-50,-100,-500,-1000,-99999
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
         continue-on-error: true
         run: |
           docker run \
-              --rm \
-              -v ${{ env.RUN_DIR }}:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier3 \
                 --fname /tmp/postprocess/croco_avg_tier2.nc \
-                --fname_out /tmp/postprocess/croco_avg_tier3.nc \ 
+                --fname_out /tmp/postprocess/croco_avg_tier3.nc \
                 --spacing 0.02
        # here we can add the extraction of time-series 
        # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations

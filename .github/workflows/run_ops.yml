@@ -85,6 +85,15 @@ jobs:
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
   # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server) 
 
+  # ensure that we don't keep building up a stash of images, which can use a lot of resources
+  prune_images:
+    needs: [build_images]
+    runs-on: mims1
+    steps:
+      - name: remove all unused docker images and containers
+        run: |
+          docker system prune -f
+  
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
   get_forcing:
