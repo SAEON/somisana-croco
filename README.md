@@ -263,6 +263,38 @@ TODO
 
 # Tutorial: Run a hindcast simulation locally
 
+Here are some guidelines for running a hindcast simulation using the workflow we've adopted in this repo. It is largely based on the standard croco-tools, with a few tweaks. The main difference is that in our workflow we separate out the choices of compile options, runtime inputs and forcing files into separate directories. This modular approach is intended to make it easier to do different sensitivity tests and/ or combinations of different inputs. Hopefully this will be made clearer by setting up your own example run below. In this example, we'll use the `swcape_02` domain and we'll use the CMEMS global ocean reanalysis (GLORYS) model run by Mercator for the boundaries, and ERA5 for the atmospheric forcing.
+
+This tutorial already assumes a working knowledge of CROCO, and a local OS where you can already compile and run the model.
+
+## download data to force the model
+
+TODO
+
+## make CROCO foring files
+
+TODO
+
+```sh
+cd $run_dir/GLORYS
+matlab -nodisplay -nosplash -nodesktop -r "generate_input; exit;"
+```
+
+```sh
+cd $run_dir/ERA5
+matlab -nodisplay -nosplash -nodesktop -r "generate_input; exit;"
+```
+
+## prepare the runtime options
+
+TODO
+
+## compile the code
+
+TODO
+
+## run the model
+
 TODO
 
 # Tutorial: Run a forecast simulation locally
@@ -271,7 +303,7 @@ You can run a forecast simulation locally in a similar way to running a hindcast
 
 ## download data from global operational models
 
-First step is to download the forcing files. You can download them locally wherever you want (you'll just need to keep track of your directories in the relevant `crocotools_param.m` files when it comes to generating the CROCO forcing files later).
+As per the hindcast simulation, the first step is to download the forcing files. You can download them locally wherever you want (you'll just need to keep track of your directories in the relevant `crocotools_param.m` files when it comes to generating the CROCO forcing files later).
 
 We have a command line interface (cli.py) for running selected python functions from the command line. This is particularly useful in an operational context. You may need to update your environment so that the cli uses the latest versions of the packages (especially copernicusmarine, which gets updated often as not always backwards compatible):
 
@@ -449,9 +481,9 @@ cp ../../I99/croco.in .
 # get the grid file
 cp ../../GRID/croco_grd.nc .
 # get the forcing files (using symbolic links to avoid wasting disk space)
-ln -s ../../GFS/croco_blk_GFS_20240527_12.nc croco_blk.nc
-ln -s ../../MERCATOR/croco_ini_MERCATOR_20240527_12.nc croco_ini.nc
-ln -s ../../MERCATOR/croco_clm_MERCATOR_20240527_12.nc croco_clm.nc
+ln -s ../../GFS/croco_blk_GFS_YYYMMDD_HH.nc croco_blk.nc # obviously change YYYMMDD_HH to whatever date you're running
+ln -s ../../MERCATOR/croco_ini_MERCATOR_YYYMMDD_HH.nc croco_ini.nc
+ln -s ../../MERCATOR/croco_clm_MERCATOR_YYYMMDD_HH.nc croco_clm.nc
 ```
 
 We have a simple bash script to run the model - you need to give it the directory name where the model will run (as per `jobcomp_frcst.sh` the command line input is needed as the run directory dynamically defined elsewhere in our operational workflow):
@@ -537,7 +569,7 @@ mkdir runner1
 # keep adding directories runner2, runner3 as needed
 ```
 
-Inside the new directory you just created, follow the instructions to download the installer, unpack it, run ./config.sh with your unique token (you would need a new token for each runner you set up). You will get a few prompts:
+Inside the new directory you just created, follow the instructions to download the installer, unpack it, run ./config.sh with the repo url and your unique token (you will get a new token for each runner you set up). You will get a few prompts:
 - Runner group: default
 - Runner name: I've been using the `mims<server-number>-runner<runner-number>` convention e.g. mims1-runner1 for the first runner on the first server on mims
 - Then add additional labels where it makes sense. For example, I've been adding the `mims1` label for the first server we were given access to. i.e. `mims<server-number>` convention. As the operations expand, we may want to run models on multiple servers on mims, so the naming convention allows for this. 
@@ -545,14 +577,29 @@ Inside the new directory you just created, follow the instructions to download t
 
 You can use the same label for different runner names. If your workflow allows for two jobs to be computed at the same time (i.e. one doesn't need to other to first be completed), then having more than one runner with the same label would allow the jobs to be executed in parallel. If the label is only added to a single runner, then you can't use that label to run jobs in parallel (this can actually be used as a strategy to run jobs in series). So the number of runners to add depends on how many workflow jobs you need to be computed in parallel.
 
-As per the instructions, the last step is to run ./run.sh which connects the runner to github, but now you have an open terminal, and if you close the terminal it closes the connection. So I ended up running it as a screen session, which runs it as a background process:
-```sh
-Screen -S runner1
-./run.sh
+The last instruction is to run the `./run.sh` script. This will start the runner and then the repo will be able to run workflows on the server. The problem with this is once you disconnect from the server, the connection to the server is lost. You can get around this by running the `./run.sh` script inside a screen session. But still, the connection to the server is lost if the server gets restarted. The way around this is to configure the self-hosted runner application as a service to automatically start the runner application when the machine starts, as per the [docs](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/configuring-the-self-hosted-runner-application-as-a-service).
 
-```
+To do this, edit the `sudoers` file to allow the `somisana` user to install the runners as a service.
+
+```sh
+sudo su
+visudo
+#add the following line
+somisana ALL=NOPASSWD: /home/somisana/runner1/svc.sh
+``` 
+
+Then, from the docs, you have to run these lines from inside the `/runner1` directory
+
+```sh
+sudo ./svc.sh install
+sudo ./svc.sh start
+# to see if the runner is connected to the repo you can do
+sudo ./svc.sh status
+``` 
+
+Once it is runnering as a service, apparently you should comment out the line you added to the `sudoers` files, otherwise the "runner could edit the svc.sh script and run it via sudo" (not entirely sure how this would work?). If you ever want to uninstall the service, you can uncomment the line, and run the commands as shown in the [docs](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/configuring-the-self-hosted-runner-application-as-a-service).
 
 Now you should see your newly created runner on the github repo (https://github.com/SAEON/somisana-croco) if you navigate to Settings->Actions->Runners. And you can run jobs on this server from a github workflow in this repo by using the `runs_on: mims1`, where `mims1` is the label we provided earlier
 
-
+You'll have to repeat all the steps in this section for adding a self-hosted runner, for every new runner. You'll need as many runners as you need to jobs to be run in parallel. For now I've added four with the `mims1` label. So four jobs with the `mims1` label can be run in parallel. 
 
