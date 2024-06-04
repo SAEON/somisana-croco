@@ -1,4 +1,4 @@
-name: run a croco configuration
+name: run croco configuration
 
 on:
   workflow_call:
@@ -65,7 +65,10 @@ jobs:
   setup_rundir:
     runs-on: ${{ inputs.RUNNER_NAME }}
     outputs:
+      RUN_DIR: ${{ steps.make_dir.outputs.run_dir }}
       SCRATCH_DIR: ${{ steps.make_dir.outputs.scratch_dir }}
+      OUTPUT_DIR: ${{ steps.make_dir.outputs.output_dir }}
+      POSTPROCESS_DIR: ${{ steps.make_dir.outputs.postprocess_dir }}
     continue-on-error: true
     steps:
       - name: create the run directory
@@ -75,8 +78,11 @@ jobs:
           mkdir -p ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/{scratch,output,postprocess}
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
           chmod -R 774 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
-          # output the scratch dir for use in other jobs
+          # output dirs for use in other jobs
+          echo "run_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}" >> $GITHUB_OUTPUT 
           echo "scratch_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch" >> $GITHUB_OUTPUT 
+          echo "output_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/output" >> $GITHUB_OUTPUT 
+          echo "postprocess_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/postprocess" >> $GITHUB_OUTPUT 
   
   # see if we can restart from a previous run
   get_rst:
@@ -240,7 +246,7 @@ jobs:
           # do a sed replacement on the template .in file, and write the output to the scratch dir
           sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
 
-# compile the code
+  # compile the code
   compile_croco:
     needs: [setup_rundir]
     env:
@@ -259,7 +265,7 @@ jobs:
         run: |
           cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
 
-# run the model
+  # run the model
   run_croco:
     needs: [setup_rundir,compile_croco,get_inp,get_ogcm,get_blk,get_rst]
     env:
@@ -279,6 +285,71 @@ jobs:
             ghcr.io/saeon/somisana-croco_run_main:latest \
               -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
 
-# do the postprocessing and copying to a thredds (or other) server
-#
-#
+  # postprocess the raw croco output files into something more user-friendly
+  postprocess:
+    needs: [setup_rundir,run_croco]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
+      OUTPUT_DIR: ${{ needs.setup_rundir.outputs.OUTPUT_DIR}}
+      POSTPROCESS_DIR: ${{ needs.setup_rundir.outputs.POSTPROCESS_DIR}}
+    steps:
+      - name: subset the raw CROCO NetCDF file for archiving
+        continue-on-error: true
+        run: |
+          # we only want to archive the nowcast to forecast, so we chop off the hindcast part of the output
+          # this is dependent on the avg output frequency, which we read from the myenv_in.sh file
+          source ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/myenv_in.sh
+          HINDCAST_DAYS=${{ inputs.HDAYS }}
+          HINDCAST_HOURS=$((HINDCAST_DAYS * 24))
+          HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
+          #
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_run_main:latest \
+            -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_archive.nc"
+      # Regrid CROCO u,v to rho grid,
+      # rotate u,v components from grid aligned to east/north aligned and
+      # work out depth levels of sigma grid in meters (tier 1)
+      - name: Tier 1 regridding
+        continue-on-error: true
+        run: |
+          docker run \
+              --rm \
+              -v ${{ env.RUN_DIR }}:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              regrid_tier1 \
+                --fname /tmp/output/croco_avg.nc \
+                --fname_out /tmp/postprocess/croco_avg_tier1.nc \ 
+                --ref_date '2000-01-01 00:00:00' \
+      # interpolate data to constant vertical levels (tier 2)
+      - name: Tier 2 regridding
+        continue-on-error: true
+        run: |
+          docker run \
+              --rm \
+              -v ${{ env.RUN_DIR }}:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              regrid_tier2 \
+                --fname /tmp/postprocess/croco_avg_tier1.nc \
+                --fname_out /tmp/postprocess/croco_avg_tier2.nc \ 
+                --depths 0,-5,-10,-50,-100,-500,-1000,-99999
+      # and interpolate data to a constant horizontal grid (tier 3)
+      - name: Tier 3 regridding
+        continue-on-error: true
+        run: |
+          docker run \
+              --rm \
+              -v ${{ env.RUN_DIR }}:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              regrid_tier3 \
+                --fname /tmp/postprocess/croco_avg_tier2.nc \
+                --fname_out /tmp/postprocess/croco_avg_tier3.nc \ 
+                --spacing 0.02
+       # here we can add the extraction of time-series 
+       # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
+
+  # copy data over to where it will be archived
+ 
