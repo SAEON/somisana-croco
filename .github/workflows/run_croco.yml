@@ -269,7 +269,7 @@ jobs:
       - name: get the grid file (the only outstanding input)
         run: |
           grd_file="${{ env.CONFIG_DIR }}/GRID/croco_grd.nc"
-          ln -s ${grd_file} ${{ env.SCRATCH_DIR }}/croco_grd.nc
+          cp ${grd_file} ${{ env.SCRATCH_DIR }}/croco_grd.nc
       - name: run the model
         run: |
           docker run \
