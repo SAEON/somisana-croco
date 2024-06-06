@@ -188,8 +188,9 @@ jobs:
           cp ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_clm.nc
       - name: copy ini file to scratch dir, if made from OGCM
         run: |
-          ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
-          if [[ -f "$ini_file" ]]; then
+          make_ini=${{ env.make_ini }}
+          if [[ ${make_ini} == 1 ]]; then
+            ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
             cp ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
           fi
 

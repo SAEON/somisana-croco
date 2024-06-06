@@ -254,7 +254,7 @@ zref = -1000;
 %  (used in make_clim, make_biol, make_bry,
 %   make_OGCM.m and make_OGCM_frcst.m)
 %
-makeini    = 1;   % initial data
+% makeini    = 1;   % initial data - commented as make_MERCATOR_ocims.m takes makeini as an input and we don't want to overwrite it
 makeclim   = 1;   % climatological data (for boundaries and nudging layers)
 makebry    = 1;   % lateral boundary data
 makenpzd   = 0;   % initial and boundary data for NChlPZD and N2ChlPZD2 models
