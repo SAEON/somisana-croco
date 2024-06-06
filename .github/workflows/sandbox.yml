@@ -1,0 +1,65 @@
+name: temporary workflow for running tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # see if we can restart from a previous run
+  get_rst:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try to find a suitable restart file
+        id: check_restart
+        run: |
+          # get the run_date as an epoch time (seconds since 1970-01-01)
+          run_date=20240605_18
+          run_date_epoch_time=$(date -d "${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00" +%s)
+          # current_date starts at run_date and gets changed iteratively in the while loop below
+          current_date=20240605_18 
+          step_count=0
+          MAX_STEPS=8 # number of 6 hour steps back to look for a restart file - preferred to restarting from global data  
+
+          while [[ $step_count -lt $MAX_STEPS ]]; do
+
+            # Calculate previous date (6 hours back)
+            # Convert the datetime to epoch time (seconds since 1970-01-01)
+            epoch_time=$(date -d "${current_date:0:4}-${current_date:4:2}-${current_date:6:2} ${current_date:9:2}:00:00" +%s)
+            # Subtract 6 hours in seconds (6 hours * 60 minutes * 60 seconds)
+            current_date_epoch_time=$((epoch_time - 6 * 60 * 60))
+            # update $current_date
+            current_date=$(date -d "@$current_date_epoch_time" +%Y%m%d_%H)
+
+            # restart file to look for
+            rst_file="/home/somisana/ops/main/${current_date}/swcape_02/croco_v1.3.1/C01_I99_MERCATOR_GFS/output/croco_rst.nc"
+
+            # Check if the file exists
+            if [[ -f "$rst_file" ]]; then
+              echo "restart file found at: $rst_file"
+              echo "copy to /home/somisana/ops/main/20240605_18/swcape_02/croco_v1.3.1/C01_I99_MERCATOR_GFS/scratch/croco_ini.nc"
+              cp $rst_file /home/somisana/ops/main/20240605_18/swcape_02/croco_v1.3.1/C01_I99_MERCATOR_GFS/scratch/croco_ini.nc
+              # compute the number of 6 hourly intervals between run_date and current_date - 
+              # this is needed to edit the .in file so we initialise from the correct time-step in the restart file
+              # (I guess I could have rather used $step_count + 1 here... should be same difference)
+              rst_step=$(((run_date_epoch_time - current_date_epoch_time) / (3600*6)))
+              echo "rst_step: $rst_step"
+
+              # Exit the loop since the restart file is found
+              break
+            else
+              echo "restart file not found: $rst_file"
+              step_count=$((step_count + 1))
+            fi
+          done
+
+          if [[ $step_count -eq $MAX_STEPS ]]; then
+            echo "using ${{ inputs.OGCM }} to interpolate initial conditions"
+            echo "make_ini=1" >> $GITHUB_OUTPUT
+            echo "rst_date=NA" >> $GITHUB_OUTPUT
+            # since we're using an ini file, set rst_step to 1, which means we'll use the first value in the ini file 
+            echo "rst_step=1" >> $GITHUB_OUTPUT
+          else
+            echo "make_ini=0" >> $GITHUB_OUTPUT
+            echo "rst_date=$current_date" >> $GITHUB_OUTPUT
+            echo "rst_step=$rst_step" >> $GITHUB_OUTPUT
+          fi
+  
