@@ -85,7 +85,7 @@ jobs:
   # see if we can restart from a previous run
   get_rst:
     needs: [setup_rundir]
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     outputs:
