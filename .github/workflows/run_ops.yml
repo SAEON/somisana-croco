@@ -105,7 +105,7 @@ jobs:
     strategy:
       matrix:
         # running as a matrix strategy allows us to handle different domains in parallel
-        domain: ['algoa_01,swcape_02'] 
+        domain: ['algoa_01','swcape_02'] 
     uses: ./.github/workflows/prep_configdir.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
