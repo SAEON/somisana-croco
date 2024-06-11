@@ -244,7 +244,7 @@ pathfinder_sst_name=[DATADIR,...
 %
 %  Open boundaries switches (! should be consistent with cppdefs.h !)
 %
-obc = [1 0 1 1]; % open boundaries (1=open , [S E N W])
+obc = [1 1 0 1]; % open boundaries (1=open , [S E N W])
 %
 %  Level of reference for geostrophy calculation
 %
@@ -256,7 +256,7 @@ zref = -1000;
 %
 makeini    = 1;   % initial data
 makeclim   = 1;   % climatological data (for boundaries and nudging layers)
-makebry    = 1;   % lateral boundary data
+makebry    = 0;   % lateral boundary data
 makenpzd   = 0;   % initial and boundary data for NChlPZD and N2ChlPZD2 models
 makebioebus= 0;   % initial and boundary data for BioEBUS model
 makepisces = 0;   % initial and boundary data for PISCES model
@@ -349,7 +349,7 @@ Yorig         = 1993;          % reference time for vector time
 Ymin          = 1993;          % first forcing year
 Ymax          = 2019;          % last  forcing year
 Mmin          = 1;             % first forcing month
-Mmax          = 10;             % last  forcing month
+Mmax          = 12;             % last  forcing month
 %
 Dmin          = 1;             % Day of initialization
 Hmin          = 0;             % Hour of initialization
@@ -442,7 +442,7 @@ itolap_era5 = 2;                                               % 2 records = 2 h
 %
 OGCM        = 'GLORYS';        % Select OGCM: SODA, ECCO, mercator
 % (We're using our own tools for the boundaries...) 
-Reformat_OGCM = 0; % do we want to do the reformating step (1), or has this been done already (0) 
+Reformat_OGCM = 1; % do we want to do the reformating step (1), or has this been done already (0) 
 My_OGCM_dir = [DATADIR,OGCM,'/algoa/'];
 %
 OGCM_dir    = [CROCO_files_dir,'/tmp_for_croco/'];  % OGCM data dir. [croco format] i.e. where the reformatted croco format files are saved before getting intperpolated to bry or clm files, I see this is a temporary directory as the data are not used after the bry/clm files are generated
