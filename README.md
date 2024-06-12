@@ -268,49 +268,123 @@ TODO
 
 # Tutorial: Run a hindcast simulation locally
 
-Here are some guidelines for running a hindcast simulation using the workflow we've adopted in this repo. It is largely based on the standard croco-tools, with a few tweaks. The main difference is that in our workflow we separate out the choices of compile options, runtime inputs and forcing files into separate directories. This modular approach is intended to make it easier to do different sensitivity tests and/ or combinations of different inputs. Hopefully this will be made clearer by setting up your own example run below. In this example, we'll use the `swcape_02` domain and we'll use the CMEMS global ocean reanalysis (GLORYS) model run by Mercator for the boundaries, and ERA5 for the atmospheric forcing.
+Here are some guidelines for running a hindcast simulation using the workflow we've adopted in this repo. It is largely based on the standard croco-tools, with a few tweaks. The main difference is that in our workflow we have separate directories for the choices of compile options, runtime inputs and forcing files. By modularising the inputs this way, it is intended to make it easier to run different sensitivity tests and/ or combinations of different inputs. Hopefully this tutorial will clarify the approach. 
 
-This tutorial already assumes a working knowledge of CROCO, and a local OS where you can already compile and run the model.
+In this example, we'll use the `swcape_02` domain, the croco-v1.3.1 source code, and we'll use the CMEMS global ocean reanalysis (GLORYS) model run by Mercator for the boundaries, and ERA5 for the atmospheric forcing. This tutorial already assumes a working knowledge of CROCO, and a local OS where you can already compile and run the model. The grid for this domain is already contained in the repo, and was created using Delft3D's RGFGrid tool, and converted into a CROCO grid. We don't cover the grid generation in this tutorial.
+
+This example assumes that you run the hindcast inside the repository on your local machine i.e. where you have cloned it - we'll refer to the root directory of the repository as `${my_repo_dir}`. Of course, you're free to run the hindcast anywhere you like, and just copy in files from the repo as needed.
 
 ## download data to force the model
 
-TODO
+The first step is to download the GLORYS and ERA5 data. It doesn't matter where you download the data locally. In this example we'll download data to `${my_repo_dir}/DATASETS_CROCOTOOLS/`. `DATASETS_CROCOTOOLS` is in the `.gitignore` file for the repo, so anything you do there can't be pushed to the remote repo. We prefer to separate the global/regional data from any specific CROCO configuration directory, as you may want to use the same downloaded data for multiple configurations. 
+
+We have a command line interface (cli.py) for running selected python functions from the command line. If you've recently installed the conda environment, as described above, you should be good to go. If it's been a while since you first created the environment, you may need to update it so that the cli uses the latest versions of the packages (especially copernicusmarine, which gets updated often as not always backwards compatible). You can do this by:
+
+```sh
+mamba env update -f environment.yml --prune
+```
+
+(or use conda if you don't have mamba). To download monthly GLORYS files between `--start_date` and `--end_date`:
+
+```sh
+conda activate somisana_croco
+export my_repo_dir='~/code/somisana-croco' # or wherever your local repo is
+export glorys_dir=${my_repo_dir}/DATASETS_CROCOTOOLS/GLORYS # or wherever you want to download GLORYS data
+mkdir ${glorys_dir}
+python $my_repo_dir/cli.py download_glorys \
+                --usrname <your-copernicus-username> \
+                --passwd <your-copernicus-password> \
+                --domain 11,23,-39,-25 \ # just enough to cover your domain
+                --start_date '2002-07-01 00:00:00' \ # whatever you want
+                --end_date '2002-10-01 00:00:00' \ # whatever you want
+                --outputDir ${glorys_dir}
+```
+
+For ERA5, we use the tools provided with the standard croco-tools, which have been copied to `${my_repo_dir}/download/ERA5`, but we've edited the `era5_crocotools_param.py` configuration file to fit better with our workflow. The easiest approach may be to copy these files to where you want to download ERA5 data:
+
+```sh
+export era5_dir=${my_repo_dir}/DATASETS_CROCOTOOLS/ERA5 # or wherever you want to download ERA5 data
+mkdir ${era5_dir}
+cd ${era5_dir}
+cp ${my_repo_dir}/download/ERA5/* . 
+```
+
+Edit the `era5_crocotools_param.py` file appropriately, and then:
+ 
+```sh
+# download the data
+python ERA5_request.py
+# reformat the data
+python ERA5_convert.py
+```
 
 ## make CROCO foring files
 
-TODO
+As mentioned earlier, we'll set up this hindcast run inside the repo. As we're running the `swcape_02` domain, we'll set the run directory as:
 
 ```sh
-cd $run_dir/GLORYS
-matlab -nodisplay -nosplash -nodesktop -r "generate_input; exit;"
+export run_dir=${my_repo_dir}/configs/swcape_02/croco_v1.3.1
 ```
 
+Have a careful look at the [README](configs/swcape_02/croco_v1.3.1/README.md) which is in the `run_dir` - it provides some explanation for what the different directories represent. In this example, we'll produce boundary and surface forcing files in the `${run_dir}/GLORYS` and `${run_dir}/ERA5` directories, respectively. Each of these directories contains `crocotools_param.m`, `start.m` and `generate_input.m` files. You need to edit both the `start.m` and `crocotools_param.m` files in each of these directories so the paths and time periods are all correct (because we have a modular approach to producing our forcing files, there can't be a single `start.m` and `crocotools_param.m` file for the entire configuration). Then you should be able to generate the forcing files:
+
 ```sh
+# GLORYS
+cd $run_dir/GLORYS
+matlab -nodisplay -nosplash -nodesktop -r "generate_input; exit;"
+
+# ERA5
 cd $run_dir/ERA5
 matlab -nodisplay -nosplash -nodesktop -r "generate_input; exit;"
 ```
 
 ## prepare the runtime options
 
-TODO
+Runtime inputs are configured in a `I**` directory. At the time of writing I01 and I02 are already used to represent specific model time periods and .in options. So let's make a new one for your configuration:
+
+```sh
+# copy over the runtime input files
+cd ${run_dir}
+cp -r I01 I03 
+cd I03
+```
+
+Then edit the `myenv_in.sh` files, which contains some options for you to play with which relate to what gets written to the template `croco_inter.in` file. Of course, you are also free to edit the `croco_inter.in` file, but there are a number of placeholders e.g. NUMTIMES which get over-written with actual values when the model gets run, so don't edit these placeholders. 
+
+You also need to edit the `${run_dir}/myenv_inter.sh` to reflect your choice of runtime inputs (this will get used when you run the model)
 
 ## compile the code
 
-TODO
+Before compiling you need to edit the `${run_dir}/myenv_inter.sh` file to reflect your choice of compile options, which are configured in a `C**` directory. For this example we'll just use the C01 compile options. Of course, you're free to try out your own compile options, and just copy and rename the C01 to keep track of your changes. The files to edit are `cppdefs.h` and `param_.h` (`param_.h` has placeholders for the MPI options, which are set in `${run_dir}/myenv_inter.sh` - this makes sure you have same MPI options set when compiling and running the model - see below). Once these files have been edited to your needs, you can compile the code (the `jobcomp_inter.sh` file is obviously based on the one in the standard croco-tools):
+
+```sh
+cd ${run_dir}
+./jobcomp_inter.sh
+```
 
 ## run the model
 
-TODO
+Before running the model, again make sure that the `${run_dir}/myenv_inter.sh` file reflects your choice of boundary and surface inputs. 
+
+```sh
+./run_croco_inter.bash
+```
+
+You shouldn't need to make any edits to the `run_croco_inter.bash` file, as it sources the other configuration files it needs. It creates a run directory, which is named according to all of the compile options, runtime inputs and forcings used. In this example it would be `C01_I03_GLORYS_ERA5`. As this is an inter-annual run, the model will run month by month, and will restart from the previous month's restart file. The model runs in `C01_I03_GLORYS_ERA5/scratch`, and output for successful months is moved to `C01_I03_GLORYS_ERA5/output`. It is suggested that `C01_I03_GLORYS_ERA5/postprocess` would be a good place to do any further analysis/ validation plots for the run. 
+
+The modular approach to the forcing allows us to easily change any one of the model inputs, and create a new run in a directory which clearly indicates what was used to run it (that's the idea anyway!).
 
 # Tutorial: Run a forecast simulation locally
 
-You can run a forecast simulation locally in a similar way to running a hindcast simulation. For this tutorial, we'll provide the instructions to run a 10 day simulation comprised of a 5 day hindcast component and a 5 day forecast component. In this example, we'll use the `swcape_02` domain and we'll use the CMEMS global ocean forecast model run by Mercator for the boundaries, and GFS for the atmospheric forcing.
+You can run a forecast simulation locally in a similar way to running a hindcast simulation. For this tutorial, we'll provide the instructions to run a 10 day simulation comprised of a 5 day hindcast component and a 5 day forecast component. In this example, we'll use the `swcape_02` domain, the croco-v1.3.1 source code, we'll use the CMEMS global ocean forecast product run by Mercator for the boundaries, and GFS for the atmospheric forcing.
+
+The workflow outlined here is implemented as a scheduled github workflow in this repo - see [.github/workflows/run_ops.yml](.github/workflows/run_ops.yml). Although in our operational workflow multiple domains are run in parallel.
 
 ## download data from global operational models
 
-As per the hindcast simulation, the first step is to download the forcing files. You can download them locally wherever you want (you'll just need to keep track of your directories in the relevant `crocotools_param.m` files when it comes to generating the CROCO forcing files later).
+As per the hindcast simulation, the first step is to download the forcing files. You can download them locally wherever you want (you'll just need to keep track of your directories in the relevant `crocotools_param.m` files when it comes to generating the CROCO forcing files later). In this example we'll download data to `${my_repo_dir}/DATASETS_CROCOTOOLS/`. `DATASETS_CROCOTOOLS` is in the .gitignore file for the repo, so anything you do there can't be pushed to the remote repo.
 
-We have a command line interface (cli.py) for running selected python functions from the command line. This is particularly useful in an operational context. You may need to update your environment so that the cli uses the latest versions of the packages (especially copernicusmarine, which gets updated often as not always backwards compatible):
+We have a command line interface (cli.py) for running selected python functions from the command line. This is particularly useful in an operational context, and we have a docker image dedicated to running the cli.If you've recently installed the conda environment, as described above, you should be good to go. If it's been a while since you first created the environment, you may need to update it so that the cli uses the latest versions of the packages (especially copernicusmarine, which gets updated often as not always backwards compatible). You can do this by:
 
 ```sh
 mamba env update -f environment.yml --prune
@@ -319,6 +393,7 @@ mamba env update -f environment.yml --prune
 Then you should be able to run the download functions:
 
 ```sh    
+conda activate somisana_croco
 export my_repo_dir='~/code/somisana-croco' # or wherever your local repo is
 
 # data are downloaded over a time period ranging from `run_date - hdays` to `run_date + fdays`
@@ -328,7 +403,6 @@ export hdays=5 # assuming a 5 day hindcast component
 export fdays=5 # assuming a 5 day forecast component
 
 # Mercator download
-# It doesn't matter where you download the data locally. In this example we'll download data to `${my_repo_dir}/DATASETS_CROCOTOOLS/`. `DATASETS_CROCOTOOLS` is in the .gitignore file for the repo, so anything you do there can't be pushed to the remote repo.
 export mercator_dir=${my_repo_dir}/DATASETS_CROCOTOOLS/MERCATOR # or wherever you want to download mercator data
 mkdir ${mercator_dir}
 python $my_repo_dir/cli.py download_mercator \
