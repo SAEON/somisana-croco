@@ -163,9 +163,12 @@ def download_glorys(usrname,
     Download month by month of daily MERCATOR 1/12 deg reanalysis data (GLORYS)
     
     """
-    
-    dataset = 'cmems_mod_glo_phy_my_0.083deg_P1D-m'
-    
+   
+    if start_date >= datetime(2021,7,1):
+        dataset = 'cmems_mod_glo_phy_myint_0.083deg_P1D-m'
+    else:
+        dataset = 'cmems_mod_glo_phy_my_0.083deg_P1D-m'
+
     os.makedirs(outputDir,exist_ok=True)
 
     downloadDate=start_date
