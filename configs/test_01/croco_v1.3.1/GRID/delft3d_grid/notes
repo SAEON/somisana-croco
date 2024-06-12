@@ -1,0 +1,17 @@
+steps used to create the grid:
+
+M-refinement factor = 60
+N-refinement factor = 13
+Operations -> change splines into grid
+Orthoganalise grid a few times (4 I think)
+Change to refinement factors:
+M-refinement factor = 4
+N-refinement factor = 10
+edit -> regular grid -> refine grid locally
+then refine along both axes
+then orthoganalise a few more times
+
+(btw, if you try to start wit a fine grid directly, you get a very different and much worse grid.
+I think starting from a very coarse grid is a general rule of thumb for these D3D curvilinear grids)
+
+
