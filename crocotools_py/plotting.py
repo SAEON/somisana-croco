@@ -151,6 +151,7 @@ def plot_uv(ax,fname,
                       u[::skip, ::skip],
                       v[::skip, ::skip],
                       scale=scale,
+                      color=col,
                       transform=ccrs.PlateCarree(), zorder=1)
     
     return uv_plt
