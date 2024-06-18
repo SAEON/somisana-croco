@@ -39,7 +39,7 @@ def set_params(_params, dt, i):
     return urllib.parse.urlencode(params)  # Encode the parameters
 
 def download_file(fname, outputDir, encoded_params):
-    url = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25_1hr.pl?" + encoded_params  # Construct URL
+    url = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?" + encoded_params  # Construct URL
     fileout = os.path.join(outputDir, fname)
     if not os.path.isfile(fileout):
         max_retries = 3
@@ -82,9 +82,9 @@ def get_latest_available_dt(dt):
             exit(1)
 
         dataset_url = (
-            "https://nomads.ncep.noaa.gov/dods/gfs_0p25_1hr/gfs"
+            "https://nomads.ncep.noaa.gov/dods/gfs_0p25/gfs"
             + latest_available_date.strftime("%Y%m%d")
-            + "/gfs_0p25_1hr_"
+            + "/gfs_0p25_"
             + latest_available_date.strftime("%H")
             + "z"
         )
