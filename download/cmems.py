@@ -150,7 +150,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
     
     # Concatenate the separate NetCDF files
     log("concatenating NetCDF files")
-    output_path = os.path.abspath(os.path.join(outputDir, f"mercator_{run_date.strftime('%Y%m%d_%H')}.nc"))
+    output_path = os.path.abspath(os.path.join(outputDir, f"MERCATOR_{run_date.strftime('%Y%m%d_%H')}.nc"))
     with xr.open_mfdataset([os.path.abspath(os.path.join(outputDir, var["fname"])) for var in VARIABLES]) as ds:
         ds.to_netcdf(output_path, mode="w")
 
