@@ -1143,7 +1143,6 @@ def get_ts(fname, var, lon, lat, ref_date,
             else:
                 ds = get_ds(fname,var)
             ds = ds.isel(time=time_lims,
-                                grdname=grdname,
                                 s_rho=depths,
                                 eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
                                 xi_rho=slice(i,i+1))

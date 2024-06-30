@@ -52,7 +52,7 @@ run_date = datenum(run_date_str, 'yyyy-mm-dd HH');
 [NY, NM, ND, NH] = datevec(run_date);
 %
 % name of raw downloaded enviromental data file for this day. 
-MERCATOR_name_raw=[My_OGCM_dir,'mercator_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.nc'];
+MERCATOR_name_raw=[My_OGCM_dir,'MERCATOR_',num2str(NY),num2str(NM,'%02.f'),num2str(ND,'%02.f'),'_',num2str(NH,'%02.f'),'.nc'];
 %
 % write it into a more croco_tools friendly format
 % where dynamic forcing files are created

@@ -24,7 +24,7 @@ def is_valid_netcdf_file(file_path):
     except:
         return False
 
-def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, domain, depths, outputDir, fname):
+def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, domain, depths, outputDir, fname, ver=''):
     """
     Generic function to download a subset of a CMEMS dataset
     This is called by other functions in this file
@@ -39,8 +39,14 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     
     variables = f"-v {' -v '.join(varlist)} "
 
+    if ver: # only use if it's a defined input
+        version = f"--dataset-version {ver}"
+    else:
+        version = ""
+
     runcommand = f"""
         copernicusmarine subset -i {dataset} \
+            {version} \
             --force-download \
             --username {usrname} \
             --password {passwd} \
@@ -81,7 +87,7 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
             raise  # Re-raise the exception for potential retries
         i+=1
 
-def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir):
+def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir, ver='202211'):
     """
     Download the operational Mercator ocean output
     """
@@ -132,7 +138,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
     
     # but I'm rather doing them in parallel to save time (thanks Gemini)
     def download_worker(var):
-        download_cmems(usrname, passwd, var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"])
+        download_cmems(usrname, passwd, var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"], ver=ver)
     threads = []
     for var in VARIABLES:
         t = threading.Thread(target=download_worker, args=(var,))
@@ -144,7 +150,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
     
     # Concatenate the separate NetCDF files
     log("concatenating NetCDF files")
-    output_path = os.path.abspath(os.path.join(outputDir, f"mercator_{run_date.strftime('%Y%m%d_%H')}.nc"))
+    output_path = os.path.abspath(os.path.join(outputDir, f"MERCATOR_{run_date.strftime('%Y%m%d_%H')}.nc"))
     with xr.open_mfdataset([os.path.abspath(os.path.join(outputDir, var["fname"])) for var in VARIABLES]) as ds:
         ds.to_netcdf(output_path, mode="w")
 

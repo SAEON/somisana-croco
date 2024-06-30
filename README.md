@@ -3,11 +3,11 @@
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [Overview](#overview)
-- [Tutorial: installing the python library for local use and/or development](#tutorial-installing-the-python-library-for-local-use-andor-development)
+- [Installing the python library for local use and/or development](#installing-the-python-library-for-local-use-andor-development)
   - [Create a new conda environment](#create-a-new-conda-environment)
   - [Prefer to use your own environment?](#prefer-to-use-your-own-environment)
   - [Adding new dependencies to the environment](#adding-new-dependencies-to-the-environment)
-- [Tutorial: Postprocessing CROCO model output](#tutorial-postprocessing-croco-model-output)
+- [Postprocessing CROCO model output](#postprocessing-croco-model-output)
   - [Importing functions into your own environment](#importing-functions-into-your-own-environment)
   - [Extracting a variable as an xarray dataarray](#extracting-a-variable-as-an-xarray-dataarray)
   - [Extracting a subset in space](#extracting-a-subset-in-space)
@@ -17,24 +17,24 @@
   - [Extracting time-series data](#extracting-time-series-data)
   - [Extracting profile data](#extracting-profile-data)
   - [Extracting a section](#extracting-a-section)
-- [Tutorial: Quick plots and animations](#tutorial-quick-plots-and-animations)
-- [Tutorial: validating CROCO output against observations](#tutorial-validating-croco-output-against-observations)
-- [Tutorial: Running selected python functions via the Command Line Interface (cli.py)](#tutorial-running-selected-python-functions-via-the-command-line-interface-clipy)
-- [Tutorial: Run a hindcast simulation locally](#tutorial-run-a-hindcast-simulation-locally)
+- [Quick plots and animations](#quick-plots-and-animations)
+- [Validating CROCO output against observations](#validating-croco-output-against-observations)
+- [Running selected python functions via the Command Line Interface (cli.py)](#running-selected-python-functions-via-the-command-line-interface-clipy)
+- [Run a hindcast simulation locally](#run-a-hindcast-simulation-locally)
   - [download data to force the model](#download-data-to-force-the-model)
   - [make CROCO foring files](#make-croco-foring-files)
   - [prepare the runtime options](#prepare-the-runtime-options)
   - [compile the code](#compile-the-code)
   - [run the model](#run-the-model)
-- [Tutorial: Run a forecast simulation locally](#tutorial-run-a-forecast-simulation-locally)
+- [Run a forecast simulation locally](#run-a-forecast-simulation-locally)
   - [download data from global operational models](#download-data-from-global-operational-models)
   - [make CROCO foring files](#make-croco-foring-files-1)
   - [prepare the runtime options](#prepare-the-runtime-options-1)
   - [compile the code](#compile-the-code-1)
   - [run the model](#run-the-model-1)
-- [Tutorial: Introduction to our docker images](#tutorial-introduction-to-our-docker-images)
-- [Tutorial: Use docker images to run a forecast simulation locally](#tutorial-use-docker-images-to-run-a-forecast-simulation-locally)
-- [Tutorial: Set up a server to run the forecast workflow using Github Actions](#tutorial-set-up-a-server-to-run-the-forecast-workflow-using-github-actions)
+- [Introduction to our docker images](#introduction-to-our-docker-images)
+- [Use docker images to run a forecast simulation locally](#use-docker-images-to-run-a-forecast-simulation-locally)
+- [Set up a server to run the forecast workflow using Github Actions](#set-up-a-server-to-run-the-forecast-workflow-using-github-actions)
   - [set up your user on the server](#set-up-your-user-on-the-server)
   - [install docker](#install-docker)
   - [create a 'somisana' user](#create-a-somisana-user)
@@ -56,7 +56,7 @@ Directories in the repository:
 
 This repo is largely a redesign of [this one](https://github.com/SAEON/somisana) (big shout out to Zach Smith and Matt Carr for their work on this). The new repo is more 'model-centric', and we don't include anything website related, which was integrated into the model development in the previous design.
 
-# Tutorial: installing the python library for local use and/or development
+# Installing the python library for local use and/or development
 
 Start off by cloning this repo to your local machine (do this wherever you would like the code):
 
@@ -98,7 +98,7 @@ or use `conda` instead of `mamba` if you haven't moved to mamba yet. This will j
 
 So if some-one else has updated the `environment.yml` file, and you want to get access to the new functions, you would need to update your local repo with `git pull` and then run the update line above. 
 
-# Tutorial: Postprocessing CROCO model output 
+# Postprocessing CROCO model output 
 
 ## Importing functions into your own environment
 
@@ -254,19 +254,19 @@ Still to be implemented (any volunteers?)
 
 
 
-# Tutorial: Quick plots and animations 
+# Quick plots and animations 
 
 TODO
 
-# Tutorial: validating CROCO output against observations
+# Validating CROCO output against observations
 
 TODO - Nkululeko
 
-# Tutorial: Running selected python functions via the Command Line Interface (cli.py)
+# Running selected python functions via the Command Line Interface (cli.py)
 
 TODO
 
-# Tutorial: Run a hindcast simulation locally
+# Run a hindcast simulation locally
 
 Here are some guidelines for running a hindcast simulation using the workflow we've adopted in this repo. It is largely based on the standard croco-tools, with a few tweaks. The main difference is that in our workflow we have separate directories for the choices of compile options, runtime inputs and forcing files. By modularising the inputs this way, it is intended to make it easier to run different sensitivity tests and/ or combinations of different inputs. Hopefully this tutorial will clarify the approach. 
 
@@ -374,7 +374,7 @@ You shouldn't need to make any edits to the `run_croco_inter.bash` file, as it s
 
 The modular approach to the forcing allows us to easily change any one of the model inputs, and create a new run in a directory which clearly indicates what was used to run it (that's the idea anyway!).
 
-# Tutorial: Run a forecast simulation locally
+# Run a forecast simulation locally
 
 You can run a forecast simulation locally in a similar way to running a hindcast simulation. For this tutorial, we'll provide the instructions to run a 10 day simulation comprised of a 5 day hindcast component and a 5 day forecast component. In this example, we'll use the `swcape_02` domain, the croco-v1.3.1 source code, we'll use the CMEMS global ocean forecast product run by Mercator for the boundaries, and GFS for the atmospheric forcing.
 
@@ -576,15 +576,15 @@ cp ${config_dir}/run_croco_frcst.bash .
 If all went according to plan, the model would have run and the output moved to `C01_I99_MERCATOR_GFS/output`. The `C01_I99_MERCATOR_GFS/postprocess` directory is reserved for any analysis you may want to do
 
 
-# Tutorial: Introduction to our docker images
+# Introduction to our docker images
 
 TODO
 
-# Tutorial: Use docker images to run a forecast simulation locally
+# Use docker images to run a forecast simulation locally
 
 TODO
 
-# Tutorial: Set up a server to run the forecast workflow using Github Actions
+# Set up a server to run the forecast workflow using Github Actions
 
 This is largely taken from [here](https://github.com/SAEON/deployment-platform), but we only use parts of it. Notably we aren’t implementing the docker swarm, because we only deploy the operational models on the server, not any of the web-related stuff. 
 

@@ -32,7 +32,8 @@ dependencies:
   - zarr=2.13.6
   - pathlib
   - pandas
-  - jupyter 
+  - jupyter
+  - utide 
   - ipywidgets
   - pip
   - pip:
