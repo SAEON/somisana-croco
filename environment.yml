@@ -38,3 +38,4 @@ dependencies:
   - pip
   - pip:
     - copernicusmarine
+    - cdsapi
