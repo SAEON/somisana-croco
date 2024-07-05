@@ -54,7 +54,6 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the MERCATOR directory
         run: |
-          # rm -rf ${{ env.DATA_DIR }}/MERCATOR # do we need this? it's anying if you're debugging something later in the workflow!
           if [ ! -d "${{ env.DATA_DIR }}/MERCATOR" ]; then
             mkdir -p ${{ env.DATA_DIR }}/MERCATOR
             chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
@@ -70,7 +69,7 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          # on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
           command: >-
             docker run \
               --rm \
@@ -112,7 +111,7 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          #on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
+          on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
           command: >-
             docker run \
               --rm \
