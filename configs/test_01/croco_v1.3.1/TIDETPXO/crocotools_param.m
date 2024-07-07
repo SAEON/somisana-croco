@@ -254,9 +254,9 @@ zref = -1000;
 %  (used in make_clim, make_biol, make_bry,
 %   make_OGCM.m and make_OGCM_frcst.m)
 %
-makeini    = 1;   % initial data
-makeclim   = 1;   % climatological data (for boundaries and nudging layers)
-makebry    = 1;   % lateral boundary data
+makeini    = 0;   % initial data
+makeclim   = 0;   % climatological data (for boundaries and nudging layers)
+makebry    = 0;   % lateral boundary data
 makenpzd   = 0;   % initial and boundary data for NChlPZD and N2ChlPZD2 models
 makebioebus= 0;   % initial and boundary data for BioEBUS model
 makepisces = 0;   % initial and boundary data for PISCES model

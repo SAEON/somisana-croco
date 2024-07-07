@@ -35,8 +35,6 @@ disp(['Add the paths of the different toolboxes'])
 % the somisana matlab code is in this repo so we're adding using a relative path
 addpath(genpath('../../../../crocotools_mat/misc'));
 addpath('../../../../crocotools_mat/prep/');
-addpath('../../../../crocotools_mat/prep/GLORYS/');
-addpath('../../../../crocotools_mat/prep/ERA5/');
 % point to wherever your official croco_tools is
 tools_path='/home/gfearon/code/croco_tools-v1.3.1/';
 myutilpath=[tools_path,'UTILITIES/'];
@@ -54,7 +52,7 @@ addpath([myutilpath,'mask'])
 %
 addpath([tools_path,'Aforc_CFSR'])
 % commenting ERA5 dir as we need to use our own functions for including atmospheric pressure
-%addpath([tools_path,'Aforc_ERA5'])
+addpath([tools_path,'Aforc_ERA5'])
 addpath([tools_path,'Aforc_ECMWF'])
 addpath([tools_path,'Aforc_NCEP'])
 addpath([tools_path,'Aforc_QuikSCAT'])

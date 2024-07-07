@@ -8,7 +8,7 @@
 export SOURCE=/home/$USER/code/croco-v1.3.1/OCEAN/
 #
 # dir with compile options
-export EXENAME=C01
+export EXENAME=C03
 #
 # MPI partitioning
 export MPI_NUM_X=5
@@ -19,6 +19,9 @@ export MPI_NUM_PROCS=$(($MPI_NUM_X * $MPI_NUM_Y))
 export ATMOS_BULK=ERA5
 export ATMOS_FRC=NA
 export OGCM=GLORYS
+#
+# tidal forcing
+export TIDE_FRC=TIDETPXO
 #
 # runtime input
 export INNAME=I01

@@ -31,15 +31,10 @@ T_REF=3
 NLEVEL=1
 #
 # these are the time extents for this run
-#NY_START=1993
-#NY_END=2019
-#NM_START=1
-#NM_END=12
-# but we had to run it in fits and starts due to CHPC max wall time of 48 hrs
-# so these settings get changed as we execute bits at a time
-NY_START=2022
+# restarting from 2022-02 since we run with define TIDERAMP for the first month, and then undef TIDERAMP starting from the second month onwards
+NY_START=2023
 NY_END=2024
-NM_START=1
+NM_START=10
 NM_END=1
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
@@ -51,7 +46,7 @@ NY_SPIN=0
 #  Restart file - RSTFLAG=0 --> No Restart
 #		  RSTFLAG=1 --> Restart
 #
-RSTFLAG=0
+RSTFLAG=1
 #
 #  Time Schedule  -  TIME_SCHED=0 --> yearly files
 #                    TIME_SCHED=1 --> monthly files
