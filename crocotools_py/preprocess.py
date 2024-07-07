@@ -1,5 +1,6 @@
 import xarray as xr
 from datetime import datetime, timedelta
+import calendar
 import numpy as np
 import os
 import fnmatch
@@ -85,7 +86,63 @@ def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
                      encoding=encoding)
     
     ds_blk.close()
+
+
+def subset_WASA3(ds_wasa,ds_wasa_grd,extents,dl=0.1):
+    '''
+    Parameters
+    ----------
+    ds_wasa : xarray dataset extracted from wasa3
+    ds_wasa_grd : xarray dataset extracted from wasa3 grid file
+    extents : [lon0,lon1,lat0,lat1]
+    dl      : buffer to add around the extents (degrees)
+
+    Returns
+    -------
+    spatially subsetted dataset based on the input extents
+
+    '''
     
+    def find_nearest_wasa_point(lon_wasa, lat_wasa, lon_in, lat_in):
+        # subfunction to find the nearest indices of the wasa grid to a specific lon, lat coordinate
+        # based on postprocess.find_nearest_point() in this repo
+        
+        # Calculate the distance between (lon_in, lat_in) and all grid points
+        distance = ((lon_wasa - lon_in) ** 2 +
+                    (lat_wasa - lat_in) ** 2) ** 0.5
+
+        # Find the indices of the minimum distance
+        # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
+        # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
+        min_index = np.unravel_index(distance.argmin(), distance.shape)
+
+        j, i = min_index
+
+        return j, i
+    
+    lon_wasa = ds_wasa_grd.XLONG_M.squeeze()
+    lat_wasa = ds_wasa_grd.XLAT_M.squeeze()
+    
+    # get the nearest wasa grid indices corresponding to the corners of the croco grid   
+    # bl = bottom left, br = bottom right, tr = top right, tl = top_left
+    j_bl, i_bl = find_nearest_wasa_point(lon_wasa, lat_wasa, extents[0] - dl, extents[2] - dl)
+    j_br, i_br = find_nearest_wasa_point(lon_wasa, lat_wasa, extents[1] + dl, extents[2] - dl)
+    j_tr, i_tr = find_nearest_wasa_point(lon_wasa, lat_wasa, extents[1] + dl, extents[3] + dl)
+    j_tl, i_tl = find_nearest_wasa_point(lon_wasa, lat_wasa, extents[0] - dl, extents[3] + dl)
+    # use the corners to get the extreme indices
+    j_min=min(j_bl,j_br)
+    j_max=max(j_tl,j_tr)
+    i_min=min(i_bl,i_tl)
+    i_max=max(i_br,i_tr)
+    #
+    # finally, subset wasa datasets based on these indices
+    ds_wasa=ds_wasa.isel(south_north=slice(j_min,j_max+1),
+                         west_east=slice(i_min,i_max+1))
+    ds_wasa_grd=ds_wasa_grd.isel(south_north=slice(j_min,j_max+1),
+                         west_east=slice(i_min,i_max+1))
+    
+    return ds_wasa,ds_wasa_grd
+
 def make_WASA3_from_blk(wasa_grid, 
                  wasa_zarr_dir, 
                  croco_grd,
@@ -124,8 +181,6 @@ def make_WASA3_from_blk(wasa_grid,
     # get the relevant wasa data
     ds_wasa=xr.open_zarr(wasa_zarr_dir)
     ds_wasa_grd=xr.open_dataset(wasa_grid)
-    lon_wasa = ds_wasa_grd.XLONG_M.squeeze()
-    lat_wasa = ds_wasa_grd.XLAT_M.squeeze()
     
     # get the croco grid variables
     ds_croco_grd=xr.open_dataset(croco_grd)
@@ -136,41 +191,12 @@ def make_WASA3_from_blk(wasa_grid,
     
     # Subset WASA spatially to speed up interpolation later
     # this helps a lot so worth the mess!
-    def find_nearest_wasa_point(lon_wasa, lat_wasa, lon_in, lat_in):
-        # Sub-function to find the nearest indices of the wasa grid to a specific lon, lat coordinate
-        # based on postprocess.find_nearest_point() in this repo
+    extents=[min(lon_rho[0,0],lon_rho[-1,0]), # western extent
+             max(lon_rho[0,-1],lon_rho[-1,-1]), # eastern extent
+             min(lat_rho[0,0],lat_rho[0,-1]), # southern extent
+             max(lat_rho[-1,0],lat_rho[-1,-1])] # northern extent
+    ds_wasa,ds_wasa_grd=subset_WASA3(ds_wasa,ds_wasa_grd,extents)
         
-        # Calculate the distance between (lon_in, lat_in) and all grid points
-        distance = ((lon_wasa - lon_in) ** 2 +
-                    (lat_wasa - lat_in) ** 2) ** 0.5
-
-        # Find the indices of the minimum distance
-        # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
-        # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
-        min_index = np.unravel_index(distance.argmin(), distance.shape)
-
-        j, i = min_index
-
-        return j, i
-    # get the nearest wasa grid indices corresponding to the corners of the croco grid
-    dl = 0.1 # buffer    
-    # bl = bottom left, br = bottom right, tr = top right, tl = top_left
-    j_bl, i_bl = find_nearest_wasa_point(lon_wasa, lat_wasa, lon_rho[0,0] - dl, lat_rho[0,0] - dl)
-    j_br, i_br = find_nearest_wasa_point(lon_wasa, lat_wasa, lon_rho[0,-1] + dl, lat_rho[0,-1] - dl)
-    j_tr, i_tr = find_nearest_wasa_point(lon_wasa, lat_wasa, lon_rho[-1,-1] + dl, lat_rho[-1,-1] + dl)
-    j_tl, i_tl = find_nearest_wasa_point(lon_wasa, lat_wasa, lon_rho[-1,0] - dl, lat_rho[-1,0] + dl)
-    # use the corners to get the extreme indices
-    j_min=min(j_bl,j_br)
-    j_max=max(j_tl,j_tr)
-    i_min=min(i_bl,i_tl)
-    i_max=max(i_br,i_tr)
-    #
-    # finally, subset wasa datasets based on these indices
-    ds_wasa=ds_wasa.isel(south_north=slice(j_min,j_max+1),
-                         west_east=slice(i_min,i_max+1))
-    ds_wasa_grd=ds_wasa_grd.isel(south_north=slice(j_min,j_max+1),
-                         west_east=slice(i_min,i_max+1))
-    
     # extract the wasa grid variables we need from this spatial subset
     lon_wasa = ds_wasa_grd.XLONG_M.squeeze()
     lat_wasa = ds_wasa_grd.XLAT_M.squeeze() 
@@ -242,31 +268,6 @@ def make_WASA3_from_blk(wasa_grid,
                 # flattening for use in griddata
                 u_wasa_now = u_wasa.isel(Time=t).values.flatten()
                 v_wasa_now = v_wasa.isel(Time=t).values.flatten()
-#                # ---- DEBUGGING ------------
-#                # if np.any(np.isnan(u_wasa_now)):
-#                #     print('wasa contains missing u data for '+croco_blk_file_WASA+', '+t.strftime("%m/%d/%Y, %H:%M:%S"))
-#                # if np.any(np.isnan(v_wasa_now)):
-#                #     print('wasa contains missing v data for '+croco_blk_file_WASA+', '+t.strftime("%m/%d/%Y, %H:%M:%S"))
-#                
-#                import matplotlib.pyplot as plt
-#                import matplotlib.colors as mplc
-#                import matplotlib.cm as cm
-#                from matplotlib.animation import FuncAnimation
-#                import cartopy
-#                import cartopy.crs as ccrs
-#                import cartopy.feature as cfeature
-#                
-#                # u_temp=u_wasa.isel(Time=t)
-#                
-#                # fig = plt.figure() 
-#                # ax = plt.axes(projection=ccrs.Mercator())
-#                # u_temp=u_wasa.isel(Time=t).values
-#                # v_temp=v_wasa.isel(Time=t).values
-#                # ax.pcolormesh(lon_wasa,lat_wasa,u_temp)
-#                
-#                return
-#                
-#                # ------ END ----------------
                 
                 # Perform interpolation 
                 # 'nearest' method speeds it up a bit
@@ -337,5 +338,114 @@ def make_WASA3_from_blk(wasa_grid,
     ds_wasa.close()
     ds_wasa_grd.close()
 
+def WASA3_2_nc(wasa_grid, 
+                 wasa_zarr_dir, 
+                 out_dir,
+                 start_date,
+                 end_date,
+                 extents=None
+                 ):
+    '''
+    Create monthly nc files from WASA3 u10, v10 data
+    To be used as OpenDrift forcing
     
+    Parameters
+    ----------
+    wasa_grid     : /your_dir/geo_em.d03.nc
+    wasa_zarr_dir : /your_dir/uv_ds_10m
+    out_wasa_dir  : the directory to save blk files with the WASA data
+    start_date    : start datetime for processing (to the nearest month)
+    end_date      : end datetime for processing (to the nearest month)
+    extents       : option to only get a spatial subset [lon0,lon1,lat0,lat1]
+    
+    Returns
+    -------
+    Writes monthly netcdf files in out_dir
+
+    '''
+        
+    # get the relevant wasa data
+    ds_wasa=xr.open_zarr(wasa_zarr_dir)
+    ds_wasa_grd=xr.open_dataset(wasa_grid)
+    
+    if extents is not None:
+        ds_wasa,ds_wasa_grd=subset_WASA3(ds_wasa,ds_wasa_grd,extents)
+    
+    # extract the wasa grid variables we need from this spatial subset
+    lon_wasa = ds_wasa_grd.XLONG_M.squeeze()
+    lat_wasa = ds_wasa_grd.XLAT_M.squeeze() 
+    cosa = ds_wasa_grd.COSALPHA.squeeze()
+    sina = ds_wasa_grd.SINALPHA.squeeze()
+    
+    # prefer to keep rename Time to time
+    ds_wasa = ds_wasa.rename({'Time': 'time'})
+    
+    # subset time so that we only keep every second time-step
+    # The raw data are half hourly so this makes it hourly
+    # plenty for our purposes and we half the disk space
+    ds_wasa = ds_wasa.isel(time=slice(None, None, 2))
+    
+    # loop through months
+    date_now=start_date
+    while date_now <= end_date:
+        file_out = 'WASA3'+date_now.strftime('_Y%YM%m')+'.nc'
+   
+        if os.path.isfile(out_dir+'/'+file_out):
+            print(file_out + ' already exists - skipping')
+        else:
+            print('\nworking on '+file_out)
+            
+            # start and end days of this month
+            start_extract=datetime(date_now.year,date_now.month,1,0,0,0)
+            day_end = calendar.monthrange(date_now.year, date_now.month)[1]
+            end_extract=datetime(date_now.year,date_now.month,day_end,23,59,59)
+            
+            # subset the WASA data for this month
+            ds_wasa_now = ds_wasa.sel(time=slice(start_extract,end_extract))
+            time_now = ds_wasa_now.time
+            
+            # rotate the wasa vectors to be east,north components
+            u = ds_wasa_now.U10
+            v = ds_wasa_now.V10
+            u_wasa = u * cosa - v * sina
+            v_wasa = v * cosa + u * sina
+            
+            # check if there are any missing data
+            # This is needed due to some random blocks of missing values we've found
+            # I'm automatically interpolating over these data so we have workable files
+            # THIS IS A QUICK FIX AND NEEDS TO BE SORTED OUT WITH CSAG!
+            # Then we can remove this part of the code
+            if np.any(u_wasa.isnull().data.flatten()): # this check works for both u and v due to the rotation calc above - any missing data in one translates to missing in the other
+                print('filling missing values in '+file_out)
+                # Rechunk the data to avoid issues with Dask and interpolation below
+                u_wasa = u_wasa.chunk({'south_north': -1, 'west_east': -1})
+                u_wasa = u_wasa.interpolate_na(dim='south_north', method='linear', fill_value='extrapolate')
+            
+                # Rechunk the data to avoid issues with Dask and interpolation below
+                v_wasa = v_wasa.chunk({'south_north': -1, 'west_east': -1})
+                v_wasa = v_wasa.interpolate_na(dim='south_north', method='linear', fill_value='extrapolate')
+            
+            # add a couple of attributes
+            u_wasa.attrs["standard_name"] = 'x_wind'
+            u_wasa.attrs["units"] = 'm s**-1'
+            v_wasa.attrs["standard_name"] = 'y_wind'
+            v_wasa.attrs["units"] = 'm s**-1'
+            
+            # Create the dataset
+            ds_out = xr.Dataset(
+                {
+                    'time': time_now,
+                    'longitude': lon_wasa,
+                    'latitude': lat_wasa,
+                    'x_wind': u_wasa,
+                    'y_wind': v_wasa,
+                }
+            )
+            ds_out.to_netcdf(out_dir+'/'+file_out)
+            
+        date_now=date_now+timedelta(days=32) # 32 days ensures we get to the next month
+        date_now=datetime(date_now.year, date_now.month, 1) # set the first day of the month 
+        
+    ds_wasa.close()
+    ds_wasa_grd.close()  
     
