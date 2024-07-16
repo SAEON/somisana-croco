@@ -57,7 +57,11 @@ def plot_var(ax,fname,var,
     '''
     
     # get the data
-    var_data = post.get_var(fname,var,tstep=tstep,level=level,ref_date=ref_date)
+    if var=='spd':
+        u, v = post.get_uv(fname,tstep=tstep,level=level,ref_date=ref_date)
+        var_data = np.sqrt(u**2+v**2)
+    else:
+        var_data = post.get_var(fname,var,tstep=tstep,level=level,ref_date=ref_date)
     lon = var_data.lon_rho.values
     lat = var_data.lat_rho.values
     var_data=var_data.values   
