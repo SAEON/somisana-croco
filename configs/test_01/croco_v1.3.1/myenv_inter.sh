@@ -24,4 +24,4 @@ export OGCM=GLORYS
 export TIDE_FRC=TIDETPXO
 #
 # runtime input
-export INNAME=I01
+export INNAME=I02

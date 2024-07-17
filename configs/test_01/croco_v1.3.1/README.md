@@ -15,7 +15,8 @@ Compile options
 ---------------
 `C**`
 01 - baseline compile options
-02 - include atmospheric pressure effect to blk forcing and boundary correction
+02 - as per 01, but include atmospheric pressure effect to blk forcing and boundary correction
+03 - as per 02, but include tides
 
 Runtime input (\*.in files)
 ---------------------------
