@@ -687,9 +687,12 @@ def get_var(fname,var_str,
         Retruns an xarray dataarray object of the requested data
     '''
     
+    # --------
     if grdname is None:
         grdname = fname
-        
+    ds_grd = get_ds(grdname,var_str='lon_rho') # only using 'lon_rho' as input here to ensure get_ds uses open_dataset, not open_mfdataset
+    
+    
     print('extracting the data from croco file(s) - ' + var_str)
     # ----------------------------------------------
     # Prepare indices for slicing in ds.isel() below
@@ -746,18 +749,18 @@ def get_var(fname,var_str,
         if len(data_rho.shape)==4:
             da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
                                                  's_rho': ds['s_rho'].values, 
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)
+                                                 'eta_rho': ds_grd['eta_rho'].values, 
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
                                                  },
                                           dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
         else: # the case where a single sigma level is extracted
             da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)
+                                                 'eta_rho': ds_grd['eta_rho'].values, 
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
                                                  },
                                           dims=['time', 'eta_rho', 'xi_rho'])
         # use the same attributes
@@ -787,10 +790,10 @@ def get_var(fname,var_str,
                 data_out[t,:,:]=hlev(data[t,::], z[t,::], level)
             # create a new dataarray for the data for this level
             da_out = xr.DataArray(data_out, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)
+                                                 'eta_rho': ds_grd['eta_rho'].values, 
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
                                                  },
                                           dims=['time', 'eta_rho', 'xi_rho'])
             # use the same attributes
@@ -816,6 +819,7 @@ def get_var(fname,var_str,
     da = da_masked.copy()
     
     ds.close()
+    ds_grd.close()
     return da
 
 def get_uv(fname,
