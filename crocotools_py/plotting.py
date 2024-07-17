@@ -43,6 +43,7 @@ def setup_plot(ax, fname, extents=[]):
     gl.top_labels = False
 
 def plot_var(ax,fname,var,
+             grdname=None,
              tstep=0, # index or a datetime (in which case specify ref_date)
              level=0,
              ref_date = None, 
@@ -58,16 +59,16 @@ def plot_var(ax,fname,var,
     
     # get the data
     if var=='spd':
-        u, v = post.get_uv(fname,tstep=tstep,level=level,ref_date=ref_date)
+        u, v = post.get_uv(fname,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
         var_data = np.sqrt(u**2+v**2)
     else:
-        var_data = post.get_var(fname,var,tstep=tstep,level=level,ref_date=ref_date)
-    lon = var_data.lon_rho.values
-    lat = var_data.lat_rho.values
+        var_data = post.get_var(fname,var,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
+    lon = post.get_grd_var(grdname,'lon_rho').values
+    lat = post.get_grd_var(grdname,'lat_rho').values
     var_data=var_data.values   
     
     # set up the plot
-    setup_plot(ax,fname,extents = extents)
+    setup_plot(ax,grdname,extents = extents)
     
     # set up the cmap to handle non-uniform input ticks
     if len(ticks)==0:
@@ -127,6 +128,7 @@ def plot_time(ax,fname,
     return time_plt
 
 def plot_uv(ax,fname,
+              grdname=None,
               tstep=0,
               level=0,
               ref_date=None,
@@ -140,14 +142,14 @@ def plot_uv(ax,fname,
     '''
     
     # get the data
-    u, v = post.get_uv(fname,tstep=tstep,level=level,ref_date=ref_date)
-    lon = u.lon_rho.values
-    lat = u.lat_rho.values
+    u, v = post.get_uv(fname,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
+    lon = post.get_grd_var(grdname,'lon_rho').values
+    lat = post.get_grd_var(grdname,'lat_rho').values
     u=u.values
     v=v.values
      
     # set up the plot
-    setup_plot(ax, fname, extents = extents)
+    setup_plot(ax, grdname, extents = extents)
     
     # plot the data
     uv_plt = ax.quiver(lon[::skip, ::skip],
@@ -161,13 +163,14 @@ def plot_uv(ax,fname,
     return uv_plt
 
 def plot_isobaths(ax,fname,isobaths):
-    h = post.get_var(fname,'h')
+    h = post.get_grd_var(fname,'h')
     lon=h.lon_rho.values
     lat=h.lat_rho.values
     ax.contour(lon,lat,h,isobaths,colors='k',transform=ccrs.PlateCarree())
     
 def plot(fname,
         var='temp',
+        grdname=None,
         figsize=(6,6), # (hz,vt)
         tstep=0, # the step to plot, or the first step to animate. Can be an integer or a datetime object
         level=None, # this gets set to surface level if not provided
@@ -194,6 +197,9 @@ def plot(fname,
     there's also an option to turn the plot into an animation
     '''
     
+    if grdname is None:
+        grdname = fname
+        
     fig = plt.figure(figsize=figsize) 
     ax = plt.axes(projection=ccrs.Mercator())
     
@@ -208,6 +214,7 @@ def plot(fname,
         ds.close()
     
     var_plt = plot_var(ax,fname,var,
+             grdname=grdname,
              tstep=tstep,
              level=level,
              ref_date=ref_date, 
@@ -218,6 +225,7 @@ def plot(fname,
     plot_cbar(var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc)
     if add_vectors:
         uv_plt = plot_uv(ax,fname,
+                      grdname=grdname,
                       tstep=tstep,
                       level=level,
                       ref_date=ref_date,
@@ -226,7 +234,7 @@ def plot(fname,
                       )
         
     if isobaths is not None:
-        plot_isobaths(ax,fname,isobaths)
+        plot_isobaths(ax,grdname,isobaths)
     
     # write a jpg if specified
     if write_jpg:
@@ -240,9 +248,9 @@ def plot(fname,
         def plot_tstep(i):
             # get the data for this time-step
             time_i = post.get_time(fname, ref_date)[i]
-            var_i = post.get_var(fname,var,tstep=i,level=level,ref_date=ref_date)
+            var_i = post.get_var(fname,var,grdname=grdname,tstep=i,level=level,ref_date=ref_date)
             var_i = var_i.values
-            u_i, v_i = post.get_uv(fname,tstep=i,level=level,ref_date=ref_date)
+            u_i, v_i = post.get_uv(fname,grdname=grdname,tstep=i,level=level,ref_date=ref_date)
             u_i = u_i.values
             v_i = v_i.values
             
