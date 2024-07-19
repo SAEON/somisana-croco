@@ -736,11 +736,11 @@ def get_var(fname,var_str,
         da = da.assign_coords(time=time_dt)
     
     # regrid u/v data onto the rho grid
-    if var_str == 'u' or var_str == 'v':
+    if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
         if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
-            if var_str=='u':
+            if var_str in ['u','sustr','bustr','ubar']:
                 data_rho=u2rho(da)   
-            if var_str=='v':
+            if var_str in ['v','svstr','bvstr','vbar']:
                 data_rho=v2rho(da) 
         else:
             data_rho=da.copy() 
@@ -830,18 +830,25 @@ def get_uv(fname,
            eta_v=slice(None),
            xi_rho=slice(None),
            xi_u=slice(None),
-           ref_date=None):
+           ref_date=None,
+           var_u='u', # could also be sustr, bustr, ubar
+           var_v='v' # could also be svstr, bvstr, vbar
+           ):
     '''
     extract u and v components from a CROCO output file(s), regrid onto the 
     rho grid and rotate from grid-aligned to east-north components
     
-    see get_var() for a description of the inputs  
+    see get_var() for a description of the inputs
+    
+    in addition to the standard get_var() inputs, there are options to sepcify 
+    var_u and var_v and strings. Default is to extract the baroclinic velocities
+    but you can also extract other variables on the u and v grids
     
     returns xarray dataarrays for both u and v data
     
     '''
     
-    u=get_var(fname,'u',
+    u=get_var(fname,var_u,
               grdname=grdname,
               tstep=tstep,
               level=level,
@@ -850,7 +857,7 @@ def get_uv(fname,
               xi_rho=xi_rho,
               xi_u=xi_u,
               ref_date=ref_date)
-    v=get_var(fname,'v',
+    v=get_var(fname,var_v,
               grdname=grdname,
               tstep=tstep,
               level=level,
@@ -884,14 +891,52 @@ def get_uv(fname,
     v_out = v*cos_a + u*sin_a
     
     # add attributes for u_out, v_out - now east,north components
-    # u
-    u_out.attrs['long_name'] = 'Eastward velocity'
-    u_out.attrs['units'] = 'meters per second'
-    u_out.attrs['standard_name'] = 'eastward_sea_water_velocity'
-    # v
-    v_out.attrs['long_name'] = 'Northward velocity'
-    v_out.attrs['units'] = 'meters per second'
-    v_out.attrs['standard_name'] = 'northward_sea_water_velocity'
+    # Define a dictionary of the attributes for potential variables
+    attributes = {
+        'u': {
+            'long_name': 'Eastward component of baroclinic velocity',
+            'units': 'meters per second',
+            'standard_name': 'baroclinic_eastward_sea_water_velocity'
+        },
+        'sustr': {
+            'long_name': 'Eastward component of surface stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'surface_eastward_stress'
+        },
+        'bustr': {
+            'long_name': 'Eastward component of bottom stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'bottom_eastward_stress'
+        },
+        'ubar': {
+            'long_name': 'Eastward component of barotropic velocity',
+            'units': 'meters per second',
+            'standard_name': 'barotropic_eastward_sea_water_velocity'
+        },
+        'v': {
+            'long_name': 'Northward component of baroclinic velocity',
+            'units': 'meters per second',
+            'standard_name': 'baroclinic_northward_sea_water_velocity'
+        },
+        'svstr': {
+            'long_name': 'Northward component of surface stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'surface_northward_stress'
+        },
+        'bvstr': {
+            'long_name': 'Northward component of bottom stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'bottom_northward_stress'
+        },
+        'vbar': {
+            'long_name': 'Northward component of barotropic velocity',
+            'units': 'meters per second',
+            'standard_name': 'barotropic_northward_sea_water_velocity'
+        }
+    }
+    
+    u_out.attrs = attributes[var_u]
+    v_out.attrs = attributes[var_v]
     
     # create a dataset containing both u and v
     # preferring not to do this as it makes downstream code a little easier and I'm too lazy to change it
