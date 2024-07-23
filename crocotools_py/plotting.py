@@ -218,7 +218,8 @@ def plot(fname,
              tstep=tstep,
              level=level,
              ref_date=ref_date, 
-             ticks=ticks)
+             ticks=ticks,
+             extents=extents)
     
     time_plt = plot_time(ax,fname,tstep=tstep,ref_date=ref_date)
     
@@ -231,6 +232,7 @@ def plot(fname,
                       ref_date=ref_date,
                       scale = scale_uv,
                       skip = skip_uv,
+                      extents=extents
                       )
         
     if isobaths is not None:
@@ -255,7 +257,7 @@ def plot(fname,
             v_i = v_i.values
             
             # update the figure for this time-step
-            time_plt.set_text(datetime.strftime(time_i, '%Y-%m-%d %H:%M:%S'))    
+            time_plt.set_text(datetime.strftime(time_i, '%Y-%m-%d %H:%M'))    
             var_plt.set_array(var_i.ravel())
             uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv],
                                         v_i[::skip_uv, ::skip_uv])

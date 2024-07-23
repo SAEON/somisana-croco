@@ -830,6 +830,7 @@ def get_uv(fname,
            eta_v=slice(None),
            xi_rho=slice(None),
            xi_u=slice(None),
+           subdomain=None,
            ref_date=None,
            var_u='u', # could also be sustr, bustr, ubar
            var_v='v' # could also be svstr, bvstr, vbar
@@ -856,6 +857,7 @@ def get_uv(fname,
               eta_v=eta_v,
               xi_rho=xi_rho,
               xi_u=xi_u,
+              subdomain=subdomain,
               ref_date=ref_date)
     v=get_var(fname,var_v,
               grdname=grdname,
@@ -865,6 +867,7 @@ def get_uv(fname,
               eta_v=eta_v,
               xi_rho=xi_rho,
               xi_u=xi_u,
+              subdomain=subdomain,
               ref_date=ref_date)
     
     # regridding from the u and v grids to the rho grid is now handled inside 
@@ -878,6 +881,7 @@ def get_uv(fname,
     # grid angle
     if grdname is None:
         grdname = fname
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,'angle')
     angle=get_grd_var(grdname, 'angle',
                   eta_rho=eta_rho,
                   xi_rho=xi_rho,
