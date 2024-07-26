@@ -495,7 +495,7 @@ def get_grd_var(fname,var_str,
                    eta_rho=slice(None),
                    xi_rho=slice(None)):
     '''
-    Extract a grid variable
+    Extract a grid variable on the rho grid
     '''
     
     if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
@@ -687,12 +687,16 @@ def get_var(fname,var_str,
         Retruns an xarray dataarray object of the requested data
     '''
     
-    # --------
+    # ---------------------------
+    # Get a dataset for the grid
+    # ---------------------------
     if grdname is None:
         grdname = fname
-    ds_grd = get_ds(grdname,var_str='lon_rho') # only using 'lon_rho' as input here to ensure get_ds uses open_dataset, not open_mfdataset
-    
-    
+    # using 'lon_rho' as var_str input to get_ds, as a hack to ensure that
+    # get_ds uses open_dataset, not open_mfdataset 
+    # since get_ds only uses var_str for this purpose
+    ds_grd = get_ds(grdname,var_str='lon_rho') 
+        
     print('extracting the data from croco file(s) - ' + var_str)
     # ----------------------------------------------
     # Prepare indices for slicing in ds.isel() below
@@ -716,6 +720,12 @@ def get_var(fname,var_str,
                        s_rho=level_for_isel,
                        s_w=level_for_isel,
                        eta_rho=eta_rho,
+                       xi_rho=xi_rho,
+                       xi_u=xi_u,
+                       eta_v=eta_v,
+                       missing_dims='ignore' # handle case where input is a previously extracted dataset/dataarray
+                       )
+    ds_grd = ds_grd.isel(eta_rho=eta_rho,
                        xi_rho=xi_rho,
                        xi_u=xi_u,
                        eta_v=eta_v,
@@ -830,6 +840,7 @@ def get_uv(fname,
            eta_v=slice(None),
            xi_rho=slice(None),
            xi_u=slice(None),
+           subdomain=None,
            ref_date=None,
            var_u='u', # could also be sustr, bustr, ubar
            var_v='v' # could also be svstr, bvstr, vbar
@@ -856,6 +867,7 @@ def get_uv(fname,
               eta_v=eta_v,
               xi_rho=xi_rho,
               xi_u=xi_u,
+              subdomain=subdomain,
               ref_date=ref_date)
     v=get_var(fname,var_v,
               grdname=grdname,
@@ -865,6 +877,7 @@ def get_uv(fname,
               eta_v=eta_v,
               xi_rho=xi_rho,
               xi_u=xi_u,
+              subdomain=subdomain,
               ref_date=ref_date)
     
     # regridding from the u and v grids to the rho grid is now handled inside 
@@ -878,6 +891,7 @@ def get_uv(fname,
     # grid angle
     if grdname is None:
         grdname = fname
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,'angle')
     angle=get_grd_var(grdname, 'angle',
                   eta_rho=eta_rho,
                   xi_rho=xi_rho,
