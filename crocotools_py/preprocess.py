@@ -2,7 +2,8 @@ import xarray as xr
 from datetime import datetime, timedelta
 import calendar
 import numpy as np
-import os
+import pandas as pd
+import os, glob
 import fnmatch
 from scipy.interpolate import griddata
 import crocotools_py.postprocess as post
@@ -311,7 +312,7 @@ def make_WASA3_from_blk(wasa_grid,
             # So I'm removing these variables to be sure
             # leaving them hanging around seems a little messy since we're replacing uwnd and vwnd
             # while we're at it, radlw is also not used (radlw_in is), so remove that as well
-            ds_blk.drop_vars(["sustr", "svstr", "radlw"])
+            ds_blk = ds_blk.drop_vars(["sustr", "svstr", "radlw"])
             
             # write float32 instead of float64 in an attempt to save space
             encoding = {
@@ -448,4 +449,176 @@ def WASA3_2_nc(wasa_grid,
         
     ds_wasa.close()
     ds_wasa_grd.close()  
+
     
+def make_SAWS_from_blk(saws_dir, 
+                 croco_grd,
+                 croco_blk_in,
+                 croco_blk_out,
+                 ref_date,
+                 croco_atmos='GFS',
+                 interp_method='linear'
+                 ):
+    '''
+    Interpolate operational SAWS UM data onto existing blk files
+    
+    Parameters
+    ----------
+    ...
+    ref_date      : datetime object corresponding to the reference date
+    interp_method : The default is 'linear'. Can use 'nearest' to speed things up?
+
+    Returns
+    -------
+    Writes blk netcdf file with SAWS data
+
+    '''
+    
+    # get the croco grid variables...
+    ds_croco_grd=xr.open_dataset(croco_grd)
+    lon_rho=ds_croco_grd.lon_rho
+    lat_rho=ds_croco_grd.lat_rho
+    angle=ds_croco_grd.angle
+    ds_croco_grd.close()
+    # ... and extract the spatial limits to be used in subsetting the SAWS data
+    # (useful to speed up the code)
+    dl=0.5
+    lon_min=min(lon_rho[0,0],lon_rho[-1,0])-dl # western extent
+    lon_max=max(lon_rho[0,-1],lon_rho[-1,-1])+dl # eastern extent
+    lat_min=min(lat_rho[0,0],lat_rho[0,-1])-dl # southern extent
+    lat_max=max(lat_rho[-1,0],lat_rho[-1,-1])+dl # northern extent
+    
+    # Get a list of all .nc files in the saws directory...
+    files = sorted(glob.glob(f"{saws_dir}/*.nc"))
+    # ... and reverse the order to give priority to the latest files
+    # (could be a weak point in the code if the file names change?)
+    files.reverse()
+    
+    # Open datasets and combine them, giving priority to the latest files
+    # this is needed since the times in the files overlap
+    print('extracting SAWS UM data')
+    ds_saws = None
+    for file in files:
+        ds = xr.open_dataset(file)
+        # do the spatial subset (rather here than later to save time in the concatenation step, which is a bit slow)
+        ds = ds.sel(lon=slice(lon_min, lon_max), lat=slice(lat_min, lat_max))
+        if ds_saws is None:
+            ds_saws = ds
+        else:
+            # extract the non-overlapping data
+            ds = ds.sel(time=slice(ds.time[0],ds_saws.time[0]-1))
+            # and combine with the full dataset
+            ds_saws = xr.concat([ds, ds_saws], dim='time')
+        ds.close()   
+    
+    print('extracting CROCO blk data')
+    # get a dataset for the croco blk file
+    # NB to have decode_times=False (since CROCO files don't come with the ref date in the attributes)
+    ds_blk = xr.open_dataset(croco_blk_in, decode_times=False)
+    # get an array of datetimes for this file
+    blk_time = np.array([ref_date + timedelta(days=day) for day in ds_blk.bulk_time.values])
+    
+    # now get the blk file onto the SAWS time steps
+    # we are getting the blkfile times onto the SAWS times rather than the other way around
+    # because the saws data only contains 3 days of forecasts, so it will be a subset of the normal blk file which would have 5 days of forecast data
+    # so the output blk file will have fewer time-steps than the original
+    #
+    # start by cutting off saws times which are outside the blk file (we may have read in more hindcast data than we need)
+    ds_saws = ds_saws.sel(time=slice(blk_time[0],blk_time[-1]))
+    # and then subset the bulk times to the overlapping SAWS data
+    # (to do this we need to get the saws times in days since ref_date, as per the ds_blk.bulk_time)
+    # (we intentionally don't change ds_blk.bulk_time into real datetimes because the output blk must be the same format as the input blk)
+    saws_days_since_ref_date = (pd.to_datetime(ds_saws.time.values) - ref_date).total_seconds()/86400
+    ds_blk = ds_blk.sel(bulk_time=saws_days_since_ref_date, method="nearest")
+    # now ds_blk and ds_wasa have the exact same number of timesteps
+    
+    # extract the saws grid variables for doing the spatial interpolation
+    lon_saws = ds_saws.lon.squeeze()
+    lat_saws = ds_saws.lat.squeeze() 
+    lon_saws, lat_saws = np.meshgrid(lon_saws,lat_saws)
+    # flatten lon,lat arays for use in interpolation later
+    source_points = np.column_stack((np.array(lon_saws).flatten(), np.array(lat_saws).flatten()))
+    
+    # interpolate the saws data onto the croco grid   
+    # I tried to find an in-built xarray interpolation method to do the job
+    # efficiently, but it only works for regular grids
+    # So we're extracting the data and using scipy's griddata function
+    # Note I'm puposefully interpolating saws wind components onto the croco rho grid (not the croco u,v grids)
+    # because we have to rotate the u,v vectors (on the rho grid)
+    # before writing the data to file, so would have to use u2rho() and v2rho() 
+    # which would introduce additional unnecessary interpolation
+    print('interpolating SAWS data onto CROCO grid...')
+    u_saws_interp = np.zeros_like(ds_blk.wspd) # using 'wspd' to get the rho grid
+    v_saws_interp = np.zeros_like(ds_blk.wspd)
+    t2_saws_interp = np.zeros_like(ds_blk.wspd)
+    rhum_saws_interp = np.zeros_like(ds_blk.wspd)
+    for t in range(len(ds_blk.bulk_time)):
+        if t % 50 == 0:
+            percentage_complete = (t/len(ds_blk.bulk_time)) * 100
+            print(f"{percentage_complete:.0f}% complete")
+        
+        # Extract saws values at this specific time-step
+        # flattening for use in griddata
+        # (we can use .isel for this since we know the blk and saws times are aligned)
+        ds_saws_now = ds_saws.isel(time=t)
+        u_saws_now = ds_saws_now['10u'].values.flatten()
+        v_saws_now = ds_saws_now['10v'].values.flatten()
+        t2_saws_now = ds_saws_now['2t'].values.flatten() - 273.15 # converting K to degrees celcius
+        rhum_saws_now = ds_saws_now['r'].values.flatten() / 100 # converting percent to fraction
+        
+        # Perform interpolation
+        # 'nearest' method speeds it up a bit
+        # but I guess 'linear' is better
+        u_saws_interp[t,:,:] = griddata(source_points, u_saws_now, (lon_rho, lat_rho), method=interp_method) 
+        v_saws_interp[t,:,:] = griddata(source_points, v_saws_now, (lon_rho, lat_rho), method=interp_method) 
+        t2_saws_interp[t,:,:] = griddata(source_points, t2_saws_now, (lon_rho, lat_rho), method=interp_method)
+        rhum_saws_interp[t,:,:] = griddata(source_points, rhum_saws_now, (lon_rho, lat_rho), method=interp_method)              
+        
+    # calculate the wspd from the wasa components (on the rho grid)
+    spd_saws_interp = np.hypot(u_saws_interp, v_saws_interp)
+    
+    # uwnd and vwnd are grid aligned, so we need to rotate vectors
+    # (based on official croco_tools interp_ERA5.m)
+    cos_a = np.cos(angle.values)
+    sin_a = np.sin(angle.values)
+    # have to use the data on the rho grid for the rotation calc 
+    u_out = u_saws_interp*cos_a + v_saws_interp*sin_a
+    v_out = v_saws_interp*cos_a - u_saws_interp*sin_a
+    # but get onto the u,v grids to write to file
+    u_out = post.rho2u(u_out)
+    v_out = post.rho2v(v_out)
+    
+    # Update the interpolated saws data within ds_blk
+    ds_blk['uwnd'] = (('bulk_time', 'eta_u', 'xi_u'), u_out)
+    ds_blk['vwnd'] = (('bulk_time', 'eta_v', 'xi_v'), v_out)
+    ds_blk['wspd'] = (('bulk_time', 'eta_rho', 'xi_rho'), spd_saws_interp)
+    ds_blk['tair'] = (('bulk_time', 'eta_rho', 'xi_rho'), t2_saws_interp)
+    ds_blk['rhum'] = (('bulk_time', 'eta_rho', 'xi_rho'), rhum_saws_interp)
+    
+    # I'm pretty sure we don't need sustr and svstr in blk files as this is computed online
+    # So I'm removing these variables to be sure
+    # leaving them hanging around seems a little messy since we're replacing uwnd and vwnd
+    # while we're at it, radlw is also not used (radlw_in is), so remove that as well
+    ds_blk = ds_blk.drop_vars(["sustr", "svstr", "radlw"])
+    
+    # write float32 instead of float64 in an attempt to save space
+    encoding = {
+        "tair": {"dtype": "float32"},
+        "rhum": {"dtype": "float32"},
+        "prate": {"dtype": "float32"},
+        "wspd": {"dtype": "float32"},
+        "radlw_in": {"dtype": "float32"},
+        "radsw": {"dtype": "float32"},
+        "uwnd": {"dtype": "float32"},
+        "vwnd": {"dtype": "float32"},
+        "bulk_time": {"dtype": "float32"},
+    }
+    
+    # write the new blk file
+    ds_blk.to_netcdf(croco_blk_out,
+                      encoding=encoding)
+    
+    ds_blk.close()
+    
+    ds_saws.close()
+
