@@ -67,7 +67,7 @@ vertical_mixing: Akv_bak, Akt_bak [m^2/sec]
                    0.d0    30*0.d0
 
 bottom_drag:     RDRG [m/s],  RDRG2,  Zob [m],  Cdb_min, Cdb_max
-                 0.0d-04      0.d-3    1.d-4     1.d-4    1.d-1
+                 0.0d-04      0.d-3    1.d-6     1.d-10    1.d-1
 
 gamma2:
                  1.d0

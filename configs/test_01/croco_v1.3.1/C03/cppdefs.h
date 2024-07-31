@@ -177,15 +177,15 @@
 # define  SFLUX_CFB
 # undef  SEA_ICE_NOFLUX
                       /* Lateral Forcing */
-# undef CLIMATOLOGY
+# define CLIMATOLOGY
 # ifdef CLIMATOLOGY
 #  define ZCLIMATOLOGY
 #  define M2CLIMATOLOGY
 #  define M3CLIMATOLOGY
 #  define TCLIMATOLOGY
 
-#  undef ZNUDGING
-#  undef M2NUDGING
+#  define ZNUDGING
+#  define M2NUDGING
 #  define M3NUDGING
 #  define TNUDGING
 #  undef  ROBUST_DIAG
@@ -286,7 +286,7 @@
 #  ifndef UV_TIDES
 #   define OBC_REDUCED_PHYSICS
 #  endif
-#  define TIDERAMP
+#  undef TIDERAMP
 # endif
 # define OBC_M2CHARACT
 # undef  OBC_M2ORLANSKI

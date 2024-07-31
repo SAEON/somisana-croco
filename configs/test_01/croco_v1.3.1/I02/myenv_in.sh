@@ -32,10 +32,10 @@ NLEVEL=1
 #
 # these are the time extents for this run
 # restarting from 2022-02 since we run with define TIDERAMP for the first month, and then undef TIDERAMP starting from the second month onwards
-NY_START=2023
-NY_END=2023
-NM_START=7
-NM_END=7
+NY_START=2022
+NY_END=2024
+NM_START=2
+NM_END=1
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
 MTH_FORMAT="%02d"
