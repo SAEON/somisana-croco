@@ -622,3 +622,161 @@ def make_SAWS_from_blk(saws_dir,
     
     ds_saws.close()
 
+def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
+    '''
+    Convert the GFS atmospheric forecast grb files downloaded by the cli.py function download_gfs_atm
+    and convert the data into nc files in a format which can be ingested by CROCO
+    using the ONLINE cppkey for online interpolation of the surface forcing
+    '''
+    
+    # Path to the directory containing your GRIB files
+    gfs_files = os.path.join(gfs_dir,"*.grb")
+    
+    # List all GRIB files
+    file_paths = glob.glob(gfs_files)
+    
+    def open_grib_file(file_path,var_dict):
+        return xr.open_dataarray(
+            file_path,
+            engine='cfgrib',
+            filter_by_keys={'shortName': var_dict['shortName'],
+                            'stepType': var_dict['stepType'],
+                            })
+    
+    # here's where we'd start the loop through vars
+    # (you can see the vars in the files using
+    # grib_ls -P shortName,typeOfLevel,level 2024080106_f001.grb)
+    
+    variables = {
+            "Temperature_height_above_ground": {
+                "shortName": "2t",
+                "stepType": "instant",
+                "process_factor": 1.0, # leaving units as Kelvin
+            },
+            "Specific_humidity": {
+                "shortName": "2r",
+                "stepType": "instant",
+                "process_factor": 1/100, # convert from % to fraction
+            },
+            "Precipitation_rate": {
+                "shortName": "prate",
+                "stepType": "instant",
+                "process_factor": 1.0, # leaving units as kg/m^2/s
+            },
+            "Downward_Short-Wave_Rad_Flux_surface": {
+                "shortName": "dswrf",
+                "stepType": "avg",
+                "process_factor": 1.0,
+            },
+            "Upward_Short-Wave_Rad_Flux_surface": {
+                "shortName": "uswrf",
+                "stepType": "avg",
+                "process_factor": 1.0,
+            },
+            "Downward_Long-Wave_Rad_Flux": {
+                "shortName": "dlwrf",
+                "stepType": "avg",
+                "process_factor": 1.0,
+            },
+            "Upward_Long-Wave_Rad_Flux_surface": {
+                "shortName": "ulwrf",
+                "stepType": "avg",
+                "process_factor": 1.0,
+            },
+            "U-component_of_wind": {
+                "shortName": "10u",
+                "stepType": "instant",
+                "process_factor": 1.0,
+            },
+            "V-component_of_wind": {
+                "shortName": "10v",
+                "stepType": "instant",
+                "process_factor": 1.0,
+            },
+            # will need to add patm here
+        }
+    
+    for var in variables:
+        
+        # get an xarray dataset for this variable
+        print('working on '+var)
+        var_dict = variables[var]
+        datasets = [open_grib_file(fp,var_dict) for fp in file_paths]
+        da = xr.concat(datasets, dim='valid_time')
+        
+        da = da * var_dict['process_factor']
+        
+        if var_dict['stepType']=='avg':
+            # A bunch of variables are (rather annoyingly) written out as the
+            # accumulated average over each 6 hour forecast period.
+            # We want to convert these accumulated averages into individual one-hour averages
+            #
+            # see FAQ "How can the individual one-hour averages be computed" from https://rda.ucar.edu/datasets/ds093.0/#docs/FAQs_6hrly.html
+            # Excerpt from there:
+            # You can compute the one-hour average (X) ending at hour N by using the N-hour average (a) and the (N-1)-hour average (b) as follows:
+            # X = N*a - (N-1)*b
+            # So if you want the 1-hour Average for the period initial+3 to initial+4 (X), you would use the 4-hour Average (initial+0 to initial+4) as (a) and the 3-hour Average (initial+0 to initial+3) as (b) as follows:
+            # X = 4*a - 3*b
+                
+            # start by extracting the forecast hour for each time-step (in the 'step' variable)
+            # frcst = xr.DataArray(da.step / np.timedelta64(1, 'h'), dims='valid_time')
+            frcst = da.step.values / np.timedelta64(1, 'h')
+            
+            # the averaging period for this variables is (again rather annoyingly) reset every 6 hours, 
+            # so here we compute the hour within in the 6 hour forecast cycle 
+            # (frcst_ave will range from 1-6 by definition)
+            frcst_ave = np.mod(frcst - 1, 6) + 1
+            
+            # get arrays for doing the calcs and updating the output array
+            data = da.values
+            data_output = data.copy()
+            
+            for i in range(len(frcst)):
+                if frcst_ave[i]>1:
+                    # only do the conversion for forecast hours greater than 1
+                    if frcst[i]<=120:
+                        data_output[i,::] = data[i,::]*frcst_ave[i]-data[i-1,::]*frcst_ave[i-1]
+                    else:
+                        # after 120 hrs the forecasts are provided at three hourly intervals
+                        # so each of these represents the accumulated averages over 3 and 6 hours
+                        # so we have to handle this separately to get back to hourly averages
+                        # 
+                        if frcst_ave[i]==3:
+                            data_output[i,::] = data[i,::]/3
+                        else: # frcst_ave[i]==6
+                            data_output[i,::] = (data[i,::]*frcst_ave[i]-data[i-1,::]*frcst_ave[i-1])/3
+            # Create a new DataArray with the same dimensions and coordinates as the original
+            # but with the updated output
+            da = xr.DataArray(
+                data_output,
+                dims=da.dims,
+                coords=da.coords,
+                attrs=da.attrs
+            )
+        
+        # rename the dimensions to match what is expected by CROCO ONLINE option
+        da = da.drop_vars(['time','step'])
+        da = da.rename({'longitude': 'lon', 'latitude': 'lat', 'valid_time': 'time'})
+        
+        # make a dataset from the dataarray
+        ds = xr.Dataset({var: da})
+        
+        # we need to convert time to days since Yorig!
+        # Reference date
+        reference_date = np.datetime64(str(Yorig)+'-01-01T00:00:00')
+        # time_in_ns = ds['time'].astype('datetime64[ns]')
+        # Convert the time dimension to days since the reference date
+        ds['time'] = (ds['time'].astype('datetime64[ns]') - reference_date) / np.timedelta64(1, 'D')
+        # Set the units attribute for the time coordinate
+        ds['time'].attrs['units'] = 'days since 1-Jan-'+str(Yorig)+' 00:00:00'
+        
+        # do i need to make the output equidistant? If so, we'd do an interpolation here
+        
+        # write the nc file
+        # the ONLINE cppkey is designed for use with monly interannual simulations
+        # where the year and month of the file name is appended to the end of the file
+        # since we are using this option with forecastsm we'll just put dummy values
+        # for the year and month, and put these values in the *.in file making it 
+        # something we don't have to handle separately
+        fname_out = os.path.join(out_dir,var+"_Y9999M1.nc")
+        ds.to_netcdf(fname_out)

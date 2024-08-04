@@ -13,6 +13,7 @@ dependencies:
   - gdal>=3.1
   - xarray>=2023.4.0
   - dask>=2023.4.0
+  - cfgrib
   - aiofiles
   - cfgrib
   - pygrib
