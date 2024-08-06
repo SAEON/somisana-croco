@@ -266,5 +266,5 @@ psource_ncfile:   Nsrc  Isrc  Jsrc  Dsrc qbardir  Lsrc  Tsrc   runoff file name
                          35  13  1  -1   T T   20.0  15.0
 
 online:    byear  bmonth recordsperday byearend bmonthend / data path
-           NYONLINE   NMONLINE      4             2011     3
-          DATA/CFSR_Benguela_LR/
+           9999   1      24            9999     1
+           DATA_DIR/BLK/for_croco/           

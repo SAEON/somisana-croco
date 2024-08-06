@@ -87,7 +87,7 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
             raise  # Re-raise the exception for potential retries
         i+=1
 
-def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir, ver='202211'):
+def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir):
     """
     Download the operational Mercator ocean output
     """
@@ -138,7 +138,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
     
     # but I'm rather doing them in parallel to save time (thanks Gemini)
     def download_worker(var):
-        download_cmems(usrname, passwd, var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"], ver=ver)
+        download_cmems(usrname, passwd, var["id"], var["vars"], start_date, end_date, domain, depths, outputDir, var["fname"])
     threads = []
     for var in VARIABLES:
         t = threading.Thread(target=download_worker, args=(var,))

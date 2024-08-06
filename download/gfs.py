@@ -136,6 +136,7 @@ def download_gfs_atm(domain, run_date, hdays, fdays, outputDir):
         "var_LAND": "on",
         "var_PRATE": "on",
         "var_RH": "on",
+        "var_SPFH": "on",
         "var_TMP": "on",
         "var_UFLX": "on",
         "var_UGRD": "on",

@@ -622,18 +622,19 @@ def make_SAWS_from_blk(saws_dir,
     
     ds_saws.close()
 
-def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
+def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
     '''
     Convert the GFS atmospheric forecast grb files downloaded by the cli.py function download_gfs_atm
     and convert the data into nc files in a format which can be ingested by CROCO
-    using the ONLINE cppkey for online interpolation of the surface forcing
+    using the ONLINE cpp key for online interpolation of the surface forcing
+    (we will use the default 'CFSR' file format)
     '''
     
     # Path to the directory containing your GRIB files
     gfs_files = os.path.join(gfs_dir,"*.grb")
     
     # List all GRIB files
-    file_paths = glob.glob(gfs_files)
+    file_paths = sorted(glob.glob(gfs_files))
     
     def open_grib_file(file_path,var_dict):
         return xr.open_dataarray(
@@ -642,56 +643,46 @@ def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
             filter_by_keys={'shortName': var_dict['shortName'],
                             'stepType': var_dict['stepType'],
                             })
-    
-    # here's where we'd start the loop through vars
-    # (you can see the vars in the files using
+
+    # (you can see the vars in the files using e.g.
     # grib_ls -P shortName,typeOfLevel,level 2024080106_f001.grb)
     
     variables = {
             "Temperature_height_above_ground": {
                 "shortName": "2t",
                 "stepType": "instant",
-                "process_factor": 1.0, # leaving units as Kelvin
             },
             "Specific_humidity": {
-                "shortName": "2r",
+                "shortName": "2sh",
                 "stepType": "instant",
-                "process_factor": 1/100, # convert from % to fraction
             },
             "Precipitation_rate": {
                 "shortName": "prate",
                 "stepType": "instant",
-                "process_factor": 1.0, # leaving units as kg/m^2/s
             },
             "Downward_Short-Wave_Rad_Flux_surface": {
                 "shortName": "dswrf",
                 "stepType": "avg",
-                "process_factor": 1.0,
             },
             "Upward_Short-Wave_Rad_Flux_surface": {
                 "shortName": "uswrf",
                 "stepType": "avg",
-                "process_factor": 1.0,
             },
             "Downward_Long-Wave_Rad_Flux": {
                 "shortName": "dlwrf",
                 "stepType": "avg",
-                "process_factor": 1.0,
             },
             "Upward_Long-Wave_Rad_Flux_surface": {
                 "shortName": "ulwrf",
                 "stepType": "avg",
-                "process_factor": 1.0,
             },
             "U-component_of_wind": {
                 "shortName": "10u",
                 "stepType": "instant",
-                "process_factor": 1.0,
             },
             "V-component_of_wind": {
                 "shortName": "10v",
                 "stepType": "instant",
-                "process_factor": 1.0,
             },
             # will need to add patm here
         }
@@ -703,8 +694,6 @@ def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
         var_dict = variables[var]
         datasets = [open_grib_file(fp,var_dict) for fp in file_paths]
         da = xr.concat(datasets, dim='valid_time')
-        
-        da = da * var_dict['process_factor']
         
         if var_dict['stepType']=='avg':
             # A bunch of variables are (rather annoyingly) written out as the
@@ -718,11 +707,12 @@ def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
             # So if you want the 1-hour Average for the period initial+3 to initial+4 (X), you would use the 4-hour Average (initial+0 to initial+4) as (a) and the 3-hour Average (initial+0 to initial+3) as (b) as follows:
             # X = 4*a - 3*b
                 
-            # start by extracting the forecast hour for each time-step (in the 'step' variable)
+            # start by extracting the forecast hour for each time-step (can be derived from the 'step' variable)
             # frcst = xr.DataArray(da.step / np.timedelta64(1, 'h'), dims='valid_time')
             frcst = da.step.values / np.timedelta64(1, 'h')
             
-            # the averaging period for this variables is (again rather annoyingly) reset every 6 hours, 
+            # the averaging period for these variables is (again rather annoyingly) reset every 6 hours, 
+            # even if we are looking at forecast hours greater than 6
             # so here we compute the hour within in the 6 hour forecast cycle 
             # (frcst_ave will range from 1-6 by definition)
             frcst_ave = np.mod(frcst - 1, 6) + 1
@@ -738,7 +728,7 @@ def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
                         data_output[i,::] = data[i,::]*frcst_ave[i]-data[i-1,::]*frcst_ave[i-1]
                     else:
                         # after 120 hrs the forecasts are provided at three hourly intervals
-                        # so each of these represents the accumulated averages over 3 and 6 hours
+                        # so each of these represents the accumulated hourly averages over 3 and 6 hours
                         # so we have to handle this separately to get back to hourly averages
                         # 
                         if frcst_ave[i]==3:
@@ -758,6 +748,11 @@ def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
         da = da.drop_vars(['time','step'])
         da = da.rename({'longitude': 'lon', 'latitude': 'lat', 'valid_time': 'time'})
         
+        # handle any 3 hourly time-steps at the end of the data 
+        # by interpolating onto an hourly time axis (I'm not totally sure this is needed but no harm done)
+        time_equidistant = pd.date_range(start=da.time.min().values, end=da.time.max().values, freq='h')
+        da = da.interp(time=time_equidistant)
+        
         # make a dataset from the dataarray
         ds = xr.Dataset({var: da})
         
@@ -769,8 +764,6 @@ def reformat_GFS_atm(gfs_dir,out_dir,Yorig):
         ds['time'] = (ds['time'].astype('datetime64[ns]') - reference_date) / np.timedelta64(1, 'D')
         # Set the units attribute for the time coordinate
         ds['time'].attrs['units'] = 'days since 1-Jan-'+str(Yorig)+' 00:00:00'
-        
-        # do i need to make the output equidistant? If so, we'd do an interpolation here
         
         # write the nc file
         # the ONLINE cppkey is designed for use with monly interannual simulations
