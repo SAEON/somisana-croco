@@ -8,7 +8,7 @@
 export SOURCE=/home/$USER/code/croco-v1.3.1/OCEAN/
 #
 # dir with compile options
-export EXENAME=C01
+export EXENAME=C03
 #
 # MPI partitioning
 export MPI_NUM_X=2
@@ -16,9 +16,17 @@ export MPI_NUM_Y=8
 export MPI_NUM_PROCS=$(($MPI_NUM_X * $MPI_NUM_Y))
 #
 # boundary and atmospheric forcing
+export BULK_FILES=0
 export ATMOS_BULK=ERA5
+#
+export FORCING_FILES=0
 export ATMOS_FRC=NA
+#
+export CLIMATOLOGY_FILES=1
+export BOUNDARY_FILES=0
 export OGCM=GLORYS
 #
 # runtime input
-export INNAME=I01
+export INNAME=I03
+
+
