@@ -13,6 +13,7 @@ from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys, download_mercator
 from download.gfs import download_gfs_atm
+from download.hycom import download_hycom
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
@@ -74,11 +75,10 @@ def main():
     parser_download_mercator.add_argument('--fdays', required=True, type=float,
                         default=5.,
                         help='forecast days i.e before run_date')
-    parser_download_mercator.add_argument('--outputDir', required=True, help='Directory to save files')
+    parser_download_mercator.add_argument('--outputDir', required=True, help='Directory to save files') 
     def download_mercator_handler(args):
         download_mercator(args.usrname, args.passwd, args.domain, args.run_date,args.hdays, args.fdays,args.outputDir)
     parser_download_mercator.set_defaults(func=download_mercator_handler)
-
     # ------------------
     # download_gfs_atm
     # ------------------
@@ -99,7 +99,34 @@ def main():
     def download_gfs_atm_handler(args):
         download_gfs_atm(args.domain, args.run_date, args.hdays, args.fdays, args.outputDir)
     parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler)
-
+    # -------------------
+    # download_hycom
+    # -------------------
+    parser_download_hycom = subparsers.add_parser('download_hycom', 
+            help='Download a subset of  HYCOM analysis data using xarray OpenDAP')
+    parser_download_hycom.add_argument('--domain', required = False, type=parse_list,
+            default=[23.0, 34.0, -37.0, -31.0],
+            help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
+    parser_download_hycom.add_argument('--depths', required = False, type=parse_list,
+            default=[0,2,4,6,8,10,12,15,20,25,30,35,40,45,50,60,70,80,90,100,125,150,200,250,300,350,400,500,600,700,800,900,1000,1250,1500,2000,2500,3000,4000,5000],
+            help='comma separated list of depths to download i.e. "[0,2,4,...,3000,4000,5000]"')
+    parser_download_hycom.add_argument('--variables', required = False, type=parse_list,
+            default=['surf_el','salinity','water_temp','water_v','water_u'],
+            help='List of strings of variable names found in HYCOM to download i.e.["surf_el","salinity","water_temp","water_u","water_v"].')
+    parser_download_hycom.add_argument('--run_date', required=True, type=parse_datetime,
+            help='start time in format "YYYY-MM-DD HH:MM:SS"')
+    parser_download_hycom.add_argument('--hdays', required=False, type=float, default=5.,
+            help='hindcast days i.e before run_date')
+    parser_download_hycom.add_argument('--fdays', required=False, type=float, default=5.,
+            help='forecast days i.e before run_date')
+    parser_download_hycom.add_argument('--outDir', required=True, help='Directory to save files')
+    parser_download_hycom.add_argument('--cleanDir', required=False, type=bool, default=True,
+            help='Clean the directory after merging the files')
+    parser_download_hycom.add_argument('--parallel', type=bool, required=False, default=True,
+            help='Type of download. If parallel, then the download occurs in parellel. If parallel is false, then the download occurs in series. ')
+    def download_hycom_handler(args):
+        download_hycom(args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays, args.outDir, args.cleanDir, args.parallel)
+    parser_download_hycom.set_defaults(func=download_hycom_handler)
     # --------------
     # regrid_tier1
     # --------------
@@ -113,7 +140,6 @@ def main():
     def regrid_tier1_handler(args):
         regrid_tier1(args.fname, args.fname_out, args.ref_date)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
-    
     # --------------
     # regrid_tier2
     # --------------
