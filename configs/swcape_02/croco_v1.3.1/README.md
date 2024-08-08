@@ -15,6 +15,8 @@ Compile options
 ---------------
 `C**`
 01 - baseline compile options
+02 - undef CLIMATOLOGY and define FRC_BRY to test impact of boundaries
+03 - as per 01, define ONLINE
 
 Runtime input (\*.in files)
 ---------------------------

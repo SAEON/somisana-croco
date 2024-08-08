@@ -25,10 +25,10 @@ climatology: filename
 boundary: filename
                           croco_bry.nc
 initial: NRREC / filename
-         RST_STEP 
+         1 
                           croco_ini.nc
 restart:          NRST, NRPFRST / filename
-                  NUMRST   0
+                  NUMTIMES   -1
                           croco_rst.nc
 history: LDEFHIS, NWRT, NRPFHIS / filename 
             F     NUMTIMES     0
@@ -266,5 +266,5 @@ psource_ncfile:   Nsrc  Isrc  Jsrc  Dsrc qbardir  Lsrc  Tsrc   runoff file name
                          35  13  1  -1   T T   20.0  15.0
 
 online:    byear  bmonth recordsperday byearend bmonthend / data path
-           9999   1      24            9999     1
-           DATA_DIR/BLK/for_croco/           
+           1993   1      24             1993     1
+          /home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/swcape_for_croco/

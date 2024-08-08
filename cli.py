@@ -9,6 +9,7 @@ Feel free to add more functions from the repo as we need them in the cli
 '''
 import argparse
 from datetime import datetime
+from crocotools_py.preprocess import reformat_gfs_atm
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys, download_mercator
@@ -99,6 +100,7 @@ def main():
     def download_gfs_atm_handler(args):
         download_gfs_atm(args.domain, args.run_date, args.hdays, args.fdays, args.outputDir)
     parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler)
+    
     # -------------------
     # download_hycom
     # -------------------
@@ -127,6 +129,20 @@ def main():
     def download_hycom_handler(args):
         download_hycom(args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays, args.outDir, args.cleanDir, args.parallel)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
+    
+    # ------------------
+    # reformat_gfs_atm
+    # ------------------
+    parser_reformat_gfs_atm = subparsers.add_parser('reformat_gfs_atm', 
+            help='convert the downloaded GFS grb files into nc files which can be ingested by CROCO using the ONLINE cpp key')
+    parser_reformat_gfs_atm.add_argument('--gfsDir', required=True, help='Directory containing the grb files downloaded using download_gfs_atm')
+    parser_reformat_gfs_atm.add_argument('--outputDir', required=True, help='Directory to save reformated nc files')
+    parser_reformat_gfs_atm.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model - reformatted file time will be in days since 1-Jan-Yorig')
+    def reformat_gfs_atm_handler(args):
+        reformat_gfs_atm(args.gfsDir,args.outputDir,args.Yorig)
+    parser_reformat_gfs_atm.set_defaults(func=reformat_gfs_atm_handler)
+    
     # --------------
     # regrid_tier1
     # --------------

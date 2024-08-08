@@ -495,7 +495,7 @@ def get_grd_var(fname,var_str,
                    eta_rho=slice(None),
                    xi_rho=slice(None)):
     '''
-    Extract a grid variable
+    Extract a grid variable on the rho grid
     '''
     
     if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
@@ -547,7 +547,7 @@ def get_lonlatmask(fname,type='r',
 
 def tstep_to_slice(fname, tstep, ref_date):
     '''
-    Take the input to get_var, and return a slice object to be used to
+    Take the input to get_var, and return a slice ofbject to be used to
     subset the dataset using ds.isel()
     see get_var() for how this is used
     '''
@@ -687,8 +687,15 @@ def get_var(fname,var_str,
         Retruns an xarray dataarray object of the requested data
     '''
     
+    # ---------------------------
+    # Get a dataset for the grid
+    # ---------------------------
     if grdname is None:
         grdname = fname
+    # using 'lon_rho' as var_str input to get_ds, as a hack to ensure that
+    # get_ds uses open_dataset, not open_mfdataset 
+    # since get_ds only uses var_str for this purpose
+    ds_grd = get_ds(grdname,var_str='lon_rho') 
         
     print('extracting the data from croco file(s) - ' + var_str)
     # ----------------------------------------------
@@ -718,6 +725,12 @@ def get_var(fname,var_str,
                        eta_v=eta_v,
                        missing_dims='ignore' # handle case where input is a previously extracted dataset/dataarray
                        )
+    ds_grd = ds_grd.isel(eta_rho=eta_rho,
+                       xi_rho=xi_rho,
+                       xi_u=xi_u,
+                       eta_v=eta_v,
+                       missing_dims='ignore' # handle case where input is a previously extracted dataset/dataarray
+                       )
     if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
         # extract data for the requested variable
         # da is a dataarray object
@@ -733,11 +746,11 @@ def get_var(fname,var_str,
         da = da.assign_coords(time=time_dt)
     
     # regrid u/v data onto the rho grid
-    if var_str == 'u' or var_str == 'v':
+    if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
         if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
-            if var_str=='u':
+            if var_str in ['u','sustr','bustr','ubar']:
                 data_rho=u2rho(da)   
-            if var_str=='v':
+            if var_str in ['v','svstr','bvstr','vbar']:
                 data_rho=v2rho(da) 
         else:
             data_rho=da.copy() 
@@ -746,18 +759,18 @@ def get_var(fname,var_str,
         if len(data_rho.shape)==4:
             da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
                                                  's_rho': ds['s_rho'].values, 
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)
+                                                 'eta_rho': ds_grd['eta_rho'].values, 
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
                                                  },
                                           dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
         else: # the case where a single sigma level is extracted
             da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)
+                                                 'eta_rho': ds_grd['eta_rho'].values, 
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
                                                  },
                                           dims=['time', 'eta_rho', 'xi_rho'])
         # use the same attributes
@@ -787,10 +800,10 @@ def get_var(fname,var_str,
                 data_out[t,:,:]=hlev(data[t,::], z[t,::], level)
             # create a new dataarray for the data for this level
             da_out = xr.DataArray(data_out, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)
+                                                 'eta_rho': ds_grd['eta_rho'].values, 
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
                                                  },
                                           dims=['time', 'eta_rho', 'xi_rho'])
             # use the same attributes
@@ -816,6 +829,7 @@ def get_var(fname,var_str,
     da = da_masked.copy()
     
     ds.close()
+    ds_grd.close()
     return da
 
 def get_uv(fname,
@@ -826,18 +840,26 @@ def get_uv(fname,
            eta_v=slice(None),
            xi_rho=slice(None),
            xi_u=slice(None),
-           ref_date=None):
+           subdomain=None,
+           ref_date=None,
+           var_u='u', # could also be sustr, bustr, ubar
+           var_v='v' # could also be svstr, bvstr, vbar
+           ):
     '''
     extract u and v components from a CROCO output file(s), regrid onto the 
     rho grid and rotate from grid-aligned to east-north components
     
-    see get_var() for a description of the inputs  
+    see get_var() for a description of the inputs
+    
+    in addition to the standard get_var() inputs, there are options to sepcify 
+    var_u and var_v and strings. Default is to extract the baroclinic velocities
+    but you can also extract other variables on the u and v grids
     
     returns xarray dataarrays for both u and v data
     
     '''
     
-    u=get_var(fname,'u',
+    u=get_var(fname,var_u,
               grdname=grdname,
               tstep=tstep,
               level=level,
@@ -845,8 +867,9 @@ def get_uv(fname,
               eta_v=eta_v,
               xi_rho=xi_rho,
               xi_u=xi_u,
+              subdomain=subdomain,
               ref_date=ref_date)
-    v=get_var(fname,'v',
+    v=get_var(fname,var_v,
               grdname=grdname,
               tstep=tstep,
               level=level,
@@ -854,6 +877,7 @@ def get_uv(fname,
               eta_v=eta_v,
               xi_rho=xi_rho,
               xi_u=xi_u,
+              subdomain=subdomain,
               ref_date=ref_date)
     
     # regridding from the u and v grids to the rho grid is now handled inside 
@@ -867,6 +891,7 @@ def get_uv(fname,
     # grid angle
     if grdname is None:
         grdname = fname
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,'angle')
     angle=get_grd_var(grdname, 'angle',
                   eta_rho=eta_rho,
                   xi_rho=xi_rho,
@@ -880,14 +905,52 @@ def get_uv(fname,
     v_out = v*cos_a + u*sin_a
     
     # add attributes for u_out, v_out - now east,north components
-    # u
-    u_out.attrs['long_name'] = 'Eastward velocity'
-    u_out.attrs['units'] = 'meters per second'
-    u_out.attrs['standard_name'] = 'eastward_sea_water_velocity'
-    # v
-    v_out.attrs['long_name'] = 'Northward velocity'
-    v_out.attrs['units'] = 'meters per second'
-    v_out.attrs['standard_name'] = 'northward_sea_water_velocity'
+    # Define a dictionary of the attributes for potential variables
+    attributes = {
+        'u': {
+            'long_name': 'Eastward component of baroclinic velocity',
+            'units': 'meters per second',
+            'standard_name': 'baroclinic_eastward_sea_water_velocity'
+        },
+        'sustr': {
+            'long_name': 'Eastward component of surface stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'surface_eastward_stress'
+        },
+        'bustr': {
+            'long_name': 'Eastward component of bottom stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'bottom_eastward_stress'
+        },
+        'ubar': {
+            'long_name': 'Eastward component of barotropic velocity',
+            'units': 'meters per second',
+            'standard_name': 'barotropic_eastward_sea_water_velocity'
+        },
+        'v': {
+            'long_name': 'Northward component of baroclinic velocity',
+            'units': 'meters per second',
+            'standard_name': 'baroclinic_northward_sea_water_velocity'
+        },
+        'svstr': {
+            'long_name': 'Northward component of surface stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'surface_northward_stress'
+        },
+        'bvstr': {
+            'long_name': 'Northward component of bottom stress',
+            'units': 'Newton per meter squared',
+            'standard_name': 'bottom_northward_stress'
+        },
+        'vbar': {
+            'long_name': 'Northward component of barotropic velocity',
+            'units': 'meters per second',
+            'standard_name': 'barotropic_northward_sea_water_velocity'
+        }
+    }
+    
+    u_out.attrs = attributes[var_u]
+    v_out.attrs = attributes[var_v]
     
     # create a dataset containing both u and v
     # preferring not to do this as it makes downstream code a little easier and I'm too lazy to change it
@@ -957,7 +1020,7 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
-def find_nearest_point(fname, Longi, Latit):
+def find_nearest_point(fname, Longi, Latit, Bottom):
     """
             Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
             
@@ -965,6 +1028,9 @@ def find_nearest_point(fname, Longi, Latit):
             - fname :filename of the model, or the grid file
             - Longi :longitude
             - Latit :latitude
+            - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+              lat and lon in water that is as deep as reference. If == None then
+              this looks for only the closest horizontal point.
 
             Returns:
             - j :the nearest eta index
@@ -983,11 +1049,21 @@ def find_nearest_point(fname, Longi, Latit):
     # Calculate the distance between (Longi, Latit) and all grid points
     distance = ((ds['lon_rho'].values - Longi) ** 2 +
                 (ds['lat_rho'].values - Latit) ** 2) ** 0.5
+    
+    if Bottom is None:
+        mask=ds['h'].values/ds['h'].values
+
+    else:
+        mask=ds['h'].values
+        mask[mask<Bottom]=10000
+        mask[mask<10000]=1
+    
+    distance_mask=distance*mask
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
-    min_index = np.unravel_index(distance.argmin(), distance.shape)
+    min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
 
     j, i = min_index
 
@@ -1071,7 +1147,8 @@ def get_ts(fname, var, lon, lat, ref_date,
                 depths=slice(None),
                 default_to_bottom=False,
                 write_nc=False,
-                fname_nc='ts.nc'
+                fname_nc='ts.nc',
+                Bottom=None
                 ):
     """
            Extract a ts from the model:
@@ -1099,6 +1176,9 @@ def get_ts(fname, var, lon, lat, ref_date,
             - default_to_bottom :flag to extract data for the bottom layer if input z level is below the model seafloor (True/False)
             - write_nc          :write a netcdf file? (True/False)
             - fname_nc          :netcdf file name. Only used if write_nc = True
+            - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+              lat and lon in water that is as deep as reference. If == None then
+              this looks for only the closest horizontal point.
             
             Returns:
             - ds, an xarray dataset containing the ts data
@@ -1114,7 +1194,7 @@ def get_ts(fname, var, lon, lat, ref_date,
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
         grdname = fname
-    j, i = find_nearest_point(grdname, lon, lat) 
+    j, i = find_nearest_point(grdname, lon, lat, Bottom) 
     
     # apply the shifts along the xi and eta axis
     i = i+i_shift
@@ -1231,7 +1311,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
                 depths=slice(None),
                 default_to_bottom=False,
                 write_nc=False,
-                fname_nc='ts_uv.nc'
+                fname_nc='ts_uv.nc',
+                Bottom=None
                 ):
     """
            Extract a time-series or profile of u,v from the model
@@ -1255,7 +1336,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
     # finds the rho grid indices nearest to the input lon, lat
     if grdname is None:
         grdname = fname
-    j, i = find_nearest_point(grdname, lon, lat) 
+    j, i = find_nearest_point(grdname, lon, lat,Bottom) 
     
     # apply the shifts along the xi and eta axis
     i = i+i_shift

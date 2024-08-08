@@ -28,11 +28,6 @@ RUNNAME=${EXENAME}_${INNAME}_${OGCM}_${ATMOS_BULK}
 SCRATCHDIR=$RUNDIR/$RUNNAME/scratch
 OUTPUTDIR=$RUNDIR/$RUNNAME/output
 
-BULK_FILES=1
-FORCING_FILES=0
-CLIMATOLOGY_FILES=1
-BOUNDARY_FILES=0
-
 ########################################################
 #
 if [[ $TIME_SCHED == 0 ]]; then
