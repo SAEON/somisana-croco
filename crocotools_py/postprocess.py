@@ -547,7 +547,7 @@ def get_lonlatmask(fname,type='r',
 
 def tstep_to_slice(fname, tstep, ref_date):
     '''
-    Take the input to get_var, and return a slice object to be used to
+    Take the input to get_var, and return a slice ofbject to be used to
     subset the dataset using ds.isel()
     see get_var() for how this is used
     '''
@@ -1020,7 +1020,7 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
-def find_nearest_point(fname, Longi, Latit):
+def find_nearest_point(fname, Longi, Latit, Bottom):
     """
             Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
             
@@ -1028,6 +1028,9 @@ def find_nearest_point(fname, Longi, Latit):
             - fname :filename of the model, or the grid file
             - Longi :longitude
             - Latit :latitude
+            - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+              lat and lon in water that is as deep as reference. If == None then
+              this looks for only the closest horizontal point.
 
             Returns:
             - j :the nearest eta index
@@ -1046,11 +1049,21 @@ def find_nearest_point(fname, Longi, Latit):
     # Calculate the distance between (Longi, Latit) and all grid points
     distance = ((ds['lon_rho'].values - Longi) ** 2 +
                 (ds['lat_rho'].values - Latit) ** 2) ** 0.5
+    
+    if Bottom is None:
+        mask=ds['h'].values/ds['h'].values
+
+    else:
+        mask=ds['h'].values
+        mask[mask<Bottom]=10000
+        mask[mask<10000]=1
+    
+    distance_mask=distance*mask
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
-    min_index = np.unravel_index(distance.argmin(), distance.shape)
+    min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
 
     j, i = min_index
 
@@ -1134,7 +1147,8 @@ def get_ts(fname, var, lon, lat, ref_date,
                 depths=slice(None),
                 default_to_bottom=False,
                 write_nc=False,
-                fname_nc='ts.nc'
+                fname_nc='ts.nc',
+                Bottom=None
                 ):
     """
            Extract a ts from the model:
@@ -1162,6 +1176,9 @@ def get_ts(fname, var, lon, lat, ref_date,
             - default_to_bottom :flag to extract data for the bottom layer if input z level is below the model seafloor (True/False)
             - write_nc          :write a netcdf file? (True/False)
             - fname_nc          :netcdf file name. Only used if write_nc = True
+            - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+              lat and lon in water that is as deep as reference. If == None then
+              this looks for only the closest horizontal point.
             
             Returns:
             - ds, an xarray dataset containing the ts data
@@ -1177,7 +1194,7 @@ def get_ts(fname, var, lon, lat, ref_date,
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
         grdname = fname
-    j, i = find_nearest_point(grdname, lon, lat) 
+    j, i = find_nearest_point(grdname, lon, lat, Bottom) 
     
     # apply the shifts along the xi and eta axis
     i = i+i_shift
@@ -1294,7 +1311,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
                 depths=slice(None),
                 default_to_bottom=False,
                 write_nc=False,
-                fname_nc='ts_uv.nc'
+                fname_nc='ts_uv.nc',
+                Bottom=None
                 ):
     """
            Extract a time-series or profile of u,v from the model
@@ -1318,7 +1336,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
     # finds the rho grid indices nearest to the input lon, lat
     if grdname is None:
         grdname = fname
-    j, i = find_nearest_point(grdname, lon, lat) 
+    j, i = find_nearest_point(grdname, lon, lat,Bottom) 
     
     # apply the shifts along the xi and eta axis
     i = i+i_shift
