@@ -37,9 +37,9 @@ NLEVEL=1
 #NM_END=12
 # but we had to run it in fits and starts due to CHPC max wall time of 48 hrs
 # so these settings get changed as we execute bits at a time
-NY_START=2019
+NY_START=2009
 NY_END=2019
-NM_START=6
+NM_START=5
 NM_END=12
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
@@ -51,7 +51,7 @@ NY_SPIN=0
 #  Restart file - RSTFLAG=0 --> No Restart
 #		  RSTFLAG=1 --> Restart
 #
-RSTFLAG=1
+RSTFLAG=0
 #
 #  Time Schedule  -  TIME_SCHED=0 --> yearly files
 #                    TIME_SCHED=1 --> monthly files
