@@ -190,8 +190,69 @@ def download_hycom_series(ds,domain,depths,varList,outDir):
             print('Error: number of dimensions are all wrong!')
             print('')
    
-def download_hycom(domain,depths,varList,run_date,hdays,fdays,outDir,cleanDir,parallel):
-    
+def download_hycom(outDir,domain=None,depths=None,varList=None,run_date=None,hdays=None,fdays=None,cleanDir=True,parallel=True):
+    """
+    Download HYCOM analysis using xarrray opendap.
+
+    INPUTS:
+    domain   : List of geographical coordinates to subset the data and download (e.g. []).
+    depths   : List of depths to download (e.g. [lomin,lonmax,latmin,latmax]).
+    varList  : List of variables to download (e.g. [0,2,4,...,3000,4000,5000])
+    run_date : Todays datetime to ensure downloaded data corosponts (e.g. ).
+    hdays    : Days to hindcast (e.g. hdays = 5).
+    fdays    : Days to forecast (e.g. fdays = 5).
+    outDir   : Directory to save files in (e.g. "/path/to/save/files/in/").
+    cleanDir : Boolean to downloaded files after they have been merged (e.g. True = remove the zeta.nc, temp.nc, salt.nc and ect. files | False = keep the zeta.nc, temp.nc, salt.nc and ect. files). 
+    parallel : Boolean to download in parallel or series (True = download the files in parallel | False = download the files in series).
+
+    OUTPUT:
+    NetCDF file containing the most recent HYCOM forcast run.
+    """
+    print('')
+    if domain is None:
+        domain = [23,34,-37,-31]
+        print('No domain specified. Using dafault domain:')
+        print(domain)
+        print('')
+
+    if depths is None:
+        depths = [0,2,4,6,8,10,12,15,20,25,30,35,40,45,50,60,70,80,90,100,125,150,200,250,300,350,400,500,600,700,800,900,1000,1250,1500,2000,2500,3000,4000,5000]
+        print('No depths specified. Downloading all depths: ')
+        print(depths)
+        print('')
+
+    if varList is None:
+        varList = ['surf_el','salinity','water_temp','water_v','water_u']
+        print('No variables specified. Downloading all variables: ')
+        print(varList)
+        print('')
+
+    if run_date is None:
+        run_date = pd.Timestamp.now()
+        print('No run_date specified. Using current run_date: ')
+        print(run_date)
+        print('')
+
+    if hdays is None:
+        hdays = 5
+        print('No hdays specified. Using hdays: ')
+        print(hdays)
+        print('')
+
+
+    if fdays is None:
+        fdays = 5
+        print('No fdays specified. Using fdays: ')
+        print(fdays)
+        print('')
+
+    print('Downloading in parallel: ')
+    print(parallel)
+    print('')
+    print('Cleaning the directory after downloads are completed: ')
+    print(cleanDir)
+    print('')
+
     start_date = pd.Timestamp(run_date) + timedelta(days=-hdays)
 
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
@@ -253,18 +314,3 @@ def download_hycom(domain,depths,varList,run_date,hdays,fdays,outDir,cleanDir,pa
     print('created: ' + outDir + 'HYCOM.nc')
     print('')
 
-#outdir = '/home/user/projects/somisana-croco/DATA/HYCOM/'
-
-#domain = [23,34,-37,-31]
-
-#Vars = ['surf_el','salinity','water_temp','water_v','water_u']
-
-#depths = [0,2,4,6,8,10,12,15,20,25,30,35,40,45,50,60,70,80,90,100,125,150,200,250,300,350,400,500,600,700,800,900,1000,1250,1500,2000,2500,3000,4000,5000]
-
-#run_date, hdays, fdays = datetime(2024,8,4),5,5
-
-#cleanDir = False
-
-#parallel = True
-
-#download_hycom_fast(domain,depths,Vars,run_date,hdays,fdays,outdir,cleanDir,parallel)
