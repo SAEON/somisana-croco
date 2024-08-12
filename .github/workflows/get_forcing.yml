@@ -90,7 +90,7 @@ jobs:
       - name: copy over the MERCATOR file
         run: |
           run_date=${{ inputs.RUN_DATE }}
-          run_date_yyyymmdd="'${run_date:0:8}'"
+          run_date_yyyymmdd="${run_date:0:8}"
           cp /mnt/saeon-somisana/data/global-data/${run_date_yyyymmdd}/${run_date_yyyymmdd}_mercator.nc ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${run_date}.nc
 
   gfs:
