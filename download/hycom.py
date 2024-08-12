@@ -314,12 +314,3 @@ def download_hycom(outDir,domain=None,depths=None,varList=None,run_date=None,hda
     print('created: ' + outDir + 'HYCOM.nc')
     print('')
 
-outdir = '/home/user/projects/somisana-croco/DATA/HYCOM/'
-
-#run_date, hdays, fdays = datetime(2024,8,4),5,5
-
-#cleanDir = False
-
-#parallel = False
-
-#download_hycom(outdir,cleanDir = False, parallel = False)
