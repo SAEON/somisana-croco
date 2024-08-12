@@ -26,6 +26,12 @@ def parse_datetime(value):
 def parse_list(value):
     return [x.strip() for x in value.split(',')]
 
+def parse_bool(s: str) -> bool:
+    try:
+        return {'true':True, 'false':False}[s.lower()]
+    except KeyError:
+        raise argparse.ArgumentTypeError(f'expect true/false, got: {s}')
+
 def main():
     
     parser = argparse.ArgumentParser(description='Command-line interface for selected functions in the somisana-croco repo')
@@ -106,6 +112,7 @@ def main():
     # -------------------
     parser_download_hycom = subparsers.add_parser('download_hycom', 
             help='Download a subset of  HYCOM analysis data using xarray OpenDAP')
+    parser_download_hycom.add_argument('--outDir', required=True, help='Directory to save files')
     parser_download_hycom.add_argument('--domain', required = False, type=parse_list,
             default=[23.0, 34.0, -37.0, -31.0],
             help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
@@ -115,19 +122,23 @@ def main():
     parser_download_hycom.add_argument('--variables', required = False, type=parse_list,
             default=['surf_el','salinity','water_temp','water_v','water_u'],
             help='List of strings of variable names found in HYCOM to download i.e.["surf_el","salinity","water_temp","water_u","water_v"].')
-    parser_download_hycom.add_argument('--run_date', required=True, type=parse_datetime,
+    parser_download_hycom.add_argument('--run_date', required=False, type=parse_datetime,
+            default=None,
             help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_hycom.add_argument('--hdays', required=False, type=float, default=5.,
+    parser_download_hycom.add_argument('--hdays', required=False, type=float, 
+            default=5.,
             help='hindcast days i.e before run_date')
-    parser_download_hycom.add_argument('--fdays', required=False, type=float, default=5.,
+    parser_download_hycom.add_argument('--fdays', required=False, type=float, 
+            default=5.,
             help='forecast days i.e before run_date')
-    parser_download_hycom.add_argument('--outDir', required=True, help='Directory to save files')
-    parser_download_hycom.add_argument('--cleanDir', required=False, type=bool, default=True,
+    parser_download_hycom.add_argument('--cleanDir', required=False, type=parse_bool, 
+            default=True,
             help='Clean the directory after merging the files')
-    parser_download_hycom.add_argument('--parallel', type=bool, required=False, default=True,
+    parser_download_hycom.add_argument('--parallel', required=False, type=parse_bool, 
+            default=True,
             help='Type of download. If parallel, then the download occurs in parellel. If parallel is false, then the download occurs in series. ')
     def download_hycom_handler(args):
-        download_hycom(args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays, args.outDir, args.cleanDir, args.parallel)
+        download_hycom(args.outDir,args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays,  args.cleanDir, args.parallel)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
     
     # ------------------
