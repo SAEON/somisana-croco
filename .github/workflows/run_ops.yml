@@ -105,7 +105,7 @@ jobs:
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['algoa_01','swcape_02'] 
+        domain: ['algoa_01','sa_west_02'] 
     uses: ./.github/workflows/prep_configdir.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -120,7 +120,7 @@ jobs:
   # we're also seprating jobs for gfs and saws forcing, rather than using the matrix strategy, as they have different HDAYS and FDAYS inputs (otherwise we could have included both in a single job using the matrix strategy)
   # we will probably be able to use the matrix strategy for the different ogcm forcings though (let's see how this goes)
   
-  run_swcape_gfs:
+  run_sa_west_gfs:
     needs: [envs,get_forcing,prep_configdirs]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
@@ -134,7 +134,7 @@ jobs:
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
-      DOMAIN: swcape_02
+      DOMAIN: sa_west_02
       COMP: C01
       INP: I99
       BLK: GFS

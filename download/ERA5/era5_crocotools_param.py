@@ -12,16 +12,16 @@
 # I'm rather saving the output in DATASETS_CROCOTOOLS in the root of this repo, for use in multiple configurations if necessary
 #
 # config_dir = '../croco/Run_TEST/'           # must be the same than crocotools_param
-# config_dir = '../../configs/swcape_02/croco_v1.3.1/'            # must be the same than crocotools_param
-# config_name = 'swcape_02' 
+# config_dir = '../../configs/sa_west_02/croco_v1.3.1/'            # must be the same than crocotools_param
+# config_name = 'sa_west_02' 
 #
 # Original ERA5 directory
 # this is where the output of ERA5_request.py goes
-era5_dir_raw = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/swcape'  
+era5_dir_raw = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/sa_west'  
 #
 # Output ERA5 directory
 # this is where the output of ERA5_convert.py goes
-era5_dir_processed = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/swcape_for_croco'  
+era5_dir_processed = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/ERA5/sa_west_for_croco'  
 #
 # extraction wave variables
 #

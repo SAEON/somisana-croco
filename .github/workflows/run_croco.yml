@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       DOMAIN:
-        description: 'directory name used to define the domain e.g. swcape_02' 
+        description: 'directory name used to define the domain e.g. sa_west_02' 
         required: true
         type: string
       COMP:
