@@ -169,15 +169,25 @@ jobs:
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp'
-      - name: prepare a single netcdf file from the downloaded grb files
-        run: >-
+#      - name: prepare a single netcdf file from the downloaded grb files
+#        run: >-
+#          docker run \
+#            --rm \
+#            --mac-address 02:42:ff:ff:ff:ff \
+#            --entrypoint /bin/bash \
+#            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
+#            -v ${{ env.DATA_DIR }}/GFS:/home/matlab/somisana \
+#            -e MLM_LICENSE_FILE=/licenses/license.lic \
+#            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+#            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m . && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
+      - name: prepare netcdf files for use with ONLINE cpp key
+        run: |
           docker run \
             --rm \
-            --mac-address 02:42:ff:ff:ff:ff \
-            --entrypoint /bin/bash \
-            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.DATA_DIR }}/GFS:/home/matlab/somisana \
-            -e MLM_LICENSE_FILE=/licenses/license.lic \
-            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m . && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
+            -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            reformat_gfs_atm \
+              --gfsDir '/tmp/gfsDir' \
+              --ref_date "'2000-01-01 00:00:00'"  \
+              --outputDir '/tmp/gfsDir/for_croco'
 
