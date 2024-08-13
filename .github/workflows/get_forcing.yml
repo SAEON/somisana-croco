@@ -53,6 +53,12 @@ jobs:
     # the copernicusmarine tool works better for us)
     # then this job can be deleted and the commented download step in the mercator job can be used
     steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: download MERCATOR
         uses: nick-fields/retry@master
         with:
