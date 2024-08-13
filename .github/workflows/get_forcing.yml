@@ -43,7 +43,48 @@ jobs:
               rm \
                 -rf {} \;
 
+  mercator_saeon:
+    runs-on: saeonapps
+    # we have had an issue with downloading from copernicus specifically on the mims
+    # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli
+    # so for now we are just downloading on the saeon-apps server, and moving to the shared
+    # samba mount which is accessible on mimms
+    # we can come back to this when we have the server issue sorted (or if latest versions of 
+    # the copernicusmarine tool works better for us)
+    # then this job can be deleted and the commented download step in the mercator job can be used
+    steps:
+      - name: download MERCATOR
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: rm -f /home/giles/mercator_download/*MERCATOR*
+          command: >-
+            docker run \
+              --rm \
+              -v /home/giles/mercator_download:/tmp/download \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_mercator \
+                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
+                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --outputDir '/tmp/download'
+      - name: move to a shared dir
+        run: |
+          mkdir /mnt/somisana/data/global-data/tmp
+          mv /home/giles/mercator_download/*MERCATOR* /mnt/somisana/data/global-data/tmp
+          chmod -R 774 /mnt/somisana/data/global-data/tmp
+
   mercator:
+    needs: [mercator_saeon]
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: Format RUN_DATE
@@ -59,10 +100,7 @@ jobs:
             chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
             chmod -R 774 ${{ env.DATA_DIR }}/MERCATOR
           fi
-      # we have had an issue with downloading from copernicus, specifically on the mims
-      # so for now we are just copying over the data which is downloaded on the saeon server
-      # we can come back to this when we have the server issue sorted (or if latest versions of 
-      # the copernicusmarine tool works better for us)
+# see comments in mercator_saeon job as to why this download is commented here
 #      - name: download MERCATOR
 #        uses: nick-fields/retry@master
 #        with:
@@ -87,11 +125,10 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: copy over the MERCATOR file
+      - name: copy from the shared dir
         run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_yyyymmdd="${run_date:0:8}"
-          cp /mnt/saeon-somisana/data/global-data/${run_date_yyyymmdd}/${run_date_yyyymmdd}_mercator.nc ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${run_date}.nc
+          cp /mnt/saeon-somisana/data/global-data/tmp/*.nc ${{ env.DATA_DIR }}/MERCATOR/
+          rm -rf /mnt/saeon-somisana/data/global-data/tmp/
 
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
