@@ -134,7 +134,7 @@ jobs:
       - name: copy from the shared dir
         run: |
           cp /mnt/saeon-somisana/data/global-data/tmp/*.nc ${{ env.DATA_DIR }}/MERCATOR/
-          rm -rf /mnt/saeon-somisana/data/global-data/tmp/
+          sudo rm -rf /mnt/saeon-somisana/data/global-data/tmp/
 
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
