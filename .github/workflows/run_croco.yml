@@ -306,7 +306,7 @@ jobs:
             --entrypoint /bin/bash \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_run_main:latest \
-            -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_archive.nc"
+            -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
       # Regrid CROCO u,v to rho grid,
       # rotate u,v components from grid aligned to east/north aligned and
       # work out depth levels of sigma grid in meters (tier 1)
@@ -349,4 +349,32 @@ jobs:
        # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
 
   # copy data over to where it will be archived
+  archive:
+    needs: [setup_rundir,postprocess]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
+    steps:
+      - name: get archive dir
+        id: archive_dir
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_yyyymm=${run_date:0:6}
+          # cut off the last three characters of the domain name e.g. the *_02 part
+          domain=$(echo ${{ inputs.DOMAIN }} | sed 's/...$//')
+          archive_dir=/mnt/saeon-somisana/data/${domain}/v1.0/forecasts/${run_date_yyyymm}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          echo "value=$archive_dir" >> $GITHUB_OUTPUT
+      - name: create the archive directory if needed
+        run: |
+          if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
+            mkdir -p ${{ steps.archive_dir.outputs.value }}
+            chmod -R 774 ${{ steps.archive_dir.outputs.value }}
+          fi
+      - name: copy files to the archive directory if needed
+        run: |
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
  

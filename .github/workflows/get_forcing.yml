@@ -85,9 +85,8 @@ jobs:
                 --outputDir '/tmp/download'
       - name: move to a shared dir
         run: |
-          mkdir /mnt/somisana/data/global-data/tmp
+          # mkdir /mnt/somisana/data/global-data/tmp # commenting this as we'll just keep this dir permanently there for the file transfer
           mv /home/giles/mercator_download/*MERCATOR* /mnt/somisana/data/global-data/tmp
-          chmod -R 774 /mnt/somisana/data/global-data/tmp
 
   mercator:
     needs: [mercator_saeon]
@@ -131,10 +130,9 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: copy from the shared dir
+      - name: move from the shared dir
         run: |
-          cp /mnt/saeon-somisana/data/global-data/tmp/*.nc ${{ env.DATA_DIR }}/MERCATOR/
-          sudo rm -rf /mnt/saeon-somisana/data/global-data/tmp/
+          mv /mnt/saeon-somisana/data/global-data/tmp/*.nc ${{ env.DATA_DIR }}/MERCATOR/
 
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
