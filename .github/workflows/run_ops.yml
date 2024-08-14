@@ -136,7 +136,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
-      COMP: C01
+      COMP: C03
       INP: I99
       BLK: GFS
       FRC: ${{ matrix.frc }}
@@ -159,7 +159,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
-      COMP: C01
+      COMP: C03
       INP: I99
       BLK: GFS
       FRC: ${{ matrix.frc }}

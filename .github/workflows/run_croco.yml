@@ -243,10 +243,10 @@ jobs:
           NUMRST=$((NH_RST * 3600 / DT)) # frequency of output in restart file to be written
           RST_STEP=${{ env.RST_STEP }} # which time-step to restart from in this run
           # directory where the surface files are for ONLINE interpolation
-          DATA_DIR=${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/
+          DATA_DIR_BLK=${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/
 
           # do a sed replacement on the template .in file, and write the output to the scratch dir
-          sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' -e 's/DATA_DIR/'$DATA_DIR'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
+          sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' -e 's/DATA_DIR/'$DATA_DIR_BLK'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
 
   # compile the code
   compile_croco:
@@ -269,7 +269,7 @@ jobs:
 
   # run the model
   run_croco:
-    needs: [setup_rundir,compile_croco,get_inp,get_ogcm,get_blk,get_rst]
+    needs: [setup_rundir,compile_croco,get_inp,get_ogcm,get_rst]
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     runs-on: ${{ inputs.RUNNER_NAME }}
@@ -365,13 +365,13 @@ jobs:
           run_date_yyyymm=${run_date:0:6}
           # cut off the last three characters of the domain name e.g. the *_02 part
           domain=$(echo ${{ inputs.DOMAIN }} | sed 's/...$//')
-          archive_dir=/mnt/saeon-somisana/data/${domain}/v1.0/forecasts/${run_date_yyyymm}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          archive_dir=/mnt/saeon-somisana/data/${domain}/v1.0/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: create the archive directory if needed
         run: |
           if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
-            mkdir -p ${{ steps.archive_dir.outputs.value }}
-            chmod -R 774 ${{ steps.archive_dir.outputs.value }}
+            sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
+            sudo chmod -R 774 ${{ steps.archive_dir.outputs.value }}
           fi
       - name: copy files to the archive directory if needed
         run: |

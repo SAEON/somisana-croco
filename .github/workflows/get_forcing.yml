@@ -28,13 +28,17 @@ env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
 
 jobs:
-  cleanup-old-dirs:
-  # remove all files older than 5 days - anything not archived will be lost
-  # (note that cleaning up of certain files in the archive is also needed, but is handled separately)
+  dir_management:
     runs-on: ${{ inputs.RUNNER_NAME }}
+    outputs:
+      archive_dir: ${{ steps.archive_dir.outputs.value }}
     continue-on-error: true
     steps:
       - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
+      # remove all files older than 5 days - anything not archived will be lost
+      # (note that cleaning up of certain files in the archive is also needed, but is currently handled by a cron job on the saeonapps server! 
+      # TODO - move the cleaning of the archive dir here... do this VERY carefully so you don't delete all the archived files!)
+        id: cleanup_old_dirs
         run: >-
           find \
             /home/somisana/ops/${{ inputs.BRANCH_REF }}/* \
@@ -44,16 +48,29 @@ jobs:
             -exec \
               rm \
                 -rf {} \;
+      - name: get archive dir
+        id: archive_dir
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_yyyymm=${run_date:0:6}
+          archive_dir=/mnt/saeon-somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
+          echo "value=$archive_dir" >> $GITHUB_OUTPUT
+      - name: create the archive directories if needed
+        run: |
+          if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
+            sudo mkdir -p ${{ steps.archive_dir.outputs.value }}/{MERCATOR,GFS}
+          fi
 
   mercator_saeon:
-    runs-on: saeonapps
-    # we have had an issue with downloading from copernicus specifically on the mims
-    # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli
+    # we have had an issue with downloading from copernicus specifically on the mims network
+    # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli at the time of testing
     # so for now we are just downloading on the saeon-apps server, and moving to the shared
     # samba mount which is accessible on mimms
-    # we can come back to this when we have the server issue sorted (or if latest versions of 
-    # the copernicusmarine tool works better for us)
+    # we can come back to this when we have the server issue sorted (or if later versions of 
+    # the copernicusmarine tool works better on this network)
     # then this job can be deleted and the commented download step in the mercator job can be used
+    needs: [dir_management]
+    runs-on: saeonapps
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -71,7 +88,7 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: rm -f /home/giles/mercator_download/*MERCATOR*
+          on_retry_command: rm -f /home/giles/mercator_download/*nc
           command: >-
             docker run \
               --rm \
@@ -86,20 +103,22 @@ jobs:
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp/download'
       - name: move to a shared dir
+        continue_on_error: true
         run: |
-          # start by changing file ownership to avoid permissions issues
-          # (we need to use sudo as the output files from download_mercator are owned by root)
-          sudo chown -R :runners mercator_download/
-          # move the file we want to a temporary shared dir
-          mkdir /mnt/somisana/data/global-data/tmp
-          sudo chown -R :runners /mnt/somisana/data/global-data/tmp
-          mv /home/giles/mercator_download/*MERCATOR* /mnt/somisana/data/global-data/tmp
-          # clean up files from the download dir
-          rm /home/giles/mercator_download/*nc
+          # I had wanted to use the $archive_dir variable defined in dir_management,
+          # but the mount dir is named differently on saeonapps than it is on mims1!
+          # so we have to create a new archive_dir variable for this job which is running on saeonapps
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_yyyymm=${run_date:0:6}
+          archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
+          # copy the file we want to the archive 
+          cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR
 
   mercator:
-    needs: [mercator_saeon]
+    needs: [mercator_saeon,dir_management]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      archive_dir: ${{ needs.dir_management.outputs.archive_dir }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -139,12 +158,14 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: move from the shared temporary dir
+      - name: copy from the archive dir
+        # only needed since we have the workaround of downloading on saeonapps
+        # else the copy would be in the opposite direction
         run: |
-          mv /mnt/saeon-somisana/data/global-data/tmp/*.nc ${{ env.DATA_DIR }}/MERCATOR/
-          rm -rf /mnt/saeon-somisana/data/global-data/tmp
+          cp ${{ env.archive_dir }}/MERCATOR/*.nc ${{ env.DATA_DIR }}/MERCATOR/
 
   gfs:
+    needs: [dir_management]
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: Format RUN_DATE
@@ -182,7 +203,8 @@ jobs:
                 --run_date ${{ steps.format_date.outputs.value }} \
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
-                --outputDir '/tmp'
+                --outputDir '/tmp'i
+# I'm commenting this job since we are moving to ONLINE surface interpolation
 #      - name: prepare a single netcdf file from the downloaded grb files
 #        run: >-
 #          docker run \
@@ -204,4 +226,9 @@ jobs:
               --gfsDir '/tmp/gfsDir' \
               --ref_date "'2000-01-01 00:00:00'"  \
               --outputDir '/tmp/gfsDir/for_croco'
+      - name: copy GFS files to the archive dir
+        run: |
+          cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
 
+  # Here's where we'd call the function to create the SAWS forcing files
+  # (without any archiving... obviously)
