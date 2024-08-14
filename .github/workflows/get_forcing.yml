@@ -166,6 +166,8 @@ jobs:
   gfs:
     needs: [dir_management]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      archive_dir: ${{ needs.dir_management.outputs.archive_dir }}
     steps:
       - name: Format RUN_DATE
         id: format_date
