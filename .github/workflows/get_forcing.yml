@@ -103,7 +103,6 @@ jobs:
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp/download'
       - name: move to a shared dir
-        continue_on_error: true
         run: |
           # I had wanted to use the $archive_dir variable defined in dir_management,
           # but the mount dir is named differently on saeonapps than it is on mims1!
