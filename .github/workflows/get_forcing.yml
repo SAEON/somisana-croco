@@ -223,8 +223,8 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             reformat_gfs_atm \
               --gfsDir '/tmp/gfsDir' \
-              --ref_date "'2000-01-01 00:00:00'"  \
-              --outputDir '/tmp/gfsDir/for_croco'
+              --outputDir '/tmp/gfsDir/for_croco' \
+              --Yorig 2000 
       - name: copy GFS files to the archive dir
         run: |
           cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
