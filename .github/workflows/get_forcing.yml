@@ -29,6 +29,8 @@ env:
 
 jobs:
   cleanup-old-dirs:
+  # remove all files older than 5 days - anything not archived will be lost
+  # (note that cleaning up of certain files in the archive is also needed, but is handled separately)
     runs-on: ${{ inputs.RUNNER_NAME }}
     continue-on-error: true
     steps:
@@ -85,8 +87,15 @@ jobs:
                 --outputDir '/tmp/download'
       - name: move to a shared dir
         run: |
-          # mkdir /mnt/somisana/data/global-data/tmp # commenting this as we'll just keep this dir permanently there for the file transfer
+          # start by changing file ownership to avoid permissions issues
+          # (we need to use sudo as the output files from download_mercator are owned by root)
+          sudo chown -R :runners mercator_download/
+          # move the file we want to a temporary shared dir
+          mkdir /mnt/somisana/data/global-data/tmp
+          sudo chown -R :runners /mnt/somisana/data/global-data/tmp
           mv /home/giles/mercator_download/*MERCATOR* /mnt/somisana/data/global-data/tmp
+          # clean up files from the download dir
+          rm /home/giles/mercator_download/*nc
 
   mercator:
     needs: [mercator_saeon]
@@ -130,9 +139,10 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: move from the shared dir
+      - name: move from the shared temporary dir
         run: |
           mv /mnt/saeon-somisana/data/global-data/tmp/*.nc ${{ env.DATA_DIR }}/MERCATOR/
+          rm -rf /mnt/saeon-somisana/data/global-data/tmp
 
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
