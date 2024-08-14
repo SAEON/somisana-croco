@@ -1,0 +1,9 @@
+# python bytecode
+*.py[co]
+__pycache__/
+
+# C extensions
+*.so
+
+# doc build
+doc/build

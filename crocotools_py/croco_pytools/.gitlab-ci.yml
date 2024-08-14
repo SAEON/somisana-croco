@@ -1,0 +1,31 @@
+pages:
+  tags:
+      - ci.inria.fr
+  image: python:3.9
+  before_script:
+      - pip install --upgrade pip
+      - pip install -r doc/requirements.txt
+  script:
+    - sphinx-build -b html doc public
+  artifacts:
+    paths:
+      - public
+  only:
+    - release
+
+
+makehtml:
+  tags:
+      - ci.inria.fr
+  image: python:3.9
+  before_script:
+      - pip install --upgrade pip
+      - pip install -r doc/requirements.txt
+  script:
+    - sphinx-build -b html doc test
+  artifacts:
+    paths:
+      - test
+    when: always
+    expire_in: 1 day
+

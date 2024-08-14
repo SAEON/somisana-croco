@@ -1,0 +1,11 @@
+# compiler
+     FC = f2py
+    CXX = cpp
+    F90 = gfortran
+     CC = gcc
+
+#
+    NETCDFINC = $(shell nf-config --includedir)
+    NETCDFLIB = -L$(shell nf-config --includedir)/../lib -lnetcdff -lnetcdf
+#
+    FFLAGS = --f77flags="-std=legacy" --f90flags="-g -check all -CA -CB -CS -fopenmp" -lgomp
