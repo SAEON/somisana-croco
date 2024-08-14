@@ -67,7 +67,7 @@
 !
 */
                       /* Configuration Name */
-# define ALGOA_01
+# define SA_SOUTHEAST_01
                       /* Parallelization */
 # undef  OPENMP
 # define  MPI

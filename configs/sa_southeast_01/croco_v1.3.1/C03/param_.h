@@ -182,7 +182,7 @@
       parameter (LLm0=83,   MMm0=85,   N=32)   ! BENGUELA_HR
 # elif defined  BENGUELA_VHR
       parameter (LLm0=167,  MMm0=170,  N=32)   ! BENGUELA_VHR
-#  elif defined  ALGOA_01
+#  elif defined  SA_SOUTHEAST_01
       parameter (LLm0=150,   MMm0=104,   N=30)   ! ALGOA BAY CURVLINEAR GRID FROM Delft3D
 # else
       parameter (LLm0=xx,   MMm0=xx,   N=xx)   ! YOUR REGIONAL CONFIG

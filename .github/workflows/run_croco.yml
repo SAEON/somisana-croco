@@ -246,7 +246,7 @@ jobs:
           DATA_DIR_BLK=${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/
 
           # do a sed replacement on the template .in file, and write the output to the scratch dir
-          sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' -e 's/DATA_DIR/'$DATA_DIR_BLK'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
+          sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/RST_STEP/'$RST_STEP'/' -e 's/NUMRST/'$NUMRST'/' -e 's/DATA_DIR/'${DATA_DIR_BLK}'/' < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in > ${{ env.SCRATCH_DIR }}/croco.in
 
   # compile the code
   compile_croco:
