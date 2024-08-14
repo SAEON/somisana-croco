@@ -267,4 +267,4 @@ psource_ncfile:   Nsrc  Isrc  Jsrc  Dsrc qbardir  Lsrc  Tsrc   runoff file name
 
 online:    byear  bmonth recordsperday byearend bmonthend / data path
            9999   1      24            9999     1
-           DATA_DIR/BLK/for_croco/           
+           DATA_DIR           

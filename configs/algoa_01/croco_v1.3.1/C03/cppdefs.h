@@ -67,7 +67,7 @@
 !
 */
                       /* Configuration Name */
-# define SA_WEST_02
+# define ALGOA_01
                       /* Parallelization */
 # undef  OPENMP
 # define  MPI
@@ -87,9 +87,9 @@
 # undef  MRL_WCI
                       /* Open Boundary Conditions */
 # undef  TIDES
-# undef OBC_EAST
+# define OBC_EAST
 # define OBC_WEST
-# define OBC_NORTH
+# undef  OBC_NORTH
 # define OBC_SOUTH
                       /* Applications */
 # undef  BIOLOGY

@@ -3,10 +3,19 @@ from datetime import datetime, timedelta
 import calendar
 import numpy as np
 import pandas as pd
-import os, glob
-import fnmatch
+import os, sys, glob
+# import fnmatch
 from scipy.interpolate import griddata
 import crocotools_py.postprocess as post
+# functions from croco_pytools submodule
+# (I'm sure there's a better way of importing these functions, but this works)
+sys.path.append(os.path.dirname(__file__)+"/croco_pytools/prepro/Modules/")
+sys.path.append(os.path.dirname(__file__)+"/croco_pytools/prepro/Readers/")
+import Cgrid_transformation_tools as grd_tools
+import interp_tools
+import sigmagrid_tools as sig_tools
+import croco_class as Croco
+import ibc_class as Inp
 
 def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
     '''
@@ -773,3 +782,117 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         # something we don't have to handle separately
         fname_out = os.path.join(out_dir,var+"_Y9999M1.nc")
         ds.to_netcdf(fname_out)
+        
+        
+def make_ini_fcst(output_dir,run_date,hdays):
+    '''
+    make a croco initial condition file as part of the operational workflow
+    This is largely based on croco_pytools/prepro/make_ini.py
+    but here we adjust it to form part of our operational workflow
+    
+    output_dir - the directory where the ini file will be saved
+                 NB - there needs to be a crocotools_param.py file in this directory which includes all the configurable parameters
+    run_date   - the time when the operational run was initialised, as a datetime.datetime object
+    hdays      - the number of hindcast days used in the operational run (time of the ini file will be run_date - hdays)
+    
+    '''
+    
+    
+    # --------
+    # imports
+    # --------
+    #
+    print('config_dir is '+output_dir)
+    sys.path.append(output_dir)
+    import crocotools_param as params
+    
+    # edit ini_filename to add starting date
+    ini_filename = params.ini_filename.replace('.nc', run_date.strftime('_%Y%m%d_%H.nc'))
+
+    # Load croco_grd
+    crocogrd = Croco.CROCO_grd(params.croco_grd, params.sigma_params)
+
+    # --- Load input (restricted to croco_grd) ----------------------------
+    
+    inpdat=Inp.getdata(inputdata,input_file,crocogrd,multi_files,tracers)
+
+    print(' ')
+    print(' Making initial file: '+ini_filename)
+    print(' ')
+
+    # --- Create the initial file -----------------------------------------
+
+    Croco.CROCO.create_ini_nc(None,''.join((output_dir + ini_filename)),crocogrd,
+                              tracers=params.tracers)
+
+    # --- Handle initial time ---------------------------------------------
+    
+    ini_date_num = run_date - timedelta(days=hdays)
+    
+    ini_date_num = datetime(int(Yini), int(Mini), int(Dini))
+
+    day_zero_num = datetime(int(Yorig), int(Morig), int(Dorig))
+    day_zero_num = plt.date2num(day_zero_num)
+    
+    tstart=0
+    
+    if ini_date_num != day_zero_num:
+        tstart = ini_date_num - day_zero_num # days
+
+    scrumt = tstart*3600*24 # convert in second
+    oceant = tstart*3600*24
+    tend=0.
+
+   #  --- Compute and save variables on CROCO grid ---------------
+
+    for vars in ['ssh','tracers','velocity']:
+        print('\nProcessing *%s*' %vars)
+        nc=netcdf.Dataset(croco_dir+ini_filename, 'a')
+        if vars == 'ssh' :
+            (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,tndx,tndx)
+            nc.variables['zeta'][0,:,:] = zeta*crocogrd.maskr
+            nc.Input_data_type=inputdata
+            nc.variables['ocean_time'][:] = oceant
+            nc.variables['scrum_time'][:] = scrumt
+            nc.variables['scrum_time'].units='seconds since %s-%s-%s 00:00:00' %(Yorig,Morig,Dorig)
+            nc.variables['tstart'][:] = tstart
+            nc.variables['tend'][:] = tend
+
+            z_rho = crocogrd.scoord2z_r(zeta=zeta)
+            z_w   = crocogrd.scoord2z_w(zeta=zeta)
+            
+        elif vars == 'tracers':
+            for tra in tracers:
+                print(f'\nIn tracers processing {tra}')
+                trac_3d= interp_tools.interp(inpdat,tra,Nzgoodmin,z_rho,crocogrd,tndx,tndx)
+                nc.variables[tra][0,:,:,:] = trac_3d*crocogrd.mask3d()
+
+        elif vars == 'velocity':
+
+            cosa=np.cos(crocogrd.angle)
+            sina=np.sin(crocogrd.angle)
+
+            [u,v,ubar,vbar]=interp_tools.interp_uv(inpdat,Nzgoodmin,z_rho,cosa,sina,crocogrd,tndx,tndx)
+              
+            conserv=1  # Correct the horizontal transport i.e. remove the intergrated tranport and add the OGCM transport          
+            if conserv == 1:
+                (ubar_croco,h0)=sig_tools.vintegr(u,grd_tools.rho2u(z_w),grd_tools.rho2u(z_rho),np.nan,np.nan)/grd_tools.rho2u(crocogrd.h)
+                (vbar_croco,h0)=sig_tools.vintegr(v,grd_tools.rho2v(z_w),grd_tools.rho2v(z_rho),np.nan,np.nan)/grd_tools.rho2v(crocogrd.h)
+
+                u = u - ubar_croco ; u = u + np.tile(ubar,(z_rho.shape[0],1,1))
+                v = v - vbar_croco ; v = v + np.tile(vbar,(z_rho.shape[0],1,1))
+           
+            nc.variables['u'][0,:,:,:] = u *crocogrd.umask3d()
+            nc.variables['v'][0,:,:,:] = v * crocogrd.vmask3d()
+            nc.variables['ubar'][0,:,:] = ubar *crocogrd.umask
+            nc.variables['vbar'][0,:,:] = vbar * crocogrd.vmask
+
+   
+    nc.close()
+    
+if __name__ == '__main__':
+    
+    run_date = datetime(2024,4,17,6,0,0)
+    hdays = 5
+    make_ini_fcst('/home/gfearon/code/somisana-croco/configs/swcape_02/croco_v1.3.1/MERCATOR/',run_date,hdays)
+        
