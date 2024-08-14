@@ -1,0 +1,3 @@
+[submodule "crocotools_py/croco_pytools"]
+	path = crocotools_py/croco_pytools
+	url = https://gitlab.inria.fr/croco-ocean/croco_pytools.git
