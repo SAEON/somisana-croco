@@ -37,7 +37,7 @@ jobs:
       - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
       # remove all files older than 5 days - anything not archived will be lost
       # (note that cleaning up of certain files in the archive is also needed, but is currently handled by a cron job on the saeonapps server! 
-      # TODO - move the cleaning of the archive dir here... do this VERY carefully so you don't delete all the archived files!)
+      # TODO - move the cleaning of the archive dir here?... do this VERY carefully so you don't delete all the archived files!)
         id: cleanup_old_dirs
         run: >-
           find \
@@ -91,7 +91,6 @@ jobs:
           on_retry_command: rm -f /home/giles/mercator_download/*nc
           command: >-
             docker run \
-              --user $(id -u):$(id -g) \
               --rm \
               -v /home/giles/mercator_download:/tmp/download \
               ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -103,7 +102,7 @@ jobs:
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp/download'
-      - name: move to a shared dir
+      - name: copy to a shared dir
         run: |
           # I had wanted to use the $archive_dir variable defined in dir_management,
           # but the mount dir is named differently on saeonapps than it is on mims1!
@@ -113,8 +112,18 @@ jobs:
           archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
           # copy the file we want to the archive 
           cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR
-          # remove files locally to clear disk space
-          rm /home/giles/mercator_download/*nc
+      - name: clean up files
+        run: |
+          # this is a terrible hack I know...
+          # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
+          # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
+          # so I'm using the cli docker image to remove the files it created
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v /home/giles/mercator_download/:/mnt/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              -c "rm /mnt/tmp/*nc"
 
   mercator:
     needs: [mercator_saeon,dir_management]
