@@ -235,7 +235,9 @@ jobs:
               --Yorig 2000 
       - name: copy GFS files to the archive dir
         run: |
-          cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
+          # apparently we need sudo permissions to copy to the archive directory
+          # we have set up the somisana user to be able to do this without the need for a password
+          sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
 
   # Here's where we'd call the function to create the SAWS forcing files
   # (without any archiving... obviously)

@@ -389,9 +389,11 @@ jobs:
           fi
       - name: copy files to the archive directory if needed
         run: |
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          # apparently we need sudo permissions to copy to the archive directory
+          # we have set up the somisana user to be able to do this without the need for a password
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
  
