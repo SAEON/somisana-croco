@@ -23,6 +23,8 @@ Runtime input (\*.in files)
 `I**`
 01 - baseline runtime options, for an inter-annual hindcast, writing daily averaged outputs for the full domain, and hourly outputs for the surface
 02 - as per 01, but reducing bottom frition length scale (zob) to 1e-6
+03 - as per 01, Zob = 0 (not used), RDRG2 = 5e-4
+04 - as per 01, Zob = 0 (not used), RDRG2 = 1e-2
 99 - baseline runtime options for running a forecast simulation
 
 Surface and boundary forcing
