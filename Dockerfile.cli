@@ -3,7 +3,7 @@
 # the cli allows us to call whatever python functions in this repo that we
 # need for our SOMISANA operations
 #
-# The docker image is build by .github/workflows/build_cli.yml
+# The docker image is built by .github/workflows/build_images.yml
 #
 # This Dockerfile is based on the opendrift Dockerfile - See https://opendrift.github.io
 # We bake the somisana_croco environment into the image and use the cli.py as the entry point

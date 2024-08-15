@@ -328,6 +328,7 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -340,6 +341,7 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -352,6 +354,7 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \

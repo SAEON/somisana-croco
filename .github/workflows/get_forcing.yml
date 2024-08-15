@@ -91,6 +91,7 @@ jobs:
           on_retry_command: rm -f /home/giles/mercator_download/*nc
           command: >-
             docker run \
+              --user $(id -u):$(id -g) \
               --rm \
               -v /home/giles/mercator_download:/tmp/download \
               ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -112,6 +113,8 @@ jobs:
           archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
           # copy the file we want to the archive 
           cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR
+          # remove files locally to clear disk space
+          rm /home/giles/mercator_download/*nc
 
   mercator:
     needs: [mercator_saeon,dir_management]
@@ -146,6 +149,7 @@ jobs:
 #          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
 #          command: >-
 #            docker run \
+#              --user $(id -u):$(id -g) \
 #              --rm \
 #              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
 #              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -196,6 +200,7 @@ jobs:
           on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
           command: >-
             docker run \
+              --user $(id -u):$(id -g) \
               --rm \
               -v ${{ env.DATA_DIR }}/GFS:/tmp \
               ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -220,6 +225,7 @@ jobs:
       - name: prepare netcdf files for use with ONLINE cpp key
         run: |
           docker run \
+            --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
