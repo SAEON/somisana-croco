@@ -248,7 +248,10 @@ jobs:
         run: |
           # ensure files have correct permissions to do the copy
           chmod -R 774 ${{ env.DATA_DIR }}/GFS
-          cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
+          # I don't know why I need to use sudo in the line below? Probably because the target dir is owned by root
+          # But I didn't need to do this when copying from the saeon network, also as a non-root user?
+          # Not really an issue since we have ensured no password is needed in visudo for this user
+          sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
 
   # Here's where we'd call the function to create the SAWS forcing files
   # (without any archiving... obviously)
