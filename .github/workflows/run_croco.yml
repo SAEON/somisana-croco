@@ -75,7 +75,7 @@ jobs:
           rm -rf ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}  
           mkdir -p ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/{scratch,output,postprocess}
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
-          chmod -R 774 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
+          chmod -R 775 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
           # output dirs for use in other jobs
           echo "run_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}" >> $GITHUB_OUTPUT 
           echo "scratch_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/scratch" >> $GITHUB_OUTPUT 
@@ -161,7 +161,7 @@ jobs:
           rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
           mkdir -p ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-          chmod -R 774 ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
+          chmod -R 775 ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
 
       # consider writing a *.env file as part of the OGCM download process so we don't have to pass make_${OGCM}_ocims.m any input arguments, like it's done with GFS?
       - name: Format RUN_DATE
@@ -220,16 +220,16 @@ jobs:
   #        cp ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
   #
   get_blk:
-  # even though we are using ONLINE interpolation, let's copy the GFS data to this model run 
+  # even though we are using ONLINE interpolation, let's copy the GFS data to this model run scratch dir 
   # so there are no issues with multiple runs trying to access the same files in parallel
-  needs: [setup_rundir]
-  env:
-    SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-  runs-on: ${{ inputs.RUNNER_NAME }}
-  steps:
-    - name: copy BLK files to scratch dir
-      run: |
-        cp ${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/* ${{ env.SCRATCH_DIR }}
+    needs: [setup_rundir]
+    env:
+      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: copy BLK files to scratch dir
+        run: |
+          cp ${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/* ${{ env.SCRATCH_DIR }}
   
   # get the runtime input file        
   get_inp:
@@ -312,7 +312,7 @@ jobs:
               -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
       - name: ensure permissions
         run: |
-          chmod -R 774 ${{ env.RUN_DIR }}
+          chmod -R 775 ${{ env.RUN_DIR }}
 
   # postprocess the raw croco output files into something more user-friendly
   postprocess:
@@ -382,7 +382,7 @@ jobs:
        # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
       - name: ensure permissions
         run: |
-          chmod -R 774 ${{ env.RUN_DIR }}
+          chmod -R 775 ${{ env.RUN_DIR }}
 
   # copy data over to where it will be archived
   archive:
@@ -404,7 +404,7 @@ jobs:
         run: |
           if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
             sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
-            sudo chmod -R 774 ${{ steps.archive_dir.outputs.value }}
+            sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
           fi
       - name: copy files to the archive directory if needed
         run: |
