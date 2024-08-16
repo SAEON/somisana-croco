@@ -111,7 +111,9 @@ jobs:
           run_date_yyyymm=${run_date:0:6}
           archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
           # copy the file we want to the archive 
-          cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR
+          if [ ! -f ${archive_dir}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
+            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR
+          fi
       - name: clean up files
         run: |
           # this is a terrible hack I know...
@@ -244,9 +246,9 @@ jobs:
               --Yorig 2000 
       - name: copy GFS files to the archive dir
         run: |
-          # apparently we need sudo permissions to copy to the archive directory
-          # we have set up the somisana user to be able to do this without the need for a password
-          sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
+          # ensure files have correct permissions to do the copy
+          chmod -R 774 ${{ env.DATA_DIR }}/GFS
+          cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
 
   # Here's where we'd call the function to create the SAWS forcing files
   # (without any archiving... obviously)

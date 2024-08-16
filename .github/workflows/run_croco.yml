@@ -282,6 +282,7 @@ jobs:
   run_croco:
     needs: [setup_rundir,compile_croco,get_inp,get_ogcm,get_rst]
     env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
@@ -297,6 +298,9 @@ jobs:
             -v ${{ env.CONFIG_DIR }}:/home/somisana \
             ghcr.io/saeon/somisana-croco_run_main:latest \
               -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
+      - name: ensure permissions
+        run: |
+          chmod -R 774 ${{ env.RUN_DIR }}
 
   # postprocess the raw croco output files into something more user-friendly
   postprocess:
@@ -364,6 +368,9 @@ jobs:
                 --spacing 0.02
        # here we can add the extraction of time-series 
        # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
+      - name: ensure permissions
+        run: |
+          chmod -R 774 ${{ env.RUN_DIR }}
 
   # copy data over to where it will be archived
   archive:
@@ -391,9 +398,9 @@ jobs:
         run: |
           # apparently we need sudo permissions to copy to the archive directory
           # we have set up the somisana user to be able to do this without the need for a password
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
  
