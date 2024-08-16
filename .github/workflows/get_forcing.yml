@@ -72,6 +72,16 @@ jobs:
     needs: [dir_management]
     runs-on: saeonapps
     steps:
+      - name: archive dir
+        id: archive_dir
+        run: |
+          # I had wanted to use the $archive_dir variable defined in dir_management,
+          # but the mount dir is named differently on saeonapps than it is on mims1!
+          # so we have to create a new archive_dir variable for this job which is running on saeonapps
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_yyyymm=${run_date:0:6}
+          archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
+          echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: Format RUN_DATE
         id: format_date
         run: |
@@ -83,25 +93,27 @@ jobs:
         with:
           timeout_minutes: 60 # Script is considered failed if this limit is reached
           retry_wait_seconds: 300 # Wait 5 minutes and try again
-          max_attempts: 10
+          max_attempts: 3
           retry_on: any
           warning_on_retry: true
           shell: bash
           continue_on_error: false
           on_retry_command: rm -f /home/giles/mercator_download/*nc
-          command: >-
-            docker run \
-              --rm \
-              -v /home/giles/mercator_download:/tmp/download \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              download_mercator \
-                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
-                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
-                --domain 11,36,-39,-25 \
-                --run_date ${{ steps.format_date.outputs.value }} \
-                --hdays ${{ inputs.HDAYS }} \
-                --fdays ${{ inputs.FDAYS }} \
-                --outputDir '/tmp/download'
+          command: |
+            if [ ! -f ${{ steps.archive_dir.outputs.value }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
+              docker run \
+                --rm \
+                -v /home/giles/mercator_download:/tmp/download \
+                ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+                download_mercator \
+                  --usrname ${{ secrets.COPERNICUS_USERNAME }} \
+                  --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
+                  --domain 11,36,-39,-25 \
+                  --run_date ${{ steps.format_date.outputs.value }} \
+                  --hdays ${{ inputs.HDAYS }} \
+                  --fdays ${{ inputs.FDAYS }} \
+                  --outputDir '/tmp/download'
+            fi
       - name: copy to a shared dir
         run: |
           # I had wanted to use the $archive_dir variable defined in dir_management,
@@ -111,15 +123,15 @@ jobs:
           run_date_yyyymm=${run_date:0:6}
           archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
           # copy the file we want to the archive 
-          if [ ! -f ${archive_dir}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
-            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR
+          if [ ! -f ${{ steps.archive_dir.outputs.value }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
+            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ steps.archive_dir.outputs.value }}/MERCATOR
           fi
       - name: clean up files
         run: |
           # this is a terrible hack I know...
           # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
           # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
-          # so I'm using the cli docker image to remove the files it created
+          # so I'm using the cli docker image to remove the files it originally created
           docker run \
             --rm \
             --entrypoint /bin/bash \

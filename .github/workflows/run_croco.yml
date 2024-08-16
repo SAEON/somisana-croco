@@ -283,7 +283,7 @@ jobs:
           docker run \
             --rm \
             --entrypoint /bin/bash \
-            -v ${{ env.DATE_DIR }}:/home/somisana \
+            -v ${{ env.CONFIG_DIR }}:/home/somisana \
             ghcr.io/saeon/somisana-croco_run_main:latest \
               -c "cd /home/somisana && ./jobcomp_frcst.sh ${{ inputs.COMP }}"
       - name: copy executable to scratch dir
