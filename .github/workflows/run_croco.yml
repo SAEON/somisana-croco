@@ -396,7 +396,7 @@ jobs:
         run: |
           run_date=${{ inputs.RUN_DATE }}
           run_date_yyyymm=${run_date:0:6}
-          # cut off the last three characters of the domain name e.g. the *_02 part
+          # cut off the last three characters of the domain name for the archive directory e.g. the *_02 part
           domain=$(echo ${{ inputs.DOMAIN }} | sed 's/...$//')
           archive_dir=/mnt/saeon-somisana/data/${domain}/v1.0/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
@@ -410,9 +410,9 @@ jobs:
         run: |
           # apparently we need sudo permissions to copy to the archive directory
           # we have set up the somisana user to be able to do this without the need for a password
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-          cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier1.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier2.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_tier3.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
  
