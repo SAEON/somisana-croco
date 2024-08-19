@@ -34,26 +34,12 @@ jobs:
       archive_dir: ${{ steps.archive_dir.outputs.value }}
     continue-on-error: true
     steps:
-      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
-      # remove all files older than 5 days - anything not archived will be lost
-      # (note that cleaning up of certain files in the archive is also needed, but is currently handled by a cron job on the saeonapps server! 
-      # TODO - move the cleaning of the archive dir here?... do this VERY carefully so you don't delete all the archived files!)
-        id: cleanup_old_dirs
-        run: >-
-          find \
-            /home/somisana/ops/${{ inputs.BRANCH_REF }}/* \
-            -maxdepth 0 \
-            -type d \
-            -ctime +5 \
-            -exec \
-              rm \
-                -rf {} \;
       - name: get archive dir
         id: archive_dir
         run: |
           run_date=${{ inputs.RUN_DATE }}
           run_date_yyyymm=${run_date:0:6}
-          archive_dir=/mnt/saeon-somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
+          archive_dir=/mnt/saeon-somisana/data/sa-forcing/${run_date_yyyymm}/${run_date}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: create the archive directories if needed
         run: |
@@ -80,7 +66,7 @@ jobs:
           # so we have to create a new archive_dir variable for this job which is running on saeonapps
           run_date=${{ inputs.RUN_DATE }}
           run_date_yyyymm=${run_date:0:6}
-          archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
+          archive_dir=/mnt/somisana/data/sa-forcing/${run_date_yyyymm}/${run_date}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: Format RUN_DATE
         id: format_date
@@ -121,7 +107,7 @@ jobs:
           # so we have to create a new archive_dir variable for this job which is running on saeonapps
           run_date=${{ inputs.RUN_DATE }}
           run_date_yyyymm=${run_date:0:6}
-          archive_dir=/mnt/somisana/data/sa_forcing/${run_date_yyyymm}/${run_date}
+          archive_dir=/mnt/somisana/data/sa-forcing/${run_date_yyyymm}/${run_date}
           # copy the file we want to the archive 
           if [ ! -f ${{ steps.archive_dir.outputs.value }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
             cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ steps.archive_dir.outputs.value }}/MERCATOR

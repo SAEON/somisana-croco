@@ -117,9 +117,14 @@ jobs:
 
   # prepare croco forcing files, run the model, do the postprocessing
   #
-  # we're using separate jobs for the different domains, rather than using the matrix strategy, as if one of the domains fails, then it cancels all others running in parallel... to separating the jobs makes it more robust... and also easier to follow in the actions log on github
-  # we're also seprating jobs for gfs and saws forcing, rather than using the matrix strategy, as they have different HDAYS and FDAYS inputs (otherwise we could have included both in a single job using the matrix strategy)
-  # we will probably be able to use the matrix strategy for the different ogcm forcings though (let's see how this goes)
+  # we considered using githubs 'matrix' strategy to run different domains in parallel, 
+  # but opted against it as if one of the domains fails, then it cancels all others running in parallel... 
+  # so separating the jobs makes it more robust... and also easier to follow in the actions log on github
+  # here's an idea...
+  # when we end up with 4 domains, each needing 30-ish processors we'll be able to run all 4 in parallel
+  # we could put those 4 jobs in a calleable workflow, called run_all_domains.yml which takes the atmospheric and boundary forcings as inputs and runs 4 models in parallel
+  #
+  # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
   
   run_sa_west_gfs:
     needs: [envs,get_forcing,prep_configdirs]
@@ -136,6 +141,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
+      VERSION: v1.0
       COMP: C03
       INP: I99
       BLK: GFS
@@ -159,6 +165,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
+      VERSION: v1.0
       COMP: C03
       INP: I99
       BLK: GFS
