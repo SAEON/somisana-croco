@@ -284,7 +284,7 @@ jobs:
 
   # run the model
   run_croco:
-    needs: [setup_rundir,compile_croco,get_inp,get_ogcm,get_rst]
+    needs: [setup_rundir,get_inp,get_ogcm,get_rst]
     env:
       RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
