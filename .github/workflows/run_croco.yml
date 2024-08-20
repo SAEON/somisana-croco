@@ -282,25 +282,6 @@ jobs:
             < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in \
             > ${{ env.SCRATCH_DIR }}/croco.in
 
-  # compile the code
-  compile_croco:
-    needs: [setup_rundir]
-    env:
-      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    steps:
-      - name: compile the code
-        run: |
-          docker run \
-            --rm \
-            --entrypoint /bin/bash \
-            -v ${{ env.CONFIG_DIR }}:/home/somisana \
-            ghcr.io/saeon/somisana-croco_run_main:latest \
-              -c "cd /home/somisana && ./jobcomp_frcst.sh ${{ inputs.COMP }}"
-      - name: copy executable to scratch dir
-        run: |
-          cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
-
   # run the model
   run_croco:
     needs: [setup_rundir,compile_croco,get_inp,get_ogcm,get_rst]
@@ -309,10 +290,10 @@ jobs:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
-      - name: get the grid file (the only outstanding input)
+      - name: get the grid file and croco executable (the only outstanding inputs)
         run: |
-          grd_file="${{ env.CONFIG_DIR }}/GRID/croco_grd.nc"
-          cp ${grd_file} ${{ env.SCRATCH_DIR }}/croco_grd.nc
+          cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
+          cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
       - name: run the model
         run: |
           docker run \

@@ -647,7 +647,7 @@ def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
     '''
     
     # Get a list of all .nc files in the saws directory...
-    files = sorted(glob.glob(f"{saws_dir}/*.nc"))
+    files = sorted(glob.glob(f"{saws_dir}/SAWSUM_SA4-*.nc"))
     # ... and reverse the order to give priority to the latest files
     files.reverse()
     

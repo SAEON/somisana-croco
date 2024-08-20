@@ -123,7 +123,7 @@ jobs:
             --entrypoint /bin/bash \
             -v /home/giles/mercator_download/:/mnt/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              -c "rm /mnt/tmp/*nc"
+              -c "rm -f /mnt/tmp/*nc"
 
   mercator:
     needs: [mercator_saeon,dir_management]

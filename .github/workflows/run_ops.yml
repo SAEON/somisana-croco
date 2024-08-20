@@ -114,6 +114,10 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
+      COMP: C03
+      # in future we may want to use different compile options for each domain
+      # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
+      # and then tease the domain and compile option inside prep_configdirs
 
   # prepare croco forcing files, run the model, do the postprocessing
   #
