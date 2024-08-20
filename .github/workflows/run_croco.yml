@@ -106,7 +106,11 @@ jobs:
           # current_date starts at run_date and gets changed iteratively in the while loop below
           current_date=${{ inputs.RUN_DATE }} 
           step_count=0
-          MAX_STEPS=8 # number of 6 hour steps back to look for a restart file - preferred to restarting from global data  
+          # MAX_STEPS defines the number of 6 hour steps back to look for a restart file 
+          # It's not obvious to me what this should be. Of course we prefer to restart from our model rather than the global model
+          # But the further go back to look for a restart file, the more of a forecast solution you're using
+          # So it's a trade-off between the most recent global solution vs an older high res solution
+          MAX_STEPS=12   
 
           while [[ $step_count -lt $MAX_STEPS ]]; do
 
@@ -224,7 +228,7 @@ jobs:
   #        cp ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
   #
   get_blk:
-  # even though we are using ONLINE interpolation, let's copy the GFS data to this model run scratch dir 
+  # even though we are using ONLINE interpolation, let's copy the BLK data to this model run scratch dir 
   # so there are no issues with multiple parallel runs trying to access the same file
     needs: [setup_rundir]
     env:
@@ -418,11 +422,19 @@ jobs:
           fi
       - name: copy files to the archive directory if needed
         run: |
-          # apparently we need sudo permissions to copy to the archive directory
-          # we have set up the somisana user to be able to do this without the need for a password
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          # only copy if we're on the main branch
+          if [ ${{ inputs.BRANCH_REF }} = "main" ]; then
+            # apparently we need sudo permissions to copy to the archive directory
+            # we have set up the somisana user to be able to do this without the need for a password
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          fi
+      - name: clean up
+        run: |
+          # the .nc files we previously copied files from elsewhere into the scratch directory are redundant
+          # (it's useful to just dump them in scratch but are just copies so we don't need to keep them at all)
+          rm -f ${{ env.RUN_DIR }}/scratch/*.nc
  

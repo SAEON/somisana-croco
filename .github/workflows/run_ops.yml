@@ -174,3 +174,51 @@ jobs:
       HDAYS: 5
       FDAYS: 5
 
+  run_sa_west_saws:
+    needs: [envs,get_forcing,prep_configdirs]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    strategy:
+      matrix:
+        # matrix strategy allows us to run different model forcings in parallel
+        frc: ['']
+        ogcm: ['MERCATOR']
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C03
+      INP: I99
+      BLK: SAWS
+      FRC: ${{ matrix.frc }}
+      OGCM: ${{ matrix.ogcm }}
+      HDAYS: 5
+      FDAYS: 2.25
+
+  run_sa_southeast_saws:
+    needs: [envs,get_forcing,prep_configdirs]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    strategy:
+      matrix:
+        # matrix strategy allows us to run different model forcings in parallel
+        frc: ['']
+        ogcm: ['MERCATOR']
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C03
+      INP: I99
+      BLK: SAWS
+      FRC: ${{ matrix.frc }}
+      OGCM: ${{ matrix.ogcm }}
+      HDAYS: 5
+      FDAYS: 2.25
+

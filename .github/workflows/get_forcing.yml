@@ -231,7 +231,7 @@ jobs:
 #            -e MLM_LICENSE_FILE=/licenses/license.lic \
 #            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
 #            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m . && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
-      - name: prepare netcdf files for use with ONLINE cpp key
+      - name: reformat gfs netcdf files for use with ONLINE cpp key
         run: |
           docker run \
             --user $(id -u):$(id -g) \
@@ -251,5 +251,45 @@ jobs:
           # Not really an issue since we have ensured no password is needed in visudo for this user
           sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
 
-  # Here's where we'd call the function to create the SAWS forcing files
-  # (without any archiving... obviously)
+  saws:
+    needs: [gfs]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: create the SAWS directory
+        run: |
+          if [ ! -d "${{ env.DATA_DIR }}/SAWS/for_croco" ]; then
+            mkdir -p ${{ env.DATA_DIR }}/SAWS/for_croco
+            chown -R :runners ${{ env.DATA_DIR }}/SAWS
+            chmod -R 774 ${{ env.DATA_DIR }}/SAWS
+          fi
+      - name: reformat SAWS netcdf files for use with ONLINE cpp key
+        run: |
+          docker run \
+            --user $(id -u):$(id -g) \
+            --rm \
+            -v ${{ env.DATA_DIR }}/SAWS:/tmp/outputDir \
+            -v /mnt/saws-um-data:/tmp/sawsDir \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            reformat_saws_atm \
+              --sawsDir '/tmp/sawsDir' \
+              --outputDir '/tmp/outputDir' \
+              --run_date ${{ steps.format_date.outputs.value }} \
+              --hdays ${{ inputs.HDAYS }} \
+              --Yorig 2000
+      - name: copy over GFS variables not provided by SAWS
+        run: |
+          gfsDir=${{ env.DATA_DIR }}/GFS/for_croco
+          sawsDir=${{ env.DATA_DIR }}/SAWS/for_croco
+          cp $gfsDir/Specific_humidity_Y9999M1.nc $sawsDir
+          cp $gfsDir/Precipitation_rate_Y9999M1.nc $sawsDir
+          cp $gfsDir/Downward_Short-Wave_Rad_Flux_surface_Y9999M1.nc $sawsDir
+          cp $gfsDir/Upward_Short-Wave_Rad_Flux_surface_Y9999M1.nc $sawsDir
+          cp $gfsDir/Downward_Long-Wave_Rad_Flux_Y9999M1.nc $sawsDir
+          cp $gfsDir/Upward_Long-Wave_Rad_Flux_surface_Y9999M1.nc $sawsDir
+
