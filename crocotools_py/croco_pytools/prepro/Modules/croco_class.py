@@ -36,13 +36,13 @@ class CROCO_grd(object):
         self.sc_r = None
         nc.close
     def mask3d(self):
-        return np.tile(self.maskr, (np.int(self.N), 1, 1))
+        return np.tile(self.maskr, (int(self.N), 1, 1))
 
     def umask3d(self):
-        return np.tile(self.umask, (np.int(self.N), 1, 1))
+        return np.tile(self.umask, (int(self.N), 1, 1))
 
     def vmask3d(self):
-        return np.tile(self.vmask, (np.int(self.N), 1, 1))   
+        return np.tile(self.vmask, (int(self.N), 1, 1))   
 
     def lonmin(self):
         return np.min(self.lon)

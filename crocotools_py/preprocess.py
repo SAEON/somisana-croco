@@ -6,16 +6,18 @@ import pandas as pd
 import os, sys, glob
 # import fnmatch
 from scipy.interpolate import griddata
-import crocotools_py.postprocess as post
+# import crocotools_py.postprocess as post
 # functions from croco_pytools submodule
 # (I'm sure there's a better way of importing these functions, but this works)
-sys.path.append(os.path.dirname(__file__)+"/croco_pytools/prepro/Modules/")
-sys.path.append(os.path.dirname(__file__)+"/croco_pytools/prepro/Readers/")
+sys.path.append("/home/rautenbach/SOMISANA/croco/somisana-croco/crocotools_py/croco_pytools/prepro/Modules/")
+sys.path.append("/home/rautenbach/SOMISANA/croco/somisana-croco/crocotools_py/croco_pytools/prepro/Readers/")
 import Cgrid_transformation_tools as grd_tools
 import interp_tools
 import sigmagrid_tools as sig_tools
 import croco_class as Croco
 import ibc_class as Inp
+import pylab as plt
+import netCDF4 as netcdf
 
 def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
     '''
@@ -631,112 +633,6 @@ def make_SAWS_from_blk(saws_dir,
     
     ds_saws.close()
 
-def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
-    '''
-    Convert the SAWS UM files into a format which can be ingested by CROCO
-    using the ONLINE cpp key for online interpolation of the surface forcing
-    (we will use the default 'CFSR' file format)
-    
-    Parameters
-    ----------
-    saws_dir      : the directory where the saws um files are located
-    output_dir    : the directory where the croco-friendly files will be saved
-    run_date      : a datetime.datetime object of the forecast initialisation time
-    hdasy         : integer of the hindcast days component of the croco run (used to identify relevatn saws files)
-    Yorig         : the origin year used in setting up the croco times
-    '''
-    
-    # Get a list of all .nc files in the saws directory...
-    files = sorted(glob.glob(f"{saws_dir}/*.nc"))
-    # ... and reverse the order to give priority to the latest files
-    files.reverse()
-    
-    # Filter the files list to include only files after the croco start datetime
-    cutoff_datetime = run_date - timedelta(days=(hdays+1)) # extend by a day to make sure we cover our run
-    filtered_files = [
-        file for file in files
-        if datetime.strptime(file[-13:-4], "%Y%m%d%H") >= cutoff_datetime
-    ]
-    
-    # I'm just commenting the variables not available in the saws files for now
-    # we might need to interpolate gfs onto the saws grid for these vars?
-    # or maybe the ONLINE interpolation handles the variables separately,
-    # in which case we would need to just copy the corresponding gfs files (or other) over
-    variables = {
-            "Temperature_height_above_ground": {
-                "shortName": "2t",
-            },
-            # "Specific_humidity": {
-            #     "shortName": "2sh",
-            # },
-            # "Precipitation_rate": {
-            #     "shortName": "prate",
-            # },
-            # "Downward_Short-Wave_Rad_Flux_surface": {
-            #     "shortName": "dswrf",
-            # },
-            # "Upward_Short-Wave_Rad_Flux_surface": {
-            #     "shortName": "uswrf",
-            # },
-            # "Downward_Long-Wave_Rad_Flux": {
-            #     "shortName": "dlwrf",
-            # },
-            # "Upward_Long-Wave_Rad_Flux_surface": {
-            #     "shortName": "ulwrf",
-            # },
-            "U-component_of_wind": {
-                "shortName": "10u",
-            },
-            "V-component_of_wind": {
-                "shortName": "10v",
-            },
-        }
-    
-    for var in variables:
-        
-        # get an xarray dataset for this variable
-        print('working on '+var)
-        var_dict = variables[var]
-        
-        da = None
-        for file in files:
-            ds_file = xr.open_dataset(file)
-            da_file = ds_file[var_dict['shortName']].squeeze()
-            # the concatenation step below seems to take quite long (it's a big domain!) 
-            # but pre-chunking the lon and lat dimensions seems to speed it up a bit
-            da_file = da_file.chunk({'time': 1, 'lat': 100, 'lon': 100}) 
-            if da is None:
-                da = da_file
-            else:
-                # extract the non-overlapping data
-                da_file = da_file.sel(time=slice(da_file.time[0],da.time[0]-1))
-                # and combine with the full dataset
-                da = xr.concat([da_file, da], dim='time')
-            da_file.close()
-            ds_file.close()
-        
-        # make a dataset from the dataarray
-        ds = xr.Dataset({var: da})
-        
-        # we need to convert time to days since Yorig!
-        # Reference date
-        reference_date = np.datetime64(str(Yorig)+'-01-01T00:00:00')
-        # time_in_ns = ds['time'].astype('datetime64[ns]')
-        # Convert the time dimension to days since the reference date
-        ds['time'] = (ds['time'].astype('datetime64[ns]') - reference_date) / np.timedelta64(1, 'D')
-        # Set the units attribute for the time coordinate
-        ds['time'].attrs['units'] = 'days since 1-Jan-'+str(Yorig)+' 00:00:00'
-        
-        # write the nc file
-        # the ONLINE cppkey is designed for use with monly interannual simulations
-        # where the year and month of the file name is appended to the end of the file
-        # Since we are using this option with forecasts we'll just put dummy values
-        # for the year and month, and put these values in the *.in file making it 
-        # something we don't have to handle separately
-        print('writing the file...')
-        fname_out = os.path.join(out_dir,var+"_Y9999M1.nc")
-        ds.to_netcdf(fname_out)
-
 def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
     '''
     Convert the GFS atmospheric forecast grb files downloaded by the cli.py function download_gfs_atm
@@ -890,25 +786,20 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         ds.to_netcdf(fname_out)
         
         
-def make_ini_fcst(output_dir,run_date,hdays):
+def make_ini_fcst(input_file,output_dir,run_date,hdays):
     '''
-    make a croco initial condition file as part of the operational workflow
-    This is largely based on croco_pytools/prepro/make_ini.py
-    but here we adjust it to form part of our operational workflow
+    Make CROCO initial file for SAOMISANA
     
     output_dir - the directory where the ini file will be saved
                  NB - there needs to be a crocotools_param.py file in this directory which includes all the configurable parameters
     run_date   - the time when the operational run was initialised, as a datetime.datetime object
     hdays      - the number of hindcast days used in the operational run (time of the ini file will be run_date - hdays)
     
-    '''
-    
-    
+    '''  
     # --------
     # imports
     # --------
     #
-    print('config_dir is '+output_dir)
     sys.path.append(output_dir)
     import crocotools_param as params
     
@@ -917,60 +808,62 @@ def make_ini_fcst(output_dir,run_date,hdays):
 
     # Load croco_grd
     crocogrd = Croco.CROCO_grd(params.croco_grd, params.sigma_params)
-
-    # --- Load input (restricted to croco_grd) ----------------------------
+    #--- Load input (restricted to croco_grd) ----------------------------  
     
-    inpdat=Inp.getdata(inputdata,input_file,crocogrd,multi_files,tracers)
-
-    print(' ')
-    print(' Making initial file: '+ini_filename)
-    print(' ')
-
+    multi_files=False
+    print(params.inputdata)
+    print(input_file)
+    print(crocogrd)
+    inpdat=Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,params.tracers)
+    #inpdat=Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,params.tracers,bdy=[params.obc_dict,params.cycle_bry])
+    print(inpdat)
     # --- Create the initial file -----------------------------------------
 
-    Croco.CROCO.create_ini_nc(None,''.join((output_dir + ini_filename)),crocogrd,
+    
+    Croco.CROCO.create_ini_nc(None,''.join((params.croco_dir + ini_filename)),crocogrd,
                               tracers=params.tracers)
 
     # --- Handle initial time ---------------------------------------------
-    
-    ini_date_num = run_date - timedelta(days=hdays)
-    
-    ini_date_num = datetime(int(Yini), int(Mini), int(Dini))
 
-    day_zero_num = datetime(int(Yorig), int(Morig), int(Dorig))
-    day_zero_num = plt.date2num(day_zero_num)
+    ini_date_num = run_date - timedelta(days=hdays)
+    ini_date_num = ini_date_num.timestamp()
+    
+    day_zero_num = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
+    
+    day_zero_num = day_zero_num.timestamp()
     
     tstart=0
     
-    if ini_date_num != day_zero_num:
-        tstart = ini_date_num - day_zero_num # days
+    scrumt = ini_date_num
 
-    scrumt = tstart*3600*24 # convert in second
-    oceant = tstart*3600*24
+    oceant = ini_date_num
+    
     tend=0.
+
+    # time index to use in the file
+    
+    tndx = 0
 
    #  --- Compute and save variables on CROCO grid ---------------
 
     for vars in ['ssh','tracers','velocity']:
         print('\nProcessing *%s*' %vars)
-        nc=netcdf.Dataset(croco_dir+ini_filename, 'a')
+        nc=netcdf.Dataset(params.croco_dir+ini_filename, 'a')
         if vars == 'ssh' :
             (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,tndx,tndx)
             nc.variables['zeta'][0,:,:] = zeta*crocogrd.maskr
-            nc.Input_data_type=inputdata
+            nc.Input_data_type=params.inputdata
             nc.variables['ocean_time'][:] = oceant
             nc.variables['scrum_time'][:] = scrumt
-            nc.variables['scrum_time'].units='seconds since %s-%s-%s 00:00:00' %(Yorig,Morig,Dorig)
+            nc.variables['scrum_time'].units='seconds since %s-%s-%s 00:00:00' %(params.Yorig,params.Morig,params.Dorig)
             nc.variables['tstart'][:] = tstart
             nc.variables['tend'][:] = tend
-
             z_rho = crocogrd.scoord2z_r(zeta=zeta)
             z_w   = crocogrd.scoord2z_w(zeta=zeta)
-            
         elif vars == 'tracers':
-            for tra in tracers:
+            for tra in params.tracers:
                 print(f'\nIn tracers processing {tra}')
-                trac_3d= interp_tools.interp(inpdat,tra,Nzgoodmin,z_rho,crocogrd,tndx,tndx)
+                trac_3d= interp_tools.interp(inpdat,tra,params.Nzgoodmin,z_rho,crocogrd,tndx,tndx)
                 nc.variables[tra][0,:,:,:] = trac_3d*crocogrd.mask3d()
 
         elif vars == 'velocity':
@@ -978,7 +871,7 @@ def make_ini_fcst(output_dir,run_date,hdays):
             cosa=np.cos(crocogrd.angle)
             sina=np.sin(crocogrd.angle)
 
-            [u,v,ubar,vbar]=interp_tools.interp_uv(inpdat,Nzgoodmin,z_rho,cosa,sina,crocogrd,tndx,tndx)
+            [u,v,ubar,vbar]=interp_tools.interp_uv(inpdat,params.Nzgoodmin,z_rho,cosa,sina,crocogrd,tndx,tndx)
               
             conserv=1  # Correct the horizontal transport i.e. remove the intergrated tranport and add the OGCM transport          
             if conserv == 1:
@@ -996,9 +889,163 @@ def make_ini_fcst(output_dir,run_date,hdays):
    
     nc.close()
     
-if __name__ == '__main__':
+    print('')
+    print(' Initial file created ')
+    print(' Path to file is ', params.croco_dir + ini_filename)
+    print('')
+
+def make_bry_fcst(input_file,output_dir,run_date,hdays):
+    '''
     
-    run_date = datetime(2024,4,17,6,0,0)
+    Make CROCO boundary file for SAOMISANA
+    
+    '''
+    # --------
+    # imports
+    # --------
+    #
+    sys.path.append(output_dir)
+    import crocotools_param as params
+    
+    # --- Make filename --------------------------------------------------
+
+    bry_filename = params.bry_filename.replace('.nc', run_date.strftime('_%Y%m%d_%H.nc'))
+
+    # --- Load croco_grd --------------------------------------------------
+
+    crocogrd = Croco.CROCO_grd(params.croco_grd, params.sigma_params)
+
+    # --- Initialize boundary vars ----------------------------------------
+
+    crocogrd.WEST_grid()
+    crocogrd.EAST_grid()
+    crocogrd.SOUTH_grid()
+    crocogrd.NORTH_grid()
+
+    # --- Initialize input data class -------------------------------------
+    
+    multi_files=False
+    inpdat = Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,
+                         params.tracers,
+                         bdy=[params.obc_dict,params.cycle_bry])
+
+    Croco.CROCO.create_bry_nc(None,params.croco_dir + bry_filename,crocogrd,params.obc_dict,params.cycle_bry,tracers=params.tracers)
+
+    # --- Handle bry_time --------------------------------------------
+
+    nc=netcdf.Dataset(params.croco_dir + bry_filename, 'a')
+    
+    bry_start_date = plt.date2num(run_date - timedelta(days=hdays))
+    bry_end_date = plt.date2num(run_date + timedelta(days=1))
+
+    # Load full time dataset
+    time = plt.date2num(inpdat.ncglo['time'].values)
+    
+    # find index for the time range
+    ind = np.where((time>bry_start_date) & (time<=bry_end_date))
+    [dtmin,dtmax] = np.min(ind),np.max(ind)
+    bry_time = time[int(dtmin):int(dtmax)]
+    nc.Input_data_type=params.inputdata
+    nc.variables['bry_time'].cycle=params.cycle_bry
+    nc.variables['bry_time'][:]=bry_time
+    
+    if params.cycle_bry==0:
+        nc.variables['bry_time'].units='days since %s-01-01 00:00:00' %(params.Yorig)
+        
+    # --- Loop on boundaries ------------------------------------------
+    prev=1
+    nxt=1
+
+    if len(params.tracers) == 0:
+        var_loop = ['ssh','velocity']
+    else:
+        var_loop = ['ssh','tracers','velocity']
+
+    for boundary, is_open in zip(params.obc_dict.keys(), params.obc_dict.values()):
+        if is_open:
+            for vars in var_loop:
+                print('\n     Processing *%s* for %sern boundary' %(vars, boundary))
+                print('     ------------------------------------------')
+                if vars == 'ssh':
+                    (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,dtmin,dtmax,prev,nxt,boundary[0].upper())
+                    z_rho = crocogrd.scoord2z_r(zeta=zeta,bdy="_"+boundary)
+                    z_w   = crocogrd.scoord2z_w(zeta=zeta,bdy="_"+boundary)
+
+                elif vars == 'tracers':
+                    trac_dict = dict()
+                    for trc in params.tracers:
+                        print(f'\nIn tracers processing {trc}')
+                        trac_dict[trc] = interp_tools.interp(inpdat,trc,params.Nzgoodmin,z_rho,crocogrd,dtmin,dtmax,prev,nxt,bdy=boundary[0].upper())
+
+                elif vars == 'velocity':
+                    cosa=np.cos(eval(''.join(('crocogrd.angle_',boundary))) )
+                    sina=np.sin(eval(''.join(('crocogrd.angle_',boundary))) )
+
+                    [u,v,ubar,vbar]=interp_tools.interp_uv(inpdat,params.Nzgoodmin,z_rho,cosa,sina,crocogrd,dtmin,dtmax,prev,nxt,bdy=boundary[0].upper())
+
+                    conserv=1  # Correct the horizontal transport i.e. remove the intergrated tranport and add the OGCM transport
+
+                    if conserv == 1:
+                        ubar_croco=sig_tools.vintegr4D(u,grd_tools.rho2u(z_w),grd_tools.rho2u(z_rho),np.nan,np.nan)[0]/grd_tools.rho2u(eval(''.join(('crocogrd.h_'+boundary))))
+                        vbar_croco=sig_tools.vintegr4D(v,grd_tools.rho2v(z_w),grd_tools.rho2v(z_rho),np.nan,np.nan)[0]/grd_tools.rho2v(eval(''.join(('crocogrd.h_'+boundary))))
+
+                        u = u - np.tile(ubar_croco[:,np.newaxis,:,:],(1,z_rho.shape[1],1,1))
+                        u = u + np.tile(ubar[:,np.newaxis,:,:],(1,z_rho.shape[1],1,1))
+
+                        v = v - np.tile(vbar_croco[:,np.newaxis,:,:],(1,z_rho.shape[1],1,1))
+                        v = v + np.tile(vbar[:,np.newaxis,:,:],(1,z_rho.shape[1],1,1))
+
+    # --- Saving in netcdf ------------------------------------------------
+
+            print('\nSaving %sern boundary in Netcdf' % boundary)
+            print('----------------------------------')
+
+             # handle indices (as 2 points where taken next to bdy)
+            if str(boundary) == 'west' and is_open:
+                indices3D="[:,:,:,0]" # T,N,J,i=0
+                indices2D="[:,:,0]"   # T,J,i=0
+            elif str(boundary) == 'east' and is_open:
+                indices3D="[:,:,:,-1]" # T,N,J,i=last
+                indices2D="[:,:,-1]"   # T,J,i=last
+            elif str(boundary) == 'south' and is_open:
+                indices3D="[:,:,0,:]" # T,N,j=0,I
+                indices2D="[:,0,:]"   # T,j=0,I
+            elif str(boundary) == 'north' and is_open:
+                indices3D="[:,:,-1,:]" # T,N,j=last,I
+                indices2D="[:,-1,:]"   # T,j=last,I
+
+            mask_zet = np.tile(eval(''.join(('crocogrd.maskr_',boundary))),[zeta.shape[0],1,1])
+            if "velocity" in var_loop:
+                mask_u   = np.tile(eval(''.join(('crocogrd.umask_',boundary))),[u.shape[0],u.shape[1],1,1])
+                mask_v   = np.tile(eval(''.join(('crocogrd.vmask_',boundary))),[u.shape[0],u.shape[1],1,1])
+                mask_ubar   = np.tile(eval(''.join(('crocogrd.umask_',boundary))),[u.shape[0],1,1])
+                mask_vbar   = np.tile(eval(''.join(('crocogrd.vmask_',boundary))),[v.shape[0],1,1])
+
+            nc.variables['zeta_'+str(boundary)][:]=eval(''.join(('zeta',indices2D)))*eval(''.join(('mask_zet',indices2D)))
+            nc.variables['u_'+str(boundary)][:]   =eval(''.join(('u',indices3D)))*eval(''.join(('mask_u',indices3D)))
+            nc.variables['v_'+str(boundary)][:]   =eval(''.join(('v',indices3D)))*eval(''.join(('mask_v',indices3D)))
+            nc.variables['ubar_'+str(boundary)][:]=eval(''.join(('ubar',indices2D)))*eval(''.join(('mask_ubar',indices2D)))
+            nc.variables['vbar_'+str(boundary)][:]=eval(''.join(('vbar',indices2D)))*eval(''.join(('mask_vbar',indices2D)))
+
+            if 'tracers' in var_loop:
+                for varname, value in zip(trac_dict.keys(), trac_dict.values()):
+                    mask_tra = np.tile(eval(''.join(('crocogrd.maskr_',boundary))),[value.shape[0],value.shape[1],1,1])
+                    nc.variables[f"{varname}_{boundary}"][:] = eval(f'value{indices3D}')*eval(''.join(('mask_tra',indices3D)))
+
+    nc.close()
+
+    print('')
+    print(' Boundary file created ')
+    print(' Path to file is ', params.croco_dir + bry_filename)
+    print('')
+
+
+if __name__ == '__main__':
+    #input_file = '/home/rautenbach/SOMISANA/croco/somisana-croco/DATA/MERCATOR/MERCATOR.nc'
+    input_file = '/home/rautenbach/SOMISANA/croco/somisana-croco/DATA/HYCOM/HYCOM.nc'
+    output_dir='/home/rautenbach/SOMISANA/croco/somisana-croco/configs/sa_west_02/croco_v1.3.1/MERCATOR/'
+    run_date = datetime(2024,8,18,0,0,0)
     hdays = 5
-    make_ini_fcst('/home/gfearon/code/somisana-croco/configs/swcape_02/croco_v1.3.1/MERCATOR/',run_date,hdays)
+    make_bry_fcst(input_file,output_dir,run_date,hdays)
+    #make_ini_fcst(input_file,output_dir,run_date,hdays)
         

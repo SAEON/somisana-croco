@@ -1,3 +1,8 @@
+*_.f
+*.o
+*.mod
+*.npz
+
 
 copy2chpc.bash
 *.swp
@@ -8,6 +13,7 @@ Untitled.ipynb
 
 # ignore all data which needs to be downloaded for running configurations
 DATASETS_CROCOTOOLS/*
+DATA/*
 
 # croco run-time files 
 # (exclude all directories set up by running a configuration in our directory structure)
