@@ -633,7 +633,7 @@ def make_SAWS_from_blk(saws_dir,
     
     ds_saws.close()
 
-def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
+def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
     '''
     Convert the SAWS UM files into a format which can be ingested by CROCO
     using the ONLINE cpp key for online interpolation of the surface forcing
@@ -642,9 +642,10 @@ def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
     Parameters
     ----------
     saws_dir      : the directory where the saws um files are located
+    backup_dir    : directory containing already reformatted data, used for variables not provided by SAWS
     output_dir    : the directory where the croco-friendly files will be saved
     run_date      : a datetime.datetime object of the forecast initialisation time
-    hdasy         : integer of the hindcast days component of the croco run (used to identify relevatn saws files)
+    hdays         : integer of the hindcast days component of the croco run (used to identify relevatn saws files)
     Yorig         : the origin year used in setting up the croco times
     '''
     
@@ -653,44 +654,52 @@ def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
     # ... and reverse the order to give priority to the latest files
     files.reverse()
     
-    # Filter the files list to include only files after the croco start datetime
-    cutoff_datetime = run_date - timedelta(days=(hdays+1)) # extend by a day to make sure we cover our run
+    # Filter the files list to include only files after the CROCO start datetime
+    cutoff_datetime = run_date - timedelta(days=(hdays+1)) # extend by a day to make sure we cover our CROCO run
     filtered_files = [
         file for file in files
         if datetime.strptime(file[-13:-4], "%Y%m%d%H") >= cutoff_datetime
     ]
-    
-    # I'm just commenting the variables not available in the saws files for now
-    # we might need to interpolate gfs onto the saws grid for these vars?
-    # or maybe the ONLINE interpolation handles the variables separately,
-    # in which case we would need to just copy the corresponding gfs files (or other) over
+   
+    # only some variables are provided to us by SAWS
+    # so we have a "existsSAWS" flag to indicate which variables we have
+    # the ones we don't must be interpolated from another source (e.g. GFS or other) onto the SAWS grid for the CROCO model to be able to run
     variables = {
             "Temperature_height_above_ground": {
                 "shortName": "2t",
+                "existsSAWS": "true",
             },
-            # "Specific_humidity": {
-            #     "shortName": "2sh",
-            # },
-            # "Precipitation_rate": {
-            #     "shortName": "prate",
-            # },
-            # "Downward_Short-Wave_Rad_Flux_surface": {
-            #     "shortName": "dswrf",
-            # },
-            # "Upward_Short-Wave_Rad_Flux_surface": {
-            #     "shortName": "uswrf",
-            # },
-            # "Downward_Long-Wave_Rad_Flux": {
-            #     "shortName": "dlwrf",
-            # },
-            # "Upward_Long-Wave_Rad_Flux_surface": {
-            #     "shortName": "ulwrf",
-            # },
             "U-component_of_wind": {
                 "shortName": "10u",
+                "existsSAWS": "true",
             },
             "V-component_of_wind": {
                 "shortName": "10v",
+                "existsSAWS": "true",
+            },
+            "Specific_humidity": {
+                "shortName": "2sh",
+                "existsSAWS": "false",
+            },
+            "Precipitation_rate": {
+                "shortName": "prate",
+                "existsSAWS": "false",
+            },
+            "Downward_Short-Wave_Rad_Flux_surface": {
+                "shortName": "dswrf",
+                "existsSAWS": "false",
+            },
+            "Upward_Short-Wave_Rad_Flux_surface": {
+                "shortName": "uswrf",
+                "existsSAWS": "false",
+            },
+            "Downward_Long-Wave_Rad_Flux": {
+                "shortName": "dlwrf",
+                "existsSAWS": "false",
+            },
+            "Upward_Long-Wave_Rad_Flux_surface": {
+                "shortName": "ulwrf",
+                "existsSAWS": "false",
             },
         }
     
@@ -700,35 +709,54 @@ def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
         print('working on '+var)
         var_dict = variables[var]
         
-        da = None
-        for file in filtered_files:
-            ds_file = xr.open_dataset(file)
-            da_file = ds_file[var_dict['shortName']].squeeze()
-            # the concatenation step below seems to take quite long (it's a big domain!) 
-            # but pre-chunking the lon and lat dimensions seems to speed it up a bit
-            da_file = da_file.chunk({'time': 1, 'lat': 100, 'lon': 100}) 
-            if da is None:
-                da = da_file
-            else:
-                # extract the non-overlapping data
-                da_file = da_file.sel(time=slice(da_file.time[0],da.time[0]-1))
-                # and combine with the full dataset
-                da = xr.concat([da_file, da], dim='time')
-            da_file.close()
-            ds_file.close()
-        
-        # make a dataset from the dataarray
-        ds = xr.Dataset({var: da})
-        
-        # we need to convert time to days since Yorig!
-        # Reference date
-        reference_date = np.datetime64(str(Yorig)+'-01-01T00:00:00')
-        # time_in_ns = ds['time'].astype('datetime64[ns]')
-        # Convert the time dimension to days since the reference date
-        ds['time'] = (ds['time'].astype('datetime64[ns]') - reference_date) / np.timedelta64(1, 'D')
-        # Set the units attribute for the time coordinate
-        ds['time'].attrs['units'] = 'days since 1-Jan-'+str(Yorig)+' 00:00:00'
-        
+        if var_dict['existsSAWS'] == 'true': # we can use saws data for this variable
+
+            # get an xarray dataset for the SAWS data for this variable
+            # giving preference to more recent files where data overlap
+            da = None
+            for file in filtered_files:
+                ds_file = xr.open_dataset(file)
+                da_file = ds_file[var_dict['shortName']].squeeze()
+                # the concatenation step below seems to take quite long (it's a big domain!) 
+                # but pre-chunking the lon and lat dimensions seems to speed it up a bit
+                da_file = da_file.chunk({'time': 1, 'lat': 100, 'lon': 100}) 
+                if da is None:
+                    da = da_file
+                else:
+                    # extract the non-overlapping data
+                    da_file = da_file.sel(time=slice(da_file.time[0],da.time[0]-1))
+                    # and combine with the full dataset
+                    da = xr.concat([da_file, da], dim='time')
+                da_file.close()
+                ds_file.close()
+            
+            # make a dataset from the dataarray
+            ds = xr.Dataset({var: da})
+            
+            # we need to convert time to days since Yorig!
+            # Reference date
+            reference_date = np.datetime64(str(Yorig)+'-01-01T00:00:00')
+            # time_in_ns = ds['time'].astype('datetime64[ns]')
+            # Convert the time dimension to days since the reference date
+            ds['time'] = (ds['time'].astype('datetime64[ns]') - reference_date) / np.timedelta64(1, 'D')
+            # Set the units attribute for the time coordinate
+            ds['time'].attrs['units'] = 'days since 1-Jan-'+str(Yorig)+' 00:00:00'
+            
+        else: # we have to interpolate previously formatted data onto the SAWS grid to have the full compliment of variables
+
+            # get the backup data which we need to interpolate onto the saws grid
+            backup_file = os.path.join(backup_dir, var+"_Y9999M1.nc")
+            ds_backup = xr.open_dataset(backup_file)
+            
+            # start by getting a template saws file for interpolating 
+            # we're using the Temperature_height_above_ground file, which would have already been processed
+            template_file = os.path.join(out_dir, "Temperature_height_above_ground_Y9999M1.nc")
+            ds_template = xr.open_dataset(template_file)
+            
+            # do the interpolation
+            # this succinct approach works because our files have the exact same dimensions
+            ds = ds_backup.interp_like(ds_template, method='linear', extrap='nearest')
+            
         # write the nc file
         # the ONLINE cppkey is designed for use with monly interannual simulations
         # where the year and month of the file name is appended to the end of the file
