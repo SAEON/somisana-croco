@@ -888,7 +888,12 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         # something we don't have to handle separately
         fname_out = os.path.join(out_dir,var+"_Y9999M1.nc")
         ds.to_netcdf(fname_out)
-        
+       
+        # Delete all .gbx9 and .ncx files created during reading the .grb files (not sure what these are but they're not needed)
+        for gbx9_file in glob.glob(os.path.join(gfs_dir, '*.gbx9')):
+            os.remove(gbx9_file)
+        for ncx_file in glob.glob(os.path.join(gfs_dir, '*.ncx')):
+            os.remove(ncx_file)
         
 def make_ini_fcst(output_dir,run_date,hdays):
     '''
