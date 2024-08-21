@@ -755,7 +755,7 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
             
             # do the interpolation
             # this succinct approach works because our files have the exact same dimensions
-            ds = ds_backup.interp_like(ds_template, method='linear', extrap='nearest')
+            ds = ds_backup.interp_like(ds_template, method='linear')
             
         # write the nc file
         # the ONLINE cppkey is designed for use with monly interannual simulations
