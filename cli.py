@@ -9,7 +9,7 @@ Feel free to add more functions from the repo as we need them in the cli
 '''
 import argparse
 from datetime import datetime
-from crocotools_py.preprocess import reformat_gfs_atm,make_ini_fcst,make_bry_fcst
+from crocotools_py.preprocess import reformat_gfs_atm,reformat_saws_atm,make_ini_fcst,make_bry_fcst
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys, download_mercator
@@ -140,6 +140,26 @@ def main():
         download_hycom(args.outDir,args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays,  args.cleanDir, args.parallel)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
     
+    # ------------------
+    # reformat_saws_atm
+    # ------------------
+    parser_reformat_saws_atm = subparsers.add_parser('reformat_saws_atm', 
+            help='convert the SAWS UM nc files into nc files which can be ingested by CROCO using the ONLINE cpp key')
+    parser_reformat_saws_atm.add_argument('--sawsDir', required=True, help='Directory containing the SAWS UM files')
+    parser_reformat_saws_atm.add_argument('--backupDir', required=True, help='Directory containing already reformatted data, used for variables not provided by SAWS')
+    parser_reformat_saws_atm.add_argument('--outputDir', required=True, help='Directory to save reformated nc files')
+    parser_reformat_saws_atm.add_argument('--run_date', required=False, type=parse_datetime,
+            default=None,
+            help='initialisation time in format "YYYY-MM-DD HH:MM:SS"')
+    parser_reformat_saws_atm.add_argument('--hdays', required=False, type=float, 
+            default=5.,
+            help='hindcast days i.e before run_date')
+    parser_reformat_saws_atm.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model - reformatted file time will be in days since 1-Jan-Yorig')
+    def reformat_saws_atm_handler(args):
+        reformat_saws_atm(args.sawsDir,args.backupDir,args.outputDir,args.run_date,args.hdays,args.Yorig)
+    parser_reformat_saws_atm.set_defaults(func=reformat_saws_atm_handler)
+     
     # ------------------
     # reformat_gfs_atm
     # ------------------

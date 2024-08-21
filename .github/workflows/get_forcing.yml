@@ -253,6 +253,8 @@ jobs:
 
   saws:
     needs: [gfs]
+    # the gfs prerequisite is because we are currently using GFS variables interpolated onto the SAWS grid for any variables not provided by SAWS
+    # this could easily be changed to another data provider if available and we have good reason to switch
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: Format RUN_DATE
@@ -273,23 +275,14 @@ jobs:
           docker run \
             --user $(id -u):$(id -g) \
             --rm \
-            -v ${{ env.DATA_DIR }}/SAWS/for_croco:/tmp/outputDir \
+            -v ${{ env.DATA_DIR }}:/tmp/dataDir \
             -v /mnt/saws-um-data:/tmp/sawsDir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             reformat_saws_atm \
               --sawsDir '/tmp/sawsDir' \
-              --outputDir '/tmp/outputDir' \
+              --backupDir '/tmp/dataDir/GFS/for_croco' \
+              --outputDir '/tmp/dataDir/SAWS/for_croco' \
               --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --Yorig 2000
-      - name: copy over GFS variables not provided by SAWS
-        run: |
-          gfsDir=${{ env.DATA_DIR }}/GFS/for_croco
-          sawsDir=${{ env.DATA_DIR }}/SAWS/for_croco
-          cp $gfsDir/Specific_humidity_Y9999M1.nc $sawsDir
-          cp $gfsDir/Precipitation_rate_Y9999M1.nc $sawsDir
-          cp $gfsDir/Downward_Short-Wave_Rad_Flux_surface_Y9999M1.nc $sawsDir
-          cp $gfsDir/Upward_Short-Wave_Rad_Flux_surface_Y9999M1.nc $sawsDir
-          cp $gfsDir/Downward_Long-Wave_Rad_Flux_Y9999M1.nc $sawsDir
-          cp $gfsDir/Upward_Long-Wave_Rad_Flux_surface_Y9999M1.nc $sawsDir
 
