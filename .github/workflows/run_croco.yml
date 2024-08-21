@@ -395,16 +395,14 @@ jobs:
           #
           archive_dir=/mnt/saeon-somisana/data/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
-      - name: create the archive directory if needed
-        run: |
-          if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
-            sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
-            sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
-          fi
       - name: copy files to the archive directory if needed
         run: |
           # only copy if we're on the main branch
           if [ ${{ inputs.BRANCH_REF }} = "main" ]; then
+            if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
+              sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
+              sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
+            fi
             # apparently we need sudo permissions to copy to the archive directory
             # we have set up the somisana user to be able to do this without the need for a password
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}

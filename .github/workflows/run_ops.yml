@@ -59,11 +59,11 @@ jobs:
           then
             run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
-            # automatically set the run_date by finding the nearest 6 hourly time stamp in the past
+            # automatically set the run_date by finding an appropriate time stamp in the past (corresponding to our cron schedule)
             # Get the current time in UTC
             current_time=$(date -u +'%Y%m%d_%H')
-            # Extract the hour and calculate the nearest multiple of 6 in the past
-            hour=$(echo ${current_time:9:2} | awk '{print int($1 - ($1%6))}')
+            # Extract the hour and calculate the nearest multiple of 12 in the past (as per our cron schedule above)
+            hour=$(echo ${current_time:9:2} | awk '{print int($1 - ($1%12))}')
             # Correct hour formatting (ensure leading zero)
             hour=$(printf "%02d" $hour)
             # Assemble the run_date
