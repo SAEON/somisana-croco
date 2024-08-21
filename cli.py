@@ -9,13 +9,12 @@ Feel free to add more functions from the repo as we need them in the cli
 '''
 import argparse
 from datetime import datetime
-from crocotools_py.preprocess import reformat_gfs_atm, reformat_saws_atm
+from crocotools_py.preprocess import reformat_gfs_atm,make_ini_fcst,make_bry_fcst
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys, download_mercator
 from download.gfs import download_gfs_atm
 from download.hycom import download_hycom
-
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
     try:
@@ -72,7 +71,7 @@ def main():
     parser_download_mercator.add_argument('--usrname', required=True, type=str, help='Copernicus username')
     parser_download_mercator.add_argument('--passwd', required=True, help='Copernicus password')
     parser_download_mercator.add_argument('--domain', type=parse_list, 
-                        default=[23, 34, -37, -31],
+                        default=[10, 25, -40, -25],
                         help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
     parser_download_mercator.add_argument('--run_date', required=True, type=parse_datetime, 
                         help='start time in format "YYYY-MM-DD HH:MM:SS"')
@@ -92,7 +91,7 @@ def main():
     parser_download_gfs_atm = subparsers.add_parser('download_gfs_atm', 
             help='Download a subset of hourly 0.25 deg gfs atmospheric data from NOAA')
     parser_download_gfs_atm.add_argument('--domain', type=parse_list, 
-                        default=[23, 34, -37, -31],
+                        default=[10, 25, -40, -25],
                         help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
     parser_download_gfs_atm.add_argument('--run_date', required=True, type=parse_datetime, 
                         help='start time in format "YYYY-MM-DD HH:MM:SS"')
@@ -114,7 +113,7 @@ def main():
             help='Download a subset of  HYCOM analysis data using xarray OpenDAP')
     parser_download_hycom.add_argument('--outDir', required=True, help='Directory to save files')
     parser_download_hycom.add_argument('--domain', required = False, type=parse_list,
-            default=[23.0, 34.0, -37.0, -31.0],
+            default=[10.0, 25.0, -40.0, -20.0],
             help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
     parser_download_hycom.add_argument('--depths', required = False, type=parse_list,
             default=[0,2,4,6,8,10,12,15,20,25,30,35,40,45,50,60,70,80,90,100,125,150,200,250,300,350,400,500,600,700,800,900,1000,1250,1500,2000,2500,3000,4000,5000],
@@ -153,25 +152,6 @@ def main():
     def reformat_gfs_atm_handler(args):
         reformat_gfs_atm(args.gfsDir,args.outputDir,args.Yorig)
     parser_reformat_gfs_atm.set_defaults(func=reformat_gfs_atm_handler)
-    
-    # ------------------
-    # reformat_saws_atm
-    # ------------------
-    parser_reformat_saws_atm = subparsers.add_parser('reformat_saws_atm', 
-            help='convert the SAWS UM nc files into nc files which can be ingested by CROCO using the ONLINE cpp key')
-    parser_reformat_saws_atm.add_argument('--sawsDir', required=True, help='Directory containing the SAWS UM files')
-    parser_reformat_saws_atm.add_argument('--outputDir', required=True, help='Directory to save reformated nc files')
-    parser_reformat_saws_atm.add_argument('--run_date', required=False, type=parse_datetime,
-            default=None,
-            help='initialisation time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_reformat_saws_atm.add_argument('--hdays', required=False, type=float, 
-            default=5.,
-            help='hindcast days i.e before run_date')
-    parser_reformat_saws_atm.add_argument('--Yorig', required=True, type=int,
-                        help='the Yorig value used in setting up the CROCO model - reformatted file time will be in days since 1-Jan-Yorig')
-    def reformat_saws_atm_handler(args):
-        reformat_saws_atm(args.sawsDir,args.outputDir,args.run_date,args.hdays,args.Yorig)
-    parser_reformat_saws_atm.set_defaults(func=reformat_saws_atm_handler)
     
     # --------------
     # regrid_tier1
@@ -239,6 +219,49 @@ def main():
                fname_nc=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
 
+    # ----------------
+    # make_ini
+    # ----------------
+    parser_make_ini_fcst = subparsers.add_parser('make_ini_fcst',
+            help='Make ocean initial conditions for the CROCO operational model.')
+
+    parser_make_ini_fcst.add_argument('--input_file', required=True, type=str, 
+            help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
+
+    parser_make_ini_fcst.add_argument('--output_dir', required=True, type=str,
+            help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
+
+    parser_make_ini_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
+            help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
+
+    parser_make_ini_fcst.add_argument('--hdays', required=True, type=int,
+            help='Number of days to develop the boundary file hindcast')
+
+    def make_ini_fcst_handler(args):
+        make_ini_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
+    parser_make_ini_fcst.set_defaults(func=make_ini_fcst_handler)
+    
+    # ----------------
+    # make_bry
+    # ----------------
+    parser_make_bry_fcst = subparsers.add_parser('make_bry_fcst',
+            help='Make ocean boundary conditions for the CROCO operational model.')
+
+    parser_make_bry_fcst.add_argument('--input_file', required=True, type=str, 
+            help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
+
+    parser_make_bry_fcst.add_argument('--output_dir', required=True, type=str,
+            help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
+
+    parser_make_bry_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
+            help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
+
+    parser_make_bry_fcst.add_argument('--hdays', required=True, type=int,
+            help='Number of days to develop the boundary file hindcast')
+
+    def make_bry_fcst_handler(args):
+        make_bry_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
+    parser_make_bry_fcst.set_defaults(func=make_bry_fcst_handler)
     
     args = parser.parse_args()
     if hasattr(args, 'func'):

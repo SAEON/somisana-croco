@@ -16,6 +16,19 @@ def lookvar(input):
                'time_dim':'time'\
              }
 
+    elif input == 'hycom':
+        dico={ 'depth':'depth',\
+               'lonr':'lon','lonu':'lon','lonv':'lon',\
+               'latr':'lat','latu':'lat','latv':'lat',\
+               'ssh':'surf_el',\
+               'temp':'water_temp',\
+               'salt':'salinity',\
+               'u': 'water_u',\
+               'v': 'water_v',\
+               'time': 'time',\
+               'time_dim':'time'\
+             }
+
     elif input == 'eccov4':
         dico={ 'depth':'Z',\
                'lonr':'longitude','lonu':'longitude','lonv':'longitude',\
