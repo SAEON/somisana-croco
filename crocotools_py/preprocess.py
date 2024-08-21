@@ -6,7 +6,7 @@ import pandas as pd
 import os, sys, glob
 # import fnmatch
 from scipy.interpolate import griddata
-import postprocess as post
+import crocotools_py.postprocess as post
 # functions from croco_pytools submodule
 # (I'm sure there's a better way of importing these functions, but this works)
 sys.path.append(os.path.dirname(__file__) + "/croco_pytools/prepro/Modules/")
