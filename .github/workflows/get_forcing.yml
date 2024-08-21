@@ -273,7 +273,7 @@ jobs:
           docker run \
             --user $(id -u):$(id -g) \
             --rm \
-            -v ${{ env.DATA_DIR }}/SAWS:/tmp/outputDir \
+            -v ${{ env.DATA_DIR }}/SAWS/for_croco:/tmp/outputDir \
             -v /mnt/saws-um-data:/tmp/sawsDir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             reformat_saws_atm \

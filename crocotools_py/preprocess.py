@@ -699,7 +699,7 @@ def reformat_saws_atm(saws_dir,out_dir,run_date,hdays,Yorig):
         var_dict = variables[var]
         
         da = None
-        for file in files:
+        for file in filtered_files:
             ds_file = xr.open_dataset(file)
             da_file = ds_file[var_dict['shortName']].squeeze()
             # the concatenation step below seems to take quite long (it's a big domain!) 
