@@ -660,7 +660,16 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
         file for file in files
         if datetime.strptime(file[-13:-4], "%Y%m%d%H") >= cutoff_datetime
     ]
-   
+
+    # get the backup (currently gfs) grid using a template file (could be any variable)
+    # this is used to subset to SAWS data, since it covers a much bigger domain than we need
+    grid_file = os.path.join(backup_dir, "Temperature_height_above_ground_Y9999M1.nc")
+    ds_grid = xr.open_dataset(grid_file)
+    lon_grid = ds_grid.lon.values
+    lon_lims = slice(lon_grid.min(),lon_grid.max())
+    lat_grid = ds_grid.lat.values
+    lat_lims = slice(lat_grid.min(),lat_grid.max())
+
     # only some variables are provided to us by SAWS
     # so we have a "existsSAWS" flag to indicate which variables we have
     # the ones we don't must be interpolated from another source (e.g. GFS or other) onto the SAWS grid for the CROCO model to be able to run
@@ -716,6 +725,9 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
             da = None
             for file in filtered_files:
                 ds_file = xr.open_dataset(file)
+                # subset the data spatially
+                ds_file = ds_file.sel(lon=lon_lims, lat=lat_lims)
+                # extract the variable
                 da_file = ds_file[var_dict['shortName']].squeeze()
                 # the concatenation step below seems to take quite long (it's a big domain!) 
                 # but pre-chunking the lon and lat dimensions seems to speed it up a bit
