@@ -228,8 +228,8 @@ def main():
     parser_make_ini_fcst.add_argument('--input_file', required=True, type=str, 
             help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
 
-    parser_make_ini_fcst.add_argument('--output_dir', required=True, type=str,
-            help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
+    parser_make_ini_fcst.add_argument('--param_dir', required=True, type=str,
+            help='Directory where the crocotools_param.py is located.')
 
     parser_make_ini_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
             help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
@@ -238,7 +238,7 @@ def main():
             help='Number of days to develop the boundary file hindcast')
 
     def make_ini_fcst_handler(args):
-        make_ini_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
+        make_ini_fcst(args.input_file,args.param_dir,args.run_date,args.hdays)
     parser_make_ini_fcst.set_defaults(func=make_ini_fcst_handler)
     
     # ----------------
@@ -250,8 +250,8 @@ def main():
     parser_make_bry_fcst.add_argument('--input_file', required=True, type=str, 
             help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
 
-    parser_make_bry_fcst.add_argument('--output_dir', required=True, type=str,
-            help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
+    parser_make_bry_fcst.add_argument('--param_dir', required=True, type=str,
+            help='Directory where the crocotools_param.py is located.')
 
     parser_make_bry_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
             help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
@@ -260,7 +260,7 @@ def main():
             help='Number of days to develop the boundary file hindcast')
 
     def make_bry_fcst_handler(args):
-        make_bry_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
+        make_bry_fcst(args.input_file,args.param_dir,args.run_date,args.hdays)
     parser_make_bry_fcst.set_defaults(func=make_bry_fcst_handler)
     
     args = parser.parse_args()

@@ -786,13 +786,14 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         ds.to_netcdf(fname_out)
         
         
-def make_ini_fcst(input_file,output_dir,run_date,hdays):
+def make_ini_fcst(input_file,param_dir,run_date,hdays):
     '''
+    
     Make CROCO initial file for SAOMISANA
     
-    output_dir - the directory where the ini file will be saved
-                 NB - there needs to be a crocotools_param.py file in this directory which includes all the configurable parameters
-    run_date   - the time when the operational run was initialised, as a datetime.datetime object
+    input_file - path and filename for the initial file.
+    param_dir  - the directory where the crocotools_param.py is. The crocotools_param.py contains all the configurable parameters.
+    run_date   - the time when the operational run was initialised, as a datetime.datetime object. 
     hdays      - the number of hindcast days used in the operational run (time of the ini file will be run_date - hdays)
     
     '''  
@@ -800,7 +801,7 @@ def make_ini_fcst(input_file,output_dir,run_date,hdays):
     # imports
     # --------
     #
-    sys.path.append(output_dir)
+    sys.path.append(param_dir)
     import crocotools_param as params
     
     # edit ini_filename to add starting date
@@ -895,17 +896,23 @@ def make_ini_fcst(input_file,output_dir,run_date,hdays):
     print(' Path to file is ', params.croco_dir + ini_filename)
     print('')
 
-def make_bry_fcst(input_file,output_dir,run_date,hdays):
+def make_bry_fcst(input_file,param_dir,run_date,hdays):
     '''
     
     Make CROCO boundary file for SAOMISANA
+
+    input_file - path and filename for the boundary file.
+    param_dir  - the directory where the crocotools_param.py is. The crocotools_param.py contains all the configurable parameters.
+    run_date   - the time when the operational run was initialised, as a datetime.datetime object. 
+    hdays      - the number of hindcast days used in the operational run (time of the ini file will be run_date - hdays)
     
-    '''
+    '''  
+
     # --------
     # imports
     # --------
     #
-    sys.path.append(output_dir)
+    sys.path.append(param_dir)
     import crocotools_param as params
     
     # --- Make filename --------------------------------------------------
