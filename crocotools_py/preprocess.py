@@ -826,17 +826,18 @@ def make_ini_fcst(input_file,output_dir,run_date,hdays):
     # --- Handle initial time ---------------------------------------------
 
     ini_date_num = run_date - timedelta(days=hdays)
-    ini_date_num = ini_date_num.timestamp()
     
     day_zero_num = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
     
-    day_zero_num = day_zero_num.timestamp()
+    datetime_diff = ini_date_num - day_zero_num
+
+    seconds_since_origin = datetime_diff.total_seconds()
     
     tstart=0
     
-    scrumt = ini_date_num
+    scrumt = seconds_since_origin
 
-    oceant = ini_date_num
+    oceant = seconds_since_origin
     
     tend=0.
 
@@ -932,19 +933,26 @@ def make_bry_fcst(input_file,output_dir,run_date,hdays):
     Croco.CROCO.create_bry_nc(None,params.croco_dir + bry_filename,crocogrd,params.obc_dict,params.cycle_bry,tracers=params.tracers)
 
     # --- Handle bry_time --------------------------------------------
-
     nc=netcdf.Dataset(params.croco_dir + bry_filename, 'a')
-    
-    bry_start_date = plt.date2num(run_date - timedelta(days=hdays))
-    bry_end_date = plt.date2num(run_date + timedelta(days=1))
 
     # Load full time dataset
     time = plt.date2num(inpdat.ncglo['time'].values)
     
+    # define start and end bry dates
+    bry_start_date = plt.date2num(run_date - timedelta(days=hdays))
+    bry_end_date = plt.date2num(run_date + timedelta(days=1))
+    
     # find index for the time range
-    ind = np.where((time>bry_start_date) & (time<=bry_end_date))
+    ind = np.where((time>=bry_start_date) & (time<bry_end_date))
     [dtmin,dtmax] = np.min(ind),np.max(ind)
-    bry_time = time[int(dtmin):int(dtmax)]
+    
+    # because the epoch date on the downloaded dataset differes to the model run, we have to define new dates that corrispond to the datetime
+    day_zero_num = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
+    run_date_from_origin = (run_date - day_zero_num).days
+    start_date_from_origin = run_date_from_origin - hdays
+    bry_time = np.arange(start_date_from_origin,run_date_from_origin+1,1)
+    
+    # write the dates to the file
     nc.Input_data_type=params.inputdata
     nc.variables['bry_time'].cycle=params.cycle_bry
     nc.variables['bry_time'][:]=bry_time
@@ -953,8 +961,8 @@ def make_bry_fcst(input_file,output_dir,run_date,hdays):
         nc.variables['bry_time'].units='days since %s-01-01 00:00:00' %(params.Yorig)
         
     # --- Loop on boundaries ------------------------------------------
-    prev=1
-    nxt=1
+    prev=0
+    nxt=0
 
     if len(params.tracers) == 0:
         var_loop = ['ssh','velocity']
@@ -970,7 +978,6 @@ def make_bry_fcst(input_file,output_dir,run_date,hdays):
                     (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,dtmin,dtmax,prev,nxt,boundary[0].upper())
                     z_rho = crocogrd.scoord2z_r(zeta=zeta,bdy="_"+boundary)
                     z_w   = crocogrd.scoord2z_w(zeta=zeta,bdy="_"+boundary)
-
                 elif vars == 'tracers':
                     trac_dict = dict()
                     for trc in params.tracers:
@@ -1038,14 +1045,3 @@ def make_bry_fcst(input_file,output_dir,run_date,hdays):
     print(' Boundary file created ')
     print(' Path to file is ', params.croco_dir + bry_filename)
     print('')
-
-
-if __name__ == '__main__':
-    #input_file = '/home/rautenbach/SOMISANA/croco/somisana-croco/DATA/MERCATOR/MERCATOR.nc'
-    input_file = '/home/rautenbach/SOMISANA/croco/somisana-croco/DATA/HYCOM/HYCOM.nc'
-    output_dir='/home/rautenbach/SOMISANA/croco/somisana-croco/configs/sa_west_02/croco_v1.3.1/MERCATOR/'
-    run_date = datetime(2024,8,18,0,0,0)
-    hdays = 5
-    make_bry_fcst(input_file,output_dir,run_date,hdays)
-    #make_ini_fcst(input_file,output_dir,run_date,hdays)
-        

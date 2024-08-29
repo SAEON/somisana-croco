@@ -17,7 +17,7 @@ multi_files = False
 tracers = ['temp','salt']
 
 # CROCO grid information
-croco_dir = '/home/rautenbach/SOMISANA/croco/somisana-croco/configs/sa_west_02/croco_v1.3.1/GRID/'
+croco_dir = '/home/g.rautenbach/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/GRID/'
 croco_grd = croco_dir+'croco_grd.nc'
 sigma_params = dict(theta_s=5, theta_b=7, N=30, hc=200) # Vertical streching, sig_surf/sig_bot/ nb level/critical depth
 
