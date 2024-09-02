@@ -896,7 +896,7 @@ def make_ini_fcst(input_file,param_dir,run_date,hdays):
     print(' Path to file is ', params.croco_dir + ini_filename)
     print('')
 
-def make_bry_fcst(input_file,param_dir,run_date,hdays):
+def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
     '''
     
     Make CROCO boundary file for SAOMISANA
@@ -904,8 +904,8 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays):
     input_file - path and filename for the boundary file.
     param_dir  - the directory where the crocotools_param.py is. The crocotools_param.py contains all the configurable parameters.
     run_date   - the time when the operational run was initialised, as a datetime.datetime object. 
-    hdays      - the number of hindcast days used in the operational run (time of the ini file will be run_date - hdays)
-    
+    hdays      - the number of hindcast days used in the operational run.
+    fdays      - the number of forecast days used in the operational run.
     '''  
 
     # --------
@@ -947,17 +947,18 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays):
     
     # define start and end bry dates
     bry_start_date = plt.date2num(run_date - timedelta(days=hdays))
-    bry_end_date = plt.date2num(run_date + timedelta(days=1))
+    bry_end_date = plt.date2num(run_date + timedelta(days=fdays))
     
     # find index for the time range
-    ind = np.where((time>=bry_start_date) & (time<bry_end_date))
+    ind = np.where((time>=bry_start_date) & (time<=bry_end_date))
     [dtmin,dtmax] = np.min(ind),np.max(ind)
     
     # because the epoch date on the downloaded dataset differes to the model run, we have to define new dates that corrispond to the datetime
     day_zero_num = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
     run_date_from_origin = (run_date - day_zero_num).days
     start_date_from_origin = run_date_from_origin - hdays
-    bry_time = np.arange(start_date_from_origin,run_date_from_origin+1,1)
+    end_date_from_origin = run_date_from_origin + fdays
+    bry_time = np.arange(start_date_from_origin,end_date_from_origin+1,1)
     
     # write the dates to the file
     nc.Input_data_type=params.inputdata

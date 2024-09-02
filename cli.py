@@ -257,10 +257,13 @@ def main():
             help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
 
     parser_make_bry_fcst.add_argument('--hdays', required=True, type=int,
-            help='Number of days to develop the boundary file hindcast')
+            help='Number of hindcast days to develop the boundary file hindcast')
+
+    parser_make_bry_fcst.add_argument('--fdays', required=True, type=int,
+            help='Number of forcast days to develop the boundary file hindcast')
 
     def make_bry_fcst_handler(args):
-        make_bry_fcst(args.input_file,args.param_dir,args.run_date,args.hdays)
+        make_bry_fcst(args.input_file,args.param_dir,args.run_date,args.hdays,args.fdays)
     parser_make_bry_fcst.set_defaults(func=make_bry_fcst_handler)
     
     args = parser.parse_args()
