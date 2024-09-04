@@ -264,8 +264,7 @@ def plot(fname,
         
         # animate
         if tstep_end is None: # if not defined then animate to end of file
-            with xr.open_dataset(fname) as ds: 
-                tstep_end = len(ds.time) - 1
+            tstep_end=len(post.get_time(fname)) - 1
         
         anim = FuncAnimation(
             fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 
