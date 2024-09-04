@@ -1,0 +1,26 @@
+name: croco_pyenv
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - numpy=1.23.5
+  - matplotlib-base=3.6.2
+  - scipy=1.9.3
+  - cartopy=0.21.0
+  - wxpython=4.2.0
+  - traits=6.4.1
+  - traitsui=7.4.2
+  - netcdf4=1.6.2
+  - dask=2022.11.1
+  - xarray=2022.11.0
+  - geopandas=0.12.1
+  - regionmask=0.9.0
+  - pyinterp=2022.10.1
+  - gcc>=8.3.0
+  - gfortran>=8.3.0
+  - netcdf-fortran=4.6.0
+  - cdsapi
+  - pip
+  - pip:
+    - copernicusmarine>=1.0<=2.0
