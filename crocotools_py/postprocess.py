@@ -1020,7 +1020,7 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
-def find_nearest_point(fname, Longi, Latit, Bottom):
+def find_nearest_point(fname, Longi, Latit, Bottom=None):
     """
             Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
             
