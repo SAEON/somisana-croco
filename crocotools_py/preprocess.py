@@ -669,6 +669,7 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
     lon_lims = slice(lon_grid.min(),lon_grid.max())
     lat_grid = ds_grid.lat.values
     lat_lims = slice(lat_grid.min(),lat_grid.max())
+    ds_grid.close()
 
     # only some variables are provided to us by SAWS
     # so we have a "existsSAWS" flag to indicate which variables we have
@@ -767,7 +768,17 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
             
             # do the interpolation
             # this succinct approach works because our files have the exact same dimensions
-            ds = ds_backup.interp_like(ds_template, method='linear')
+            # ds = ds_backup.interp_like(ds_template, method='linear')
+            # Or we can specify the interpolation explicitly (not sure if it makes a difference)
+            ds = ds_backup.interp(
+                lon=ds_template.lon, 
+                lat=ds_template.lat, 
+                time=ds_template.time, 
+                method="linear"
+            )
+            
+            ds_backup.close()
+            ds_template.close()
             
         # write the nc file
         # the ONLINE cppkey is designed for use with monly interannual simulations
@@ -777,7 +788,10 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
         # something we don't have to handle separately
         print('writing the file...')
         fname_out = os.path.join(out_dir,var+"_Y9999M1.nc")
-        ds.to_netcdf(fname_out)
+        if os.path.exists(fname_out):
+            os.remove(fname_out)
+        ds.astype('float32').to_netcdf(fname_out) # writing as float32 halves the file size!
+        ds.close()
 
 def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
     '''
@@ -925,17 +939,20 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         # write the nc file
         # the ONLINE cppkey is designed for use with monly interannual simulations
         # where the year and month of the file name is appended to the end of the file
-        # since we are using this option with forecastsm we'll just put dummy values
+        # since we are using this option with forecasts we'll just put dummy values
         # for the year and month, and put these values in the *.in file making it 
         # something we don't have to handle separately
         fname_out = os.path.join(out_dir,var+"_Y9999M1.nc")
         ds.to_netcdf(fname_out)
-       
-        # Delete all .gbx9 and .ncx files created during reading the .grb files (not sure what these are but they're not needed)
+        ds.close()
+        
+        # Delete all temporary files created during reading the .grb files (not sure what these are but they're not needed)
         for gbx9_file in glob.glob(os.path.join(gfs_dir, '*.gbx9')):
             os.remove(gbx9_file)
         for ncx_file in glob.glob(os.path.join(gfs_dir, '*.ncx')):
             os.remove(ncx_file)
+        for idx_file in glob.glob(os.path.join(gfs_dir, '*.idx')):
+            os.remove(idx_file)
         
 def make_ini_fcst(input_file,output_dir,run_date,hdays):
     '''
