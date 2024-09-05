@@ -264,8 +264,7 @@ def plot(fname,
         
         # animate
         if tstep_end is None: # if not defined then animate to end of file
-            with xr.open_dataset(fname) as ds: 
-                tstep_end = len(ds.time) - 1
+            tstep_end=len(post.get_time(fname))
         
         anim = FuncAnimation(
             fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 
@@ -394,7 +393,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         # animate
         if tstep_end is None: # if not defined then animate to end of file
             with xr.open_dataset(croco_blk_file) as ds: 
-                tstep_end = len(ds.bulk_time) - 1
+                tstep_end = len(ds.bulk_time)
         
         anim = FuncAnimation(
             fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 
