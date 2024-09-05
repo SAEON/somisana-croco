@@ -93,7 +93,7 @@ jobs:
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     outputs:
-      MAKE_INI: ${{ steps.check_restart.outputs.make_ini }}
+      OGCM_INI: ${{ steps.check_restart.outputs.ogcm_ini }}
       RST_DATE: ${{ steps.check_restart.outputs.rst_date }}
       RST_STEP: ${{ steps.check_restart.outputs.rst_step }}
     steps:
@@ -145,88 +145,35 @@ jobs:
 
           if [[ $step_count -eq $MAX_STEPS ]]; then
             echo "using ${{ inputs.OGCM }} to interpolate initial conditions"
-            echo "make_ini=1" >> $GITHUB_OUTPUT
+            echo "ogcm_ini=1" >> $GITHUB_OUTPUT
             echo "rst_date=NA" >> $GITHUB_OUTPUT
             # since we're using an ini file, set rst_step to 1, which means we'll use the first value in the ini file 
             echo "rst_step=1" >> $GITHUB_OUTPUT
           else
-            echo "make_ini=0" >> $GITHUB_OUTPUT
+            echo "ogcm_ini=0" >> $GITHUB_OUTPUT
             echo "rst_date=$current_date" >> $GITHUB_OUTPUT
             echo "rst_step=$rst_step" >> $GITHUB_OUTPUT
           fi
   
-  # make the boundary forcing          
   get_ogcm:
     needs: [setup_rundir,get_rst]
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-      make_ini: ${{ needs.get_rst.outputs.MAKE_INI}} 
+      ogcm_ini: ${{ needs.get_rst.outputs.OGCM_INI}} 
     steps:
-      - name: make temporary directory for the reformatted OGCM file
-        # fyi this is not needed for the blk files as the reformated blk file is saved in the directory where the data are downloaded
-        run: |
-          rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-          mkdir -p ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-          chown -R :runners ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-          chmod -R 775 ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-
-      # consider writing a *.env file as part of the OGCM download process so we don't have to pass make_${OGCM}_ocims.m any input arguments, like it's done with GFS?
-      - name: Format RUN_DATE
-        id: format_date
-        run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'"
-          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-      - name: generate the OGCM forcing file (and ini file if restart file is not available)
-        id: make_ogcm_file
-        run: >-
-          docker run \
-            --rm \
-            --mac-address 02:42:ff:ff:ff:ff \
-            --entrypoint /bin/bash \
-            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-            -v ${{ env.DATE_DIR }}:/home/matlab/somisana \
-            -e MLM_LICENSE_FILE=/licenses/license.lic \
-            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},${{ env.make_ini }}); exit;\""
       - name: copy OGCM file to scratch dir
         run: |
           ogcm_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_clm_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
           cp ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_clm.nc
       - name: copy ini file to scratch dir, if made from OGCM
         run: |
-          make_ini=${{ env.make_ini }}
-          if [[ ${make_ini} == 1 ]]; then
+          ogcm_ini=${{ env.ogcm_ini }}
+          if [[ ${ogcm_ini} == 1 ]]; then
             ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
             cp ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
           fi
 
-  # make the surface forcing
-  # (not needed anymore since we are using the ONLINE cpp key)
-  #  get_blk:
-  #  needs: [setup_rundir]
-  #  env:
-  #    SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-  #  runs-on: ${{ inputs.RUNNER_NAME }}
-  #  steps:
-  #    - name: generate the BLK forcing file
-  #      id: make_blk_file
-  #      run: >-
-  #        docker run \
-  #          --rm \
-  #          --mac-address 02:42:ff:ff:ff:ff \
-  #          --entrypoint /bin/bash \
-  #          -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-  #          -v ${{ env.DATE_DIR }}:/home/matlab/somisana \
-  #          -e MLM_LICENSE_FILE=/licenses/license.lic \
-  #          ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-  #            -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.BLK }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.BLK }}_ocims; exit;\""
-  #    - name: copy BLK file to scratch dir
-  #      run: |
-  #        blk_file="${{ env.CONFIG_DIR }}/${{ inputs.BLK }}/croco_blk_${{ inputs.BLK }}_${{ inputs.RUN_DATE }}.nc"
-  #        cp ${blk_file} ${{ env.SCRATCH_DIR }}/croco_blk.nc
-  #
   get_blk:
   # even though we are using ONLINE interpolation, let's copy the BLK data to this model run scratch dir 
   # so there are no issues with multiple parallel runs trying to access the same file
@@ -253,7 +200,9 @@ jobs:
           source ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/myenv_in.sh
           HDAYS=${{ inputs.HDAYS }}
           FDAYS=${{ inputs.FDAYS }}
-          NDAYS=$((HDAYS + FDAYS))
+          # NDAYS=$((HDAYS + FDAYS))
+          # chatgpt gave me this weird syntax which allows for HDAYS or FDAYS to be decimals
+          NDAYS=$(awk "BEGIN {print $HDAYS + $FDAYS}")
           NUMTIMES=$((NDAYS * 24 * 3600 / DT))
           NUMAVG=$((NH_AVG * 3600 / DT))
           NUMHIS=$((NH_HIS * 3600 / DT))

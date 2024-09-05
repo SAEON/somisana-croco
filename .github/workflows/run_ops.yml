@@ -99,15 +99,15 @@ jobs:
       FDAYS: 5
     secrets: inherit
   
-  # prepare croco config dirs
-  prep_configdirs:
+  # prepare croco config dirs for each domain
+  prep_domains:
     needs: [envs,get_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
         domain: ['sa_southeast_01','sa_west_02'] 
-    uses: ./.github/workflows/prep_configdir.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/prep_domain.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
@@ -117,9 +117,28 @@ jobs:
       COMP: C03
       # in future we may want to use different compile options for each domain
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
-      # and then tease the domain and compile option inside prep_configdirs
+      # and then tease the domain and compile option inside prep_domain.yml
 
-  # prepare croco forcing files, run the model, do the postprocessing
+  # prepare croco boundary forcing for each domain
+  make_forcing:
+    needs: [envs,get_forcing,prep_domains]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
+    strategy:
+      matrix:
+        # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
+        domain: ['sa_southeast_01','sa_west_02'] 
+        ogcm: ['MERCATOR']
+    uses: ./.github/workflows/make_forcing.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+      OGCM: ${{ matrix.ogcm }}
+      HDAYS: 5
+  
+  # run the model, do the postprocessing, archive the output
   #
   # we considered using githubs 'matrix' strategy to run different domains in parallel, 
   # but opted against it as if one of the domains fails, then it cancels all others running in parallel... 
@@ -131,7 +150,7 @@ jobs:
   # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
   
   run_sa_west_gfs:
-    needs: [envs,get_forcing,prep_configdirs]
+    needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
@@ -155,7 +174,7 @@ jobs:
       FDAYS: 5
 
   run_sa_southeast_gfs:
-    needs: [envs,get_forcing,prep_configdirs]
+    needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
@@ -179,7 +198,7 @@ jobs:
       FDAYS: 5
 
   run_sa_west_saws:
-    needs: [envs,get_forcing,prep_configdirs]
+    needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
@@ -203,7 +222,7 @@ jobs:
       FDAYS: 2.25
 
   run_sa_southeast_saws:
-    needs: [envs,get_forcing,prep_configdirs]
+    needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
     strategy:
       matrix:
