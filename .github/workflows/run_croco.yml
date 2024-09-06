@@ -201,9 +201,9 @@ jobs:
           HDAYS=${{ inputs.HDAYS }}
           FDAYS=${{ inputs.FDAYS }}
           # NDAYS=$((HDAYS + FDAYS))
-          # chatgpt gave me this weird syntax which allows for HDAYS or FDAYS to be decimals
+          # the use of 'awk' below allows for HDAYS or FDAYS to be decimals
           NDAYS=$(awk "BEGIN {print $HDAYS + $FDAYS}")
-          NUMTIMES=$((NDAYS * 24 * 3600 / DT))
+          NUMTIMES=$(awk "BEGIN {print int($NDAYS * 24 * 3600 / $DT)}")
           NUMAVG=$((NH_AVG * 3600 / DT))
           NUMHIS=$((NH_HIS * 3600 / DT))
           # NUMSTA=$((NH_STA * 3600 / DT)) - station output not getting used as we can easily extract time-series as a postprocessing step
