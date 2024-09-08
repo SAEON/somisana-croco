@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime
 from crocotools_py.preprocess import reformat_gfs_atm,reformat_saws_atm,make_ini_fcst,make_bry_fcst
 from crocotools_py.postprocess import get_ts_multivar
+from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys, download_mercator
 from download.gfs import download_gfs_atm
@@ -21,6 +22,14 @@ def parse_datetime(value):
         return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
     except ValueError:
         raise argparse.ArgumentTypeError("Invalid datetime format. Please use 'YYYY-MM-DD HH:MM:SS'.")
+
+def parse_int(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid integer value: {value}")
 
 def parse_list(value):
     return [x.strip() for x in value.split(',')]
@@ -85,6 +94,7 @@ def main():
     def download_mercator_handler(args):
         download_mercator(args.usrname, args.passwd, args.domain, args.run_date,args.hdays, args.fdays,args.outputDir)
     parser_download_mercator.set_defaults(func=download_mercator_handler)
+    
     # ------------------
     # download_gfs_atm
     # ------------------
@@ -173,6 +183,47 @@ def main():
         reformat_gfs_atm(args.gfsDir,args.outputDir,args.Yorig)
     parser_reformat_gfs_atm.set_defaults(func=reformat_gfs_atm_handler)
     
+    # --------------------------
+    # plot/animate croco output
+    # --------------------------
+    parser_crocplot = subparsers.add_parser('crocplot', 
+            help='do a plot/animation of a croco output file(s)')
+    parser_crocplot.add_argument('--fname', required=True, type=str, help='input native CROCO filename (can handle wildcards to animate over multiple files)')
+    parser_crocplot.add_argument('--var', required=False, default='temp', type=str, help='the variable name to plot')
+    parser_crocplot.add_argument('--gif_out', required=True, type=str, help='the output gif filename')
+    parser_crocplot.add_argument('--level', required=False, default=None, type=parse_int, help='level to plot. If >=0, then a sigma level is plotted. If <0 then a z level (in m) is plotted. Default behaviour will plot the surface layer')
+    parser_crocplot.add_argument('--ticks', required=False, type=parse_list,
+                         default=[12,13,14,15,16,17,18,19,20,21,22], 
+                         help='contour ticks to use in plotting the variable')
+    parser_crocplot.add_argument('--cbar_label', required=False, default='temperature ($\degree$C)', type=str, help='the label used for the colorbar')
+    parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
+                         default=[100,500],
+                         help='the isobaths to add to the figure')
+    parser_crocplot.add_argument('--ref_date', type=parse_datetime, 
+                        default=datetime(2000,1,1,0,0,0), 
+                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    def crocplot_handler(args):
+        # a lot of the crocplot inputs are hard coded below but could be made configurable in future
+        # there are also other potential optional inputs to this function which we aren't specifying here
+        # so this is a work in progress...
+        crocplot(args.fname, var=args.var,
+                      grdname=None, # could make this configurable in the cli args
+                      tstep=0,
+                      tstep_end=None,
+                      level=args.level,
+                      ticks = args.ticks,
+                      cmap = 'Spectral_r',
+                      extents = None,
+                      ref_date = args.ref_date,
+                      cbar_label=args.cbar_label,
+                      add_vectors = True,
+                      skip_time = 1,
+                      isobaths=args.isobaths,
+                      gif_out=args.gif_out,
+                      write_gif = True
+                      )
+    parser_crocplot.set_defaults(func=crocplot_handler)
+    
     # --------------
     # regrid_tier1
     # --------------
@@ -186,6 +237,7 @@ def main():
     def regrid_tier1_handler(args):
         regrid_tier1(args.fname, args.fname_out, args.ref_date)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
+    
     # --------------
     # regrid_tier2
     # --------------
