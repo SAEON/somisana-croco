@@ -654,6 +654,13 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
     # ... and reverse the order to give priority to the latest files
     files.reverse()
     
+    # check if latest saws file isn't older than 12 hours since run_date
+    saws_latest_datetime = datetime.strptime(file[0][-13:-4], "%Y%m%d%H")
+    saws_latest_datetime_allowed = run_date - timedelta(hours=12)
+    if saws_latest_datetime < saws_latest_datetime_allowed
+        # end with error
+        raise ValueError("The latest SAWS file is more than 12 hours older than the run_date - aborting SAWS forced run")
+
     # Filter the files list to include only files after the CROCO start datetime
     cutoff_datetime = run_date - timedelta(days=(hdays+1)) # extend by a day to make sure we cover our CROCO run
     filtered_files = [
