@@ -1,9 +1,9 @@
 name: Run SOMISANA forecast models on MIMS
 
 on:
-  #schedule:
-  #  # initialise twice a day
-  #  - cron: '0 0,12 * * *'
+  schedule:
+    # initialise twice a day
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
     inputs:
       run_date:
