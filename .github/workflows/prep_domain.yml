@@ -51,7 +51,7 @@ jobs:
         id: cleanup_archive
         run: |
           # have to run as sudo as the archive is owned by root
-          sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
   
   setup-config-dir:
     runs-on: ${{ inputs.RUNNER_NAME }}

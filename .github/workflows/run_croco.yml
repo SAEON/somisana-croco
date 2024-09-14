@@ -331,40 +331,40 @@ jobs:
           chmod -R 775 ${{ env.RUN_DIR }}
 
   # make plots/animations of the outout
-#  plotting:
-#    needs: [setup_rundir,run_croco]
-#    env:
-#      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
-#    runs-on: ${{ inputs.RUNNER_NAME }}
-#    steps:
-#      - name: animate surface temperature and currents
-#        continue-on-error: true
-#        run: |
-#          docker run \
-#            --user $(id -u):$(id -g) \
-#            --rm \
-#            -v ${{ env.RUN_DIR }}:/tmp \
-#            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-#              crocplot \
-#                --fname /tmp/output/croco_avg.nc \
-#                --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
-#                --ref_date '2000-01-01 00:00:00'
-#      - name: animate 100m temperature and currents
-#        continue-on-error: true
-#        run: |
-#          docker run \
-#            --user $(id -u):$(id -g) \
-#            --rm \
-#            -v ${{ env.RUN_DIR }}:/tmp \
-#            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-#              crocplot \
-#                --fname /tmp/output/croco_avg.nc \
-#                --level -100 \
-#                --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
-#                --ref_date '2000-01-01 00:00:00'
-#      - name: ensure permissions
-#        run: |
-#          chmod -R 775 ${{ env.RUN_DIR }}
+  plotting:
+    needs: [setup_rundir,run_croco]
+    env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: animate surface temperature and currents
+        continue-on-error: true
+        run: |
+          docker run \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg.nc \
+                --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+      - name: animate 100m temperature and currents
+        continue-on-error: true
+        run: |
+          docker run \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg.nc \
+                --level -100 \
+                --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
+      - name: ensure permissions
+        run: |
+          chmod -R 775 ${{ env.RUN_DIR }}
 
   # copy data over to where it will be archived
   archive:
@@ -400,8 +400,8 @@ jobs:
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
             sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
-            #sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
-            #sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
           fi
       - name: clean up
         run: |
