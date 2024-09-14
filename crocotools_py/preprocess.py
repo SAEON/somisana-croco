@@ -655,7 +655,7 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
     files.reverse()
     
     # check if latest saws file isn't older than 12 hours since run_date
-    saws_latest_datetime = datetime.strptime(file[0][-13:-4], "%Y%m%d%H")
+    saws_latest_datetime = datetime.strptime(files[0][-13:-4], "%Y%m%d%H")
     saws_latest_datetime_allowed = run_date - timedelta(hours=12)
     if saws_latest_datetime < saws_latest_datetime_allowed:
         # end with error
