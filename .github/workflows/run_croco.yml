@@ -368,7 +368,7 @@ jobs:
 
   # copy data over to where it will be archived
   archive:
-    needs: [setup_rundir,postprocess]
+    needs: [setup_rundir,postprocess,plotting]
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
