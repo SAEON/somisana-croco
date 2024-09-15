@@ -151,6 +151,7 @@ jobs:
   
   run_sa_west_gfs:
     needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() }}
     strategy:
       matrix:
         # matrix strategy allows us to run different model forcings in parallel
@@ -174,6 +175,7 @@ jobs:
 
   run_sa_southeast_gfs:
     needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() }}
     strategy:
       matrix:
         # matrix strategy allows us to run different model forcings in parallel
@@ -197,7 +199,7 @@ jobs:
 
   run_sa_west_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ needs.get_forcing.outputs.SAWS_OK == 1 }}
+    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
     strategy:
       matrix:
         # matrix strategy allows us to run different model forcings in parallel
@@ -221,7 +223,7 @@ jobs:
 
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ needs.get_forcing.outputs.SAWS_OK == 1 }}
+    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
     strategy:
       matrix:
         # matrix strategy allows us to run different model forcings in parallel
