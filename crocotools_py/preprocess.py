@@ -656,7 +656,7 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
     
     # check if latest saws file isn't older than 12 hours since run_date
     print('latest SAWS file is '+files[0])
-    saws_latest_datetime = datetime.strptime(files[0][-13:-4], "%Y%m%d%H")
+    saws_latest_datetime = datetime.strptime(files[0][-13:-3], "%Y%m%d%H")
     saws_latest_datetime_allowed = run_date - timedelta(hours=12)
     if saws_latest_datetime < saws_latest_datetime_allowed:
         # end with error
@@ -666,7 +666,7 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
     cutoff_datetime = run_date - timedelta(days=(hdays+1)) # extend by a day to make sure we cover our CROCO run
     filtered_files = [
         file for file in files
-        if datetime.strptime(file[-13:-4], "%Y%m%d%H") >= cutoff_datetime
+        if datetime.strptime(file[-13:-3], "%Y%m%d%H") >= cutoff_datetime
     ]
 
     # get the backup (currently gfs) grid using a template file (could be any variable)
@@ -738,7 +738,7 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
                 ds_file = ds_file.sel(lon=lon_lims, lat=lat_lims)
                 # extract the variable
                 da_file = ds_file[var_dict['shortName']].squeeze()
-                # the concatenation step below seems to take quite long (it's a big domain!) 
+                # the concatenation step below seems to take quite long
                 # but pre-chunking the lon and lat dimensions seems to speed it up a bit
                 da_file = da_file.chunk({'time': 1, 'lat': 100, 'lon': 100}) 
                 if da is None:
