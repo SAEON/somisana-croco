@@ -23,6 +23,10 @@ on:
         description: 'number of forecast days (integer) from T0'
         required: true
         type: string
+    outputs:
+      SAWS_OK:
+        description: "Indicates whether the SAWS job completed successfully"
+        value: ${{ jobs.saws.outputs.SAWS_OK }}
 
 env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
@@ -123,7 +127,7 @@ jobs:
             --entrypoint /bin/bash \
             -v /home/giles/mercator_download/:/mnt/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              -c "rm /mnt/tmp/*nc"
+              -c "rm -f /mnt/tmp/*nc"
 
   mercator:
     needs: [mercator_saeon,dir_management]
@@ -190,12 +194,10 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the GFS directory
         run: |
-          # rm -rf ${{ env.DATA_DIR }}/GFS # do we need this? it's annoying if you're debugging something later in the workflow!
-          if [ ! -d "${{ env.DATA_DIR }}/GFS/for_croco" ]; then
-            mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
-            chown -R :runners ${{ env.DATA_DIR }}/GFS
-            chmod -R 774 ${{ env.DATA_DIR }}/GFS
-          fi
+          rm -rf ${{ env.DATA_DIR }}/GFS # start again if we're re-running
+          mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
+          chown -R :runners ${{ env.DATA_DIR }}/GFS
+          chmod -R 774 ${{ env.DATA_DIR }}/GFS
       - name: Download GFS atmospheric data
         uses: nick-fields/retry@master
         with:
@@ -231,7 +233,7 @@ jobs:
 #            -e MLM_LICENSE_FILE=/licenses/license.lic \
 #            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
 #            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m . && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
-      - name: prepare netcdf files for use with ONLINE cpp key
+      - name: reformat gfs netcdf files for use with ONLINE cpp key
         run: |
           docker run \
             --user $(id -u):$(id -g) \
@@ -251,5 +253,48 @@ jobs:
           # Not really an issue since we have ensured no password is needed in visudo for this user
           sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir }}/GFS/
 
-  # Here's where we'd call the function to create the SAWS forcing files
-  # (without any archiving... obviously)
+  saws:
+    needs: [gfs]
+    # the gfs prerequisite is because we are currently using GFS variables interpolated onto the SAWS grid for any variables not provided by SAWS
+    # this could easily be changed to another data provider if available and we have good reason to switch
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    outputs:
+      SAWS_OK: ${{ steps.check_success.outputs.value }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: create the SAWS directory
+        run: |
+          rm -rf ${{ env.DATA_DIR }}/SAWS # start again if we're re-running
+          mkdir -p ${{ env.DATA_DIR }}/SAWS/for_croco
+          chown -R :runners ${{ env.DATA_DIR }}/SAWS
+          chmod -R 774 ${{ env.DATA_DIR }}/SAWS
+      - name: reformat SAWS netcdf files for use with ONLINE cpp key
+        id: reformat_saws
+        run: |
+          docker run \
+            --user $(id -u):$(id -g) \
+            --rm \
+            -v ${{ env.DATA_DIR }}:/tmp/dataDir \
+            -v /mnt/saws-um-data:/tmp/sawsDir \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            reformat_saws_atm \
+              --sawsDir '/tmp/sawsDir' \
+              --backupDir '/tmp/dataDir/GFS/for_croco' \
+              --outputDir '/tmp/dataDir/SAWS/for_croco' \
+              --run_date ${{ steps.format_date.outputs.value }} \
+              --hdays ${{ inputs.HDAYS }} \
+              --Yorig 2000
+        continue-on-error: true
+      - name: Check success of job
+        id: check_success
+        run: |
+          if [ "${{ steps.reformat_saws.outcome }}" == "success" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi

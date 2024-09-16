@@ -1,5 +1,7 @@
 name: prepare croco config directory
-# I originally had this step as part of run_croco.yml, but we need this step first where we copy the relevant configuration data locally for the run. That way different forcing files and models can be run in parallel using the 'matrix strategy' on run_croco.yml
+# this runs jobs needed before running croco under different combinations of different forcings
+# I originally had this step as part of run_croco.yml, but we first need to copy the relevant configuration data locally for the run. That way different forcing files and models can be run in parallel
+# we're also compiling croco here, as we only need to do it once per domain (in fact you have to do it here and not in run_croco.yml, otherwise the same code gets compiled in parallel leading to crashes)
 
 on:
   workflow_call:
@@ -24,6 +26,10 @@ on:
         description: 'directory name used to define the domain e.g. sa_west_02' 
         required: true
         type: string
+      COMP:
+        description: 'directory corresponding to the CROCO compilation options e.g. C01' 
+        required: true
+        type: string
 
 env:
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
@@ -45,7 +51,8 @@ jobs:
         id: cleanup_archive
         run: |
           # have to run as sudo as the archive is owned by root
-          sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+  
   setup-config-dir:
     runs-on: ${{ inputs.RUNNER_NAME }}
     continue-on-error: true
@@ -54,16 +61,6 @@ jobs:
         run: |
           rm -rf ${{ env.CONFIG_DIR }}  
           mkdir -p ${{ env.CONFIG_DIR }}
-      
-# commenting this to rather checkout the code and copy directly... which is probably a more elegant way of doing it
-#      - name: copy configuration files from the `run` docker image
-#        run: >-
-#          docker run \
-#            --rm \
-#            --entrypoint /bin/bash \
-#            -v ${{ env.CONFIG_DIR }}:/tmp \
-#            ghcr.io/saeon/somisana-croco_run_main:latest \
-#            -c "cp -r /somisana-croco/configs/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/* /tmp/"
 
       - name: Check out source code so have access to the files in the repo
         uses: actions/checkout@main
@@ -80,4 +77,16 @@ jobs:
           chown -R :runners ${{ env.CONFIG_DIR }}
           chmod -R 775 ${{ env.CONFIG_DIR }}
 
+  compile_croco:
+    needs: [setup-config-dir]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: compile the code
+        run: |
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${{ env.CONFIG_DIR }}:/home/somisana \
+            ghcr.io/saeon/somisana-croco_run_${{ inputs.BRANCH_REF }}:latest \
+              -c "cd /home/somisana && ./jobcomp_frcst.sh ${{ inputs.COMP }}"
 

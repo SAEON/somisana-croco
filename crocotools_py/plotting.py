@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplc
 import matplotlib.cm as cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.animation import FuncAnimation
 import cartopy
 import cartopy.crs as ccrs
@@ -17,14 +18,14 @@ import xarray as xr
 import sys
 import crocotools_py.postprocess as post
 
-def setup_plot(ax, fname, extents=[]):
+def setup_plot(ax, fname, extents=None):
     '''
     generic stuff applicable to all 2D plots
     '''
     # extents = [lon_min, lon_max, lat_min, lat_max]
     #
     # first need to get the domain extents if it's not set autmatically
-    if len(extents) == 0:
+    if extents is None:
         lon = post.get_grd_var(fname,'lon_rho')
         lat = post.get_grd_var(fname,'lat_rho')
         lon_min = min(np.ravel(lon))
@@ -49,7 +50,7 @@ def plot_var(ax,fname,var,
              ref_date = None, 
              ticks = [], # the ticks to plot
              cmap = 'Spectral_r',
-             extents = []
+             extents = None
              ):
     '''
     Add a variable to a 2D plot
@@ -89,19 +90,27 @@ def plot_var(ax,fname,var,
     
     return var_plt
 
-def plot_cbar(var_plt,
+def plot_cbar(ax,var_plt,
              ticks=[],
              tick_font = 12,
              label='values',
              label_font=14,
-             loc=[1., 0.2, 0.02, 0.6], # [left, bottom, width, height]
+             loc=None, # [left, bottom, width, height]
+             aspect_ratio=1,
              orientation='vertical'):
     
     '''
     Add a colorbar to a plot
     '''
+    if loc is None:
+        # dynamically position to colorbar
+        colorbar_offset = 0.05  # Fixed offset from the right of the plot
+        x_position = 0.8 + colorbar_offset * (1 / aspect_ratio)# adjust `x` based on aspect ratio, to no avail
+        x_thickness = 0.02/aspect_ratio
+        loc = [x_position, 0.2, x_thickness, 0.6]
     
     cbarax = plt.gcf().add_axes(loc) 
+    
     cbar_plt = plt.colorbar(var_plt, cbarax,
                         ticks=ticks,
                         orientation=orientation)
@@ -132,9 +141,10 @@ def plot_uv(ax,fname,
               tstep=0,
               level=0,
               ref_date=None,
-              extents = [],
+              extents = None,
+              skip_uv = 5,
               scale = 10,
-              skip = 1,
+              ref_vector = None,
               col = 'k'
               ):
     '''
@@ -150,39 +160,101 @@ def plot_uv(ax,fname,
      
     # set up the plot
     setup_plot(ax, grdname, extents = extents)
-    
+        
     # plot the data
-    uv_plt = ax.quiver(lon[::skip, ::skip],
-                      lat[::skip, ::skip],
-                      u[::skip, ::skip],
-                      v[::skip, ::skip],
+    width=0.0035  # Explicitly set the vector width for consistency between data and reference vector
+    uv_plt = ax.quiver(lon[::skip_uv, ::skip_uv],
+                      lat[::skip_uv, ::skip_uv],
+                      u[::skip_uv, ::skip_uv],
+                      v[::skip_uv, ::skip_uv],
                       scale=scale,
                       color=col,
+                      width=width,
                       transform=ccrs.PlateCarree(), zorder=1)
     
+    if ref_vector is not None:
+        # add a reference vector
+        loc_x=min(lon.ravel())
+        loc_y=max(lat.ravel())
+        ax.quiver(np.array([loc_x]), np.array([loc_y]),
+                  np.array([ref_vector]), np.array([0]), 
+                  scale=scale,
+                  color=col,
+                  width=width,
+                  transform=ccrs.PlateCarree(), zorder=1,
+                  )
+        # add the label for it
+        # try to define the y location of the text by shifting it down by a defined fraction of the y-range in the data
+        d_y=max(lat.ravel())-min(lat.ravel())
+        loc_y_txt=loc_y-d_y*0.04
+        ax.text(loc_x, loc_y_txt,  str(ref_vector)+' m s$^{-1}$',
+            ha='left', 
+            #fontsize=time_font,
+            transform=ccrs.PlateCarree())
     return uv_plt
 
 def plot_isobaths(ax,fname,isobaths):
     h = post.get_grd_var(fname,'h')
     lon=h.lon_rho.values
     lat=h.lat_rho.values
-    ax.contour(lon,lat,h,isobaths,colors='k',transform=ccrs.PlateCarree())
+    contour = ax.contour(lon,lat,h,isobaths,colors='k', 
+               linestyles='dashed',
+               linewidths=1,
+               transform=ccrs.PlateCarree())
+    # Label the contours with their respective isobaths values
+    ax.clabel(contour, fmt='%1.0f', inline=True)
+
+def get_uv_params(spd,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio):
+    # utility function to dynamically define params for scaling vectors    
     
+    if skip_uv is None:
+        # dynamically define how many vectors we want to plot
+        [Ny,Nx]=np.shape(spd)
+        skip_uv=int(Ny/num_vectors*aspect_ratio)
+    
+    max_spd=np.nanmax(spd.values.ravel())
+    # Define thresholds for scaling and reference vector size
+    # based on the maximum speed being plotted
+    if max_spd < 0.25:
+        scale = 2.5
+        ref = 0.1
+    elif max_spd < 0.5:
+        scale = 5
+        ref = 0.25
+    elif max_spd < 0.75:
+        scale = 7.5
+        ref = 0.5
+    elif max_spd < 1:
+        scale = 10
+        ref = 0.5
+    else:
+        scale = 15
+        ref = 1
+    
+    # only update if they haven't already been specified by the user
+    if scale_uv is None:
+        scale_uv =scale
+    if ref_vector is None:
+        ref_vector =ref
+        
+    return scale_uv, skip_uv, ref_vector
+
 def plot(fname,
         var='temp',
         grdname=None,
-        figsize=(6,6), # (hz,vt)
         tstep=0, # the step to plot, or the first step to animate. Can be an integer or a datetime object
         level=None, # this gets set to surface level if not provided
-        ticks = np.linspace(10,22,num=13), # the ticks to plot
+        ticks = np.linspace(12,22,num=11), # the ticks to plot
         cmap = 'Spectral_r',
-        extents = [],
+        extents = None,
         ref_date = None, # datetime, from CROCO model setup
-        cbar_loc = [0.9, 0.2, 0.02, 0.6],
+        cbar_loc = None, # [left, bottom, width, height]
         cbar_label = 'temperature ($\degree$C)',
         add_vectors = True,
-        scale_uv = 7,
-        skip_uv = 3,
+        scale_uv = None,
+        ref_vector = None,
+        skip_uv = None,
+        num_vectors=25, # baseline number of vectors in each direction, for a aspect ration of 1
         skip_time = 1, # every nth time-step will be animated (if provided)
         isobaths = None, # optional list of isobaths to overlay over plot
         jpg_out=None,
@@ -199,7 +271,19 @@ def plot(fname,
     
     if grdname is None:
         grdname = fname
-        
+    
+    # automatically set the figure size based on the grid aspect ratio
+    lon = post.get_grd_var(grdname,'lon_rho')
+    lat = post.get_grd_var(grdname,'lat_rho')
+    d_lon = max(np.ravel(lon)) - min(np.ravel(lon))
+    d_lat = max(np.ravel(lat)) - min(np.ravel(lat))
+    aspect_ratio = d_lon/d_lat
+    # set figsize according to the model aspect ratio
+    if aspect_ratio>1:
+        figsize = (6*aspect_ratio,6)
+    else:
+        figsize = (6,6/aspect_ratio)
+    
     fig = plt.figure(figsize=figsize) 
     ax = plt.axes(projection=ccrs.Mercator())
     
@@ -223,15 +307,23 @@ def plot(fname,
     
     time_plt = plot_time(ax,fname,tstep=tstep,ref_date=ref_date)
     
-    plot_cbar(var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc)
+    plot_cbar(ax,var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc,aspect_ratio=aspect_ratio)
+    
     if add_vectors:
+        
+        # dynamically update the vector scaling paramseters based on the actual veclocity data for this time-step
+        u, v = post.get_uv(fname,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
+        spd = np.sqrt(u**2+v**2)
+        scale_uv, skip_uv, ref_vector = get_uv_params(spd,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio)
+        
         uv_plt = plot_uv(ax,fname,
                       grdname=grdname,
                       tstep=tstep,
                       level=level,
                       ref_date=ref_date,
                       scale = scale_uv,
-                      skip = skip_uv,
+                      skip_uv = skip_uv,
+                      ref_vector = ref_vector,
                       extents=extents
                       )
         
@@ -246,7 +338,7 @@ def plot(fname,
     
     # and/or write a gif if specified
     if write_gif: # do the animation
-        # this only works if you stecify tstep as an integer, not a datetime
+        # this only works if you specify tstep as an integer, not a datetime
         def plot_tstep(i):
             # get the data for this time-step
             time_i = post.get_time(fname, ref_date)[i]
@@ -264,8 +356,7 @@ def plot(fname,
         
         # animate
         if tstep_end is None: # if not defined then animate to end of file
-            with xr.open_dataset(fname) as ds: 
-                tstep_end = len(ds.time) - 1
+            tstep_end=len(post.get_time(fname))
         
         anim = FuncAnimation(
             fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 
@@ -282,8 +373,8 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         ref_date = datetime(1993,1,1), # datetime, from CROCO model setup
         ticks = [], # the ticks to plot
         cmap = 'Spectral_r',
-        extents = [],
-        cbar_loc = [0.7, 0.2, 0.02, 0.6],
+        extents = None,#  [lon_min, lon_max, lat_min, lat_max]
+        cbar_loc = None, #[0.7, 0.2, 0.02, 0.6],
         add_vectors = True,
         scale_uv = 150,
         skip_uv = 10,
@@ -394,7 +485,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         # animate
         if tstep_end is None: # if not defined then animate to end of file
             with xr.open_dataset(croco_blk_file) as ds: 
-                tstep_end = len(ds.bulk_time) - 1
+                tstep_end = len(ds.bulk_time)
         
         anim = FuncAnimation(
             fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 

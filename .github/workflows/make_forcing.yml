@@ -1,0 +1,72 @@
+name: make the croco forcing
+# make the boundary forcing for a particular domain          
+# we don't need to make surface forcing since we're using the ONLINE cpp key
+# (the blk files are already prepared in get_forcing.yml)
+on:
+  workflow_call:
+    inputs:
+      RUN_DATE:
+        description: 'time of T0 of the model run in format YYYYMMDD_HH - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      MODEL:
+        description: 'directory name used to define the model e.g.croco_v1.3.1'
+        required: true
+        type: string
+      DOMAIN:
+        description: 'directory name used to define the domain e.g. sa_west_02' 
+        required: true
+        type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR' 
+        required: true
+        type: string
+      HDAYS:
+        description: 'number of hindcast days (integer) from T0'
+        required: true
+        type: string
+
+env:
+  # define the directory names for this configuration
+  BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
+  DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
+  CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+
+jobs:
+  make_ogcm:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: make temporary directory for the reformatted OGCM file
+        # fyi this is not needed for the blk files as the reformated blk file is saved in the directory where the data are downloaded
+        run: |
+          rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
+          mkdir -p ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
+          chown -R :runners ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
+          chmod -R 775 ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
+
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: generate the OGCM forcing file (and ini file which will only be used if a suitable restart file isn't available)
+        id: make_ogcm_file
+        run: >-
+          docker run \
+            --rm \
+            --mac-address 02:42:ff:ff:ff:ff \
+            --entrypoint /bin/bash \
+            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
+            -v ${{ env.DATE_DIR }}:/home/matlab/somisana \
+            -e MLM_LICENSE_FILE=/licenses/license.lic \
+            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+              -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},1); exit;\""
