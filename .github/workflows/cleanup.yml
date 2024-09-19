@@ -7,6 +7,10 @@ on:
         description: 'specify the runner name to determine what server we are running on'
         required: true
         type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
 
 jobs:
   cleanup-files:

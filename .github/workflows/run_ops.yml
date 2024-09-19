@@ -76,10 +76,11 @@ jobs:
   #
 
   cleanup:
-    needs: [build_images]
+    needs: [envs,build_images]
     uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
