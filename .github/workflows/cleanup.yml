@@ -28,7 +28,6 @@ jobs:
           sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
   
   prune-images:
-    needs: [build_images]
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: remove all unused docker images and containers
