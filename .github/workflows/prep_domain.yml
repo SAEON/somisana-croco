@@ -35,24 +35,6 @@ env:
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
 
 jobs:
-  cleanup:
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    steps:
-      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
-        # remove all directories older than 5 days on the the server where the model is run 
-        # anything not archived will be lost!
-        id: cleanup_runner
-        run: |
-          find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
-      - name: Clean /mnt/saeon-somisana/data/
-        # clean certain file types in the public facing archive
-        # we only want to keep the forecast portion of the archived forecast runs
-        # (the various tiered outputs can be regenerated if needed) 
-        id: cleanup_archive
-        run: |
-          # have to run as sudo as the archive is owned by root
-          sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
-  
   setup-config-dir:
     runs-on: ${{ inputs.RUNNER_NAME }}
     continue-on-error: true

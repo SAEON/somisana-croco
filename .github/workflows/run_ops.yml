@@ -34,16 +34,6 @@ jobs:
     with:
       IMAGE_ID: ${{ matrix.image_id }}
 
-  # ensure that we don't keep building up a stash of images, which can use a lot of resources
-  # we'll need to add more of these as we expand onto new servers
-  prune_images_mims1:
-    needs: [build_images]
-    runs-on: mims1
-    steps:
-      - name: remove all unused docker images and containers
-        run: |
-          docker system prune -f
-
   # set some environment variables
   envs:
     runs-on: ubuntu-latest
@@ -78,12 +68,18 @@ jobs:
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
   
   # everything below here runs using the `mims1` self-hosted runner
-  # This is the `computecroco01` server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
+  # This is a server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
   # It is possible that we may want to use an additional modelling server (which will be a separate node on MIMS)
   # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
   # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server)
   #
+
+  cleanup:
+    needs: [build_images]
+    uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
+    with:
+      RUNNER_NAME: mims1
 
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
