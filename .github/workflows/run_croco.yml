@@ -383,7 +383,7 @@ jobs:
           # replace underscores with hyphens for the archive directory - probably looks better
           domain=${domain//_/-}
           #
-          archive_dir=/mnt/saeon-somisana/data/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          archive_dir=/mnt/ocims-somisana/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
         run: |

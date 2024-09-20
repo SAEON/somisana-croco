@@ -22,14 +22,14 @@ jobs:
         id: cleanup_runner
         run: |
           find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
-      - name: Clean /mnt/saeon-somisana/data/
+      - name: Clean /mnt/ocims-somisana
         # clean certain file types in the public facing archive
         # we only want to keep the forecast portion of the archived forecast runs
         # (the various tiered outputs can be regenerated if needed) 
         id: cleanup_archive
         run: |
           # have to run as sudo as the archive is owned by root
-          sudo find /mnt/saeon-somisana/data/ -type f,d \( -name "*t1*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/ocims-somisana/ -type f,d \( -name "*t1*" -o -name "*_12*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
   
   prune-images:
     runs-on: ${{ inputs.RUNNER_NAME }}
