@@ -27,37 +27,12 @@ on:
       SAWS_OK:
         description: "Indicates whether the SAWS job completed successfully"
         value: ${{ jobs.saws.outputs.SAWS_OK }}
+      # we could add checks here for other data providers, and carry this through into run_ops.yml?
 
 env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
 
 jobs:
-  dir_management:
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    outputs:
-      archive_dir_saeon: ${{ steps.archive_dirs.outputs.saeon }}
-      archive_dir_ocims: ${{ steps.archive_dirs.outputs.ocims }}
-    continue-on-error: true
-    steps:
-      - name: get archive dirs on saeon and ocims infrastructures
-        id: archive_dirs
-        run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_yyyymm=${run_date:0:6}
-          archive_dir_saeon=/mnt/saeon-somisana/data/sa-forcing/${run_date_yyyymm}/${run_date}
-          archive_dir_ocims=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
-          echo "saeon=$archive_dir_saeon" >> $GITHUB_OUTPUT
-          echo "ocims=$archive_dir_ocims" >> $GITHUB_OUTPUT
-      - name: create the archive directories if needed
-        run: |
-          if [ ! -d ${{ steps.archive_dirs.outputs.saeon }} ]; then
-            sudo mkdir -p ${{ steps.archive_dirs.outputs.saeon }}/{MERCATOR,GFS}
-          fi
-          if [ ! -d ${{ steps.archive_dirs.outputs.ocims }} ]; then
-            sudo mkdir -p ${{ steps.archive_dirs.outputs.ocims }}/{MERCATOR,GFS}
-          fi
-      # need to add a step here to remove all files in archive_dir_seaon older than a few days as these data end up getting archived on archive_dir_ocims
-
   mercator_saeon:
     # we have had an issue with downloading from copernicus specifically on the mims network
     # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli at the time of testing
@@ -66,19 +41,8 @@ jobs:
     # we can come back to this when we have the server issue sorted (or if later versions of 
     # the copernicusmarine tool works better on this network)
     # then this job can be deleted and the commented download step in the mercator job can be used
-    needs: [dir_management]
     runs-on: saeonapps
     steps:
-      - name: archive dir
-        id: archive_dir_saeon
-        run: |
-          # I had wanted to use the $archive_dir_saeon variable defined in dir_management,
-          # but the mount dir is named differently on saeonapps than it is on mims1!
-          # so we have to create a new archive_dir_saeon variable for this job which is running on saeonapps
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_yyyymm=${run_date:0:6}
-          archive_dir_saeon=/mnt/somisana/data/sa-forcing/${run_date_yyyymm}/${run_date}
-          echo "value=$archive_dir_saeon" >> $GITHUB_OUTPUT
       - name: Format RUN_DATE
         id: format_date
         run: |
@@ -97,7 +61,7 @@ jobs:
           continue_on_error: false
           on_retry_command: rm -f /home/giles/mercator_download/*nc
           command: |
-            if [ ! -f ${{ steps.archive_dir_saeon.outputs.value }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
+            if [ ! -f /mnt/somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
               docker run \
                 --rm \
                 -v /home/giles/mercator_download:/tmp/download \
@@ -113,17 +77,9 @@ jobs:
             fi
       - name: copy to a shared dir
         run: |
-          # I had wanted to use the $archive_dir_saeon variable defined in dir_management,
-          # but the mount dir is named differently on saeonapps than it is on mims1!
-          # so we have to create a new archive_dir_saeon variable for this job which is running on saeonapps
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_yyyymm=${run_date:0:6}
-          archive_dir_saeon=/mnt/somisana/data/sa-forcing/${run_date_yyyymm}/${run_date}
-          # copy the file we want to the archive 
-          if [ ! -f ${{ steps.archive_dir_saeon.outputs.value }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
-            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ steps.archive_dir_saeon.outputs.value }}/MERCATOR
-          fi
-      - name: clean up files
+          # note the shared mount dir is named differently on saeonapps than it is on ocims!
+          cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
+      - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
           # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
@@ -137,11 +93,8 @@ jobs:
               -c "rm -f /mnt/tmp/*nc"
 
   mercator:
-    needs: [mercator_saeon,dir_management]
+    needs: [mercator_saeon]
     runs-on: ${{ inputs.RUNNER_NAME }}
-    env:
-      archive_dir_saeon: ${{ needs.dir_management.outputs.archive_dir_saeon }}
-      archive_dir_ocims: ${{ needs.dir_management.outputs.archive_dir_ocims }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -182,17 +135,15 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: copy from the archive dir
-        # only needed since we have the workaround of downloading on saeonapps
-        # else the copy would be in the opposite direction
+      - name: move downloaded file from the shared mount
+        # we only need this since we have the workaround of downloading on saeonapps
+        # so this essentially replaces the commented download step above
         run: |
-          cp ${{ env.archive_dir_saeon }}/MERCATOR/*.nc ${{ env.DATA_DIR }}/MERCATOR/
+          # We need to use sudo in the line below because the mounted dir is owned by root
+          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
 
   gfs:
-    needs: [dir_management]
     runs-on: ${{ inputs.RUNNER_NAME }}
-    env:
-      archive_dir_saeon: ${{ needs.dir_management.outputs.archive_dir_saeon }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -252,14 +203,8 @@ jobs:
               --gfsDir '/tmp/gfsDir' \
               --outputDir '/tmp/gfsDir/for_croco' \
               --Yorig 2000 
-      - name: copy GFS files to the archive dir
-        run: |
-          # ensure files have correct permissions to do the copy
-          chmod -R 774 ${{ env.DATA_DIR }}/GFS
-          # I don't know why I need to use sudo in the line below? Probably because the target dir is owned by root
-          # But I didn't need to do this when copying from the saeon network, also as a non-root user?
-          # Not really an issue since we have ensured no password is needed in visudo for this user
-          sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${{ env.archive_dir_saeon }}/GFS/
+          # ensure files have correct permissions to do the copy to the archive dir
+          chmod -R 775 ${{ env.DATA_DIR }}/GFS
 
   saws:
     needs: [gfs]
@@ -308,20 +253,31 @@ jobs:
           fi
 
   archive_ocims:
-    needs: [mercator_saeon,dir_management,mercator,gfs]
+    # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
+    # (note we intentionally do not copy saws data as the archive dir will be public facing in future)
+    needs: [mercator_saeon,mercator,gfs]
     runs-on: ${{ inputs.RUNNER_NAME }}
-    env:
-      archive_dir_saeon: ${{ needs.dir_management.outputs.archive_dir_saeon }}
-      archive_dir_ocims: ${{ needs.dir_management.outputs.archive_dir_ocims }}
     steps:
-      - name: copy from the saeon to the ocims archive dir
-        # only needed since we have the workaround of downloading on saeonapps
-        # we want to rather archive the data on OCIMS than on the saeon server
+      - name: archive forcing files on ocims infrastructure
+        id: archive_dir
         run: |
+          # get the archive directory name
           run_date=${{ inputs.RUN_DATE }}
-          run_date_hour=${run_date:9:2}
-          if [ "${run_date_hour}" == "00" ]; then
-            # we're only archiving one run per day
-            sudo cp -rf ${{ env.archive_dir_saeon }} ${{ env.archive_dir_ocims }}
+          run_date_yyyymm=${run_date:0:6}
+          run_date_hh=${run_date:9:2}
+          archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
+          # make the archive directory
+          if [ ! -d ${archive_dir} ]; then
+            sudo mkdir -p ${archive_dir}/{MERCATOR,GFS}
           fi
+          # only archive one run per day (initialised at 00)
+          # the archiving is really for validation purposes, and I think one run per day is sufficient for this
+          if [ "${run_date_hh}" == "00" ]; then 
+            # We need to use sudo in the lines below because the target dir is owned by root
+            # Not an issue since we have ensured no password is needed for this command 
+            sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${archive_dir}/GFS/
+            sudo cp ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR/
+            # add others here as they come on board e.g. HYCOM, ECMWF?
+          fi
+
 
