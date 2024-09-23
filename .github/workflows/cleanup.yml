@@ -29,7 +29,9 @@ jobs:
         id: cleanup_archive
         run: |
           # have to run as sudo as the archive is owned by root
-          sudo find /mnt/ocims-somisana/ -type f,d \( -name "*t1*" -o -name "*_12*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+          # BE CAREFUL IF YOU EDIT THIS LINE!! you could delete the entire archive if you get it wrong!!
+          # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
+          sudo find /mnt/ocims-somisana/ -type f,d \( -name "*t1*" -o -name "*_06*" -o -name "*_12*" -o -name "*_18*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
   
   prune-images:
     runs-on: ${{ inputs.RUNNER_NAME }}

@@ -3,6 +3,7 @@ name: Run SOMISANA forecast models on MIMS
 on:
   schedule:
     # initialise twice a day
+    # (code is however designed to also be run every 6 hours)
     - cron: '0 0,12 * * *'
   workflow_dispatch:
     inputs:
@@ -114,7 +115,7 @@ jobs:
       COMP: C03
       # in future we may want to use different compile options for each domain
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
-      # and then tease the domain and compile option inside prep_domain.yml
+      # and then tease out the domain and compile option inside prep_domain.yml
 
   # prepare croco boundary forcing for each domain
   make_forcing:
@@ -149,11 +150,6 @@ jobs:
   run_sa_west_gfs:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -165,8 +161,8 @@ jobs:
       COMP: C03
       INP: I99
       BLK: GFS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 5
 
@@ -189,19 +185,14 @@ jobs:
       COMP: C03
       INP: I99
       BLK: GFS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 5
 
   run_sa_west_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -213,19 +204,14 @@ jobs:
       COMP: C03
       INP: I99
       BLK: SAWS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 2.25
 
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -237,8 +223,8 @@ jobs:
       COMP: C03
       INP: I99
       BLK: SAWS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 2.25
 
