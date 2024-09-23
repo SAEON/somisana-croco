@@ -318,6 +318,10 @@ jobs:
         # only needed since we have the workaround of downloading on saeonapps
         # we want to rather archive the data on OCIMS than on the saeon server
         run: |
-          sudo cp -rf ${{ env.archive_dir_saeon }} ${{ env.archive_dir_ocims }}
-
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_hour=${run_date:9:2}
+          if [ "${run_date_hour}" == "00" ]; then
+            # we're only archiving one run per day
+            sudo cp -rf ${{ env.archive_dir_saeon }} ${{ env.archive_dir_ocims }}
+          fi
 
