@@ -169,12 +169,6 @@ jobs:
   run_sa_southeast_gfs:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
