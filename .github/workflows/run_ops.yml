@@ -185,6 +185,12 @@ jobs:
       HDAYS: 5
       FDAYS: 5
 
+  # Now the SAWS forced runs
+  # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
+  # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
+  # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
+  # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
+  # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
   run_sa_west_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
@@ -202,7 +208,7 @@ jobs:
       FRC: ''
       OGCM: MERCATOR
       HDAYS: 5
-      FDAYS: 2.25
+      FDAYS: 2.45
 
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
@@ -221,5 +227,5 @@ jobs:
       FRC: ''
       OGCM: MERCATOR
       HDAYS: 5
-      FDAYS: 2.25
+      FDAYS: 2.45
 

@@ -132,6 +132,8 @@ def plot_cbar(ax,var_plt,
     Add a colorbar to a plot
     '''
     if loc is None:
+        # this can be hard coded because we took care to set up the figsize and
+        # axis location to accomodate the colorbar
         x_position = 0.8
         x_thickness = 0.015
         loc = [x_position, 0.2, x_thickness, 0.6]
@@ -302,10 +304,10 @@ def plot(fname,
     if grdname is None:
         grdname = fname
     
-    # compute the extents from the grid if not defined explicitly
-    lon = post.get_grd_var(fname,'lon_rho')
-    lat = post.get_grd_var(fname,'lat_rho')
+    # compute the extents from the grid if not explicitly defined
     if extents is None:
+        lon = post.get_grd_var(fname,'lon_rho')
+        lat = post.get_grd_var(fname,'lat_rho')
         lon_min = min(np.ravel(lon))
         lon_max = max(np.ravel(lon))
         lat_min = min(np.ravel(lat))
@@ -313,36 +315,32 @@ def plot(fname,
         factor=0.05 # factor of domain size used to get dl
         dl = 0.5 * (lon_max - lon_min + lat_max - lat_min) * factor
         extents=[lon_min-dl,lon_max+dl,lat_min-dl,lat_max+dl]
-    # subset the grid based on the extents
-    eta_rho,_,xi_rho,_=post.domain_to_slice(slice(None),slice(None),slice(None),slice(None),extents,grdname,'temp')
-    lon = lon[eta_rho,xi_rho]
-    lat = lat[eta_rho,xi_rho]
-    # Create a Mercator projection
-    proj = ccrs.Mercator()
-    # Convert the corner points of the extents to Mercator projected coordinates
-    # this is needed to compute the plot aspect ratio properly
-    x0, y0 = proj.transform_point(extents[0], extents[2], ccrs.PlateCarree())  # lon0, lat0
-    x1, y1 = proj.transform_point(extents[1], extents[3], ccrs.PlateCarree())  # lon1, lat1
-    # Calculate the width and height of the domain in projected coordinates
-    width = abs(x1 - x0)
-    height = abs(y1 - y0)
-    aspect_ratio = width/height
-    
-    # set figsize according to the plot aspect ratio
-    if aspect_ratio>1:
-        fig_width = 6*aspect_ratio
-        fig_height = 6
-    else:
-        fig_width = 6
-        fig_height = 6/aspect_ratio
-    # cbar_ax_width = 0.2 * fig_width if add_cbar else 0
-    buffer_left=0.1 * fig_width
-    buffer_right=0.2 * fig_width if add_cbar else 0.1 * fig_width
-    figsize = (buffer_left + fig_width + buffer_right, fig_height)
     
     if ax is None:
+        # Create a Mercator projection
+        proj = ccrs.Mercator()
+        # Convert the corner points of the extents to Mercator projected coordinates
+        # this is needed to compute the plot aspect ratio properly
+        x0, y0 = proj.transform_point(extents[0], extents[2], ccrs.PlateCarree())  # lon0, lat0
+        x1, y1 = proj.transform_point(extents[1], extents[3], ccrs.PlateCarree())  # lon1, lat1
+        # Calculate the width and height of the domain in projected coordinates
+        width = abs(x1 - x0)
+        height = abs(y1 - y0)
+        aspect_ratio = width/height
+        
+        # set figsize according to the plot aspect ratio
+        if aspect_ratio>1:
+            fig_width = 6*aspect_ratio
+            fig_height = 6
+        else:
+            fig_width = 6
+            fig_height = 6/aspect_ratio
+        # cbar_ax_width = 0.2 * fig_width if add_cbar else 0
+        buffer_left=0.1 * fig_width
+        buffer_right=0.2 * fig_width if add_cbar else 0.1 * fig_width
+        figsize = (buffer_left + fig_width + buffer_right, fig_height)
+        
         fig = plt.figure(figsize=figsize) 
-        # ax = plt.axes(projection=proj)
         # [left, bottom, width, height] in fractions of figure dimensions
         width=0.7 if add_cbar else 0.8
         ax = fig.add_axes([0.1, 0.1, width, 0.8], projection=proj)
@@ -377,6 +375,7 @@ def plot(fname,
         spd = np.sqrt(u**2+v**2)
         
         # subset spd based on the plot extents before running get_uv_params()
+        eta_rho,_,xi_rho,_=post.domain_to_slice(slice(None),slice(None),slice(None),slice(None),extents,grdname,'temp')
         spd=spd[eta_rho,xi_rho]
         
         scale_uv, skip_uv, ref_vector = get_uv_params(spd,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio)
