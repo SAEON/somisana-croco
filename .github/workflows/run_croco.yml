@@ -252,7 +252,7 @@ jobs:
           retry_on: any
           warning_on_retry: true
           shell: bash
-          continue_on_error: true
+          continue_on_error: false
           on_retry_command: sudo rm -f ${{ env.SCRATCH_DIR }}/croco_avg*nc && sudo rm -f ${{ env.SCRATCH_DIR }}/croco
           command: |
             # get the grid file and croco executable (the only outstanding inputs)
