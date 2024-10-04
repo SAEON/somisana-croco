@@ -16,7 +16,7 @@ import interp_tools
 import sigmagrid_tools as sig_tools
 import croco_class as Croco
 import ibc_class as Inp
-import pylab as plt
+from matplotlib.dates import date2num
 import netCDF4 as netcdf
 
 def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
@@ -1002,20 +1002,37 @@ def make_ini_fcst(input_file,param_dir,run_date,hdays):
 
     # --- Handle initial time ---------------------------------------------
 
-    ini_date_num = run_date - timedelta(days=hdays)
+    # Read the input dataset and extract the time dimension as an array
+    ds = xr.open_dataset(input_file)
     
-    day_zero_num = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
+    input_file_datetime = ds.time[:].data
     
-    datetime_diff = ini_date_num - day_zero_num
+    # Convert the np.datetime64 array format to a datetime.datetime format (i.e. datetime.datetime(YYYY, MM, DD, HH, SS))
+    input_file_timestamp = [pd.Timestamp(dt).to_pydatetime() for dt in input_file_datetime]
+    
+    ds.close()
 
-    seconds_since_origin = datetime_diff.total_seconds()
+    # Get the initial date
+    ini_date = run_date - timedelta(days=hdays)
+
+    # Get origin date from when model was launched
+    origin_date = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
+
+    # Convert the list of datetimes from the input data to timestamps using the origin date
+    timestamps = [(dt - origin_date).total_seconds() for dt in input_file_timestamp]
     
+    # Convert the initial datetime from to a timestamp using the origin date
+    ini_timestamp = (ini_date - origin_date).total_seconds()
+    
+    # Find the closest timestamp to the initial datetime.
+    tndx = np.argmin([abs(ts - ini_timestamp) for ts in timestamps])
+
     tstart=0
-    
-    scrumt = seconds_since_origin
 
-    oceant = seconds_since_origin
-    
+    scrumt = timestamps[tndx]
+
+    oceant = timestamps[tndx]
+
     tend=0.
 
     # time index to use in the file
@@ -1119,23 +1136,27 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
     nc=netcdf.Dataset(params.croco_dir + bry_filename, 'a')
 
     # Load full time dataset
-    time = plt.date2num(inpdat.ncglo['time'].values)
+    time = date2num(inpdat.ncglo['time'].values)
     
     # define start and end bry dates
-    bry_start_date = plt.date2num(run_date - timedelta(days=hdays))
-    bry_end_date = plt.date2num(run_date + timedelta(days=fdays))
+    hdays += 1
+    fdays += 1
+    bry_start_date = date2num(run_date - timedelta(days=hdays))
+    bry_end_date = date2num(run_date + timedelta(days=fdays))
     
     # find index for the time range
-    ind = np.where((time>=bry_start_date) & (time<=bry_end_date))
-    [dtmin,dtmax] = np.min(ind),np.max(ind)
-    
+    # ind = np.where((time>=bry_start_date) & (time<=bry_end_date))
+    # [dtmin,dtmax] = np.min(ind),np.max(ind)
+    [dtmin,dtmax] = np.argmin(abs(time-bry_start_date)),np.argmin(abs(time-bry_end_date))
+
     # because the epoch date on the downloaded dataset differes to the model run, we have to define new dates that corrispond to the datetime
-    day_zero_num = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
-    run_date_from_origin = (run_date - day_zero_num).days
+    Yorig,Morig,Dorig      = int(params.Yorig), int(params.Morig), int(params.Dorig)
+    _epoch                 = date2num( datetime( Yorig, Morig, Dorig ) )
+    run_date_from_origin   = date2num(run_date) - _epoch
     start_date_from_origin = run_date_from_origin - hdays
-    end_date_from_origin = run_date_from_origin + fdays
-    bry_time = np.arange(start_date_from_origin,end_date_from_origin+1,1)
-    
+    end_date_from_origin   = run_date_from_origin + fdays
+    bry_time               = np.arange(start_date_from_origin,end_date_from_origin,1) 
+   
     # write the dates to the file
     nc.Input_data_type=params.inputdata
     nc.variables['bry_time'].cycle=params.cycle_bry
@@ -1229,3 +1250,13 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
     print(' Boundary file created ')
     print(' Path to file is ', params.croco_dir + bry_filename)
     print('')
+
+
+if __name__ == '__main__':
+    input_file = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/MERCATOR/MERCATOR_20240829_00.nc'
+    param_dir  = '/home/g.rautenbach/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/MERCATOR/'
+    run_date   = datetime(2024,8,28)
+    hdays      = 5
+    fdays      = 5
+    #make_ini_fcst(input_file,param_dir,run_date,hdays)
+    make_bry_fcst(input_file,param_dir,run_date,hdays,fdays)

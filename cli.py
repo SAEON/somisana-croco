@@ -16,6 +16,8 @@ from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
 from download.cmems import download_glorys, download_mercator
 from download.gfs import download_gfs_atm
 from download.hycom import download_hycom
+from crocotools_py.regridding_cfc import regrid1_cf_compliant,regrid2_cf_compliant,regrid3_cf_compliant
+
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
     try:
@@ -32,7 +34,7 @@ def parse_int(value):
         raise argparse.ArgumentTypeError(f"Invalid integer value: {value}")
 
 def parse_list(value):
-    return [x.strip() for x in value.split(',')]
+    return [float(x) for x in value.split(',')]
 
 def parse_bool(s: str) -> bool:
     try:
@@ -245,8 +247,8 @@ def main():
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
-    parser_regrid_tier2.add_argument('--depths', type=parse_list,
-                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
+    parser_regrid_tier2.add_argument('--depths', type=int, nargs='+',
+                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999], # Doesn't work if you do not include zero. See how it is done in regriddding for the CF-complient. 
                          help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)')
     def regrid_tier2_handler(args):
         regrid_tier2(args.fname, args.fname_out, depths = args.depths)
@@ -279,7 +281,7 @@ def main():
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
-    parser_get_ts_multivar.add_argument('--depths', type=parse_list, 
+    parser_get_ts_multivar.add_argument('--depths', type=int, nargs='+',  
                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
                         help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')
@@ -337,7 +339,53 @@ def main():
     def make_bry_fcst_handler(args):
         make_bry_fcst(args.input_file,args.param_dir,args.run_date,args.hdays,args.fdays)
     parser_make_bry_fcst.set_defaults(func=make_bry_fcst_handler)
-    
+    # ----------------
+    # Regrid Tier 1 CF-Compliant
+    # ----------------
+    parser_regrid1_cfc = subparsers.add_parser('regrid1_cfc',
+            help='Tier 1 regridding of a raw CROCO model output file/s: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> adds a depth variable providing the depths of each sigma level at each time-step -> saves outputs in a CF-Compliant netCDF that can be published')
+    parser_regrid1_cfc.add_argument('--fname', required=True, type=str,nargs='+', 
+            help='Native CROCO filename. Can be filename (fname = /path/to/file.nc), list of files (fname = [file1,file2,file2]) or wildcard (fname = /path/to/*.nc).')
+    parser_regrid1_cfc.add_argument('--info_dir', required=True, 
+            help='Path to directory containing the configuration information (crocotools_param.py and croco_cf_compliance.py).')
+    parser_regrid1_cfc.add_argument('--out_dir', required=False, default=None, 
+            help='Save directory. If out_dir is None, then a new directory is made where fname is.')
+    def regrid1_cfc_handler(args):
+        regrid1_cf_compliant(args.fname, args.info_dir, args.out_dir)
+    parser_regrid1_cfc.set_defaults(func=regrid1_cfc_handler)
+    # ----------------
+    # Regrid Tier 2 CF-Compliant
+    # ----------------
+    parser_regrid2_cfc = subparsers.add_parser('regrid2_cfc',
+            help='Tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z-levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values. Outputs are stored in CF-Compliant netCDF files that can be pubplished.')
+    parser_regrid2_cfc.add_argument('--fname', required=True, type=str,nargs='+',
+            help='Native CROCO filename. Can be filename (fname = /path/to/file.nc), list of files (fname = [file1,file2,file2]) or wildcard (fname = /path/to/*.nc).')
+    parser_regrid2_cfc.add_argument('--info_dir', required=True,
+            help='Path to directory containing the configuration information (crocotools_param.py and croco_cf_compliance.py).')
+    parser_regrid2_cfc.add_argument('--depths',required=False,default=None,type=parse_list,
+            help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer). Usually this is set at: depths = [0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999]')
+    parser_regrid2_cfc.add_argument('--out_dir', required=False,default=None,
+            help='Save directory. If out_dir is None, then a new directory is made where fname is.')
+    def regrid2_cfc_handler(args):
+        regrid2_cf_compliant(args.fname, args.info_dir, args.depths, args.out_dir)
+    parser_regrid2_cfc.set_defaults(func=regrid2_cfc_handler)
+    # ----------------
+    # Regrid Tier 3 CF-Compliant
+    # ----------------
+    parser_regrid3_cfc = subparsers.add_parser('regrid3_cfc',
+            help='Tier 3 regridding of a CROCO output: takes the output of regrid-tier2 as input and regrids the curvilinear grid to rectilinear -> output variables are the same as tier 1 and 2, only now longitude and lititude are 1-Dimensional arrays -> Outputs are stored in CF-Compliant netCDF files that can be pubplished -> Outputs are mostly used for visualisation and web display and not for science due to the interpolation.')
+    parser_regrid3_cfc.add_argument('--fname', required=True, type=str,nargs='+',
+            help='Input filename from tier 2 regridding. Can be filename (fname = /path/to/file.nc), list of files (fname = [file1,file2,file2]) or wildcard (fname = /path/to/*.nc).')
+    parser_regrid3_cfc.add_argument('--info_dir', required=True,
+            help='Path to directory that contains the configuration information (crocotools_param.py and croco_cf_compliance.py).')
+    parser_regrid3_cfc.add_argument('--spacing',  required=False, type=float, default=None,
+            help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
+    parser_regrid3_cfc.add_argument('--out_dir', required=False,default=None,
+            help='Save directory. If out_dir is None, then a new directory is made where fname is.')
+    def regrid3_cfc_handler(args):
+        regrid3_cf_compliant(args.fname, args.info_dir, args.spacing, args.out_dir)
+    parser_regrid3_cfc.set_defaults(func=regrid3_cfc_handler)
+
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
@@ -346,4 +394,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
