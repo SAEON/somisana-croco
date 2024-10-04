@@ -1035,10 +1035,6 @@ def make_ini_fcst(input_file,param_dir,run_date,hdays):
 
     tend=0.
 
-    # time index to use in the file
-    
-    tndx = 0
-
    #  --- Compute and save variables on CROCO grid ---------------
 
     for vars in ['ssh','tracers','velocity']:
