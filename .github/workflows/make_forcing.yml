@@ -1,7 +1,7 @@
 name: make the croco forcing
 # make the boundary forcing for a particular domain          
 # we don't need to make surface forcing since we're using the ONLINE cpp key
-# (the blk files are already prepared in get_forcing.yml)
+# (the blk files are already reformatted in get_forcing.yml)
 on:
   workflow_call:
     inputs:
@@ -58,6 +58,7 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'"
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+
       - name: generate the OGCM forcing file (and ini file which will only be used if a suitable restart file isn't available)
         id: make_ogcm_file
         run: >-

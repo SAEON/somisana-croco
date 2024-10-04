@@ -3,6 +3,7 @@ name: Run SOMISANA forecast models on MIMS
 on:
   schedule:
     # initialise twice a day
+    # (code is however designed to also be run every 6 hours)
     - cron: '0 0,12 * * *'
   workflow_dispatch:
     inputs:
@@ -33,16 +34,6 @@ jobs:
     uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
       IMAGE_ID: ${{ matrix.image_id }}
-
-  # ensure that we don't keep building up a stash of images, which can use a lot of resources
-  # we'll need to add more of these as we expand onto new servers
-  prune_images_mims1:
-    needs: [build_images]
-    runs-on: mims1
-    steps:
-      - name: remove all unused docker images and containers
-        run: |
-          docker system prune -f
 
   # set some environment variables
   envs:
@@ -78,12 +69,19 @@ jobs:
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
   
   # everything below here runs using the `mims1` self-hosted runner
-  # This is the `computecroco01` server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
+  # This is a server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
   # It is possible that we may want to use an additional modelling server (which will be a separate node on MIMS)
   # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
   # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server)
   #
+
+  cleanup:
+    needs: [envs,build_images]
+    uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
+    with:
+      RUNNER_NAME: mims1
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
@@ -117,7 +115,7 @@ jobs:
       COMP: C03
       # in future we may want to use different compile options for each domain
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
-      # and then tease the domain and compile option inside prep_domain.yml
+      # and then tease out the domain and compile option inside prep_domain.yml
 
   # prepare croco boundary forcing for each domain
   make_forcing:
@@ -152,11 +150,6 @@ jobs:
   run_sa_west_gfs:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -168,19 +161,14 @@ jobs:
       COMP: C03
       INP: I99
       BLK: GFS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 5
 
   run_sa_southeast_gfs:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -192,19 +180,20 @@ jobs:
       COMP: C03
       INP: I99
       BLK: GFS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 5
 
+  # Now the SAWS forced runs
+  # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
+  # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
+  # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
+  # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
+  # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
   run_sa_west_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -216,19 +205,14 @@ jobs:
       COMP: C03
       INP: I99
       BLK: SAWS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
-      FDAYS: 2.25
+      FDAYS: 2.45
 
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -240,8 +224,8 @@ jobs:
       COMP: C03
       INP: I99
       BLK: SAWS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
-      FDAYS: 2.25
+      FDAYS: 2.45
 

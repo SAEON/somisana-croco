@@ -237,25 +237,34 @@ jobs:
     env:
       RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-    # I'm adding this continue-on-error flag since the model sometimes finishes running without error
-    # i.e. the .out file checks out and the output looks fine, but the MPI library returns a 
-    # divide by zero error, which trips up the operational workflow. I don't understand why this is, but
-    # I am bypassing it and assuming that it is not important!
-    continue-on-error: true
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
-      - name: get the grid file and croco executable (the only outstanding inputs)
-        run: |
-          cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
-          cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
       - name: run the model
-        run: |
-          docker run \
-            --rm \
-            --entrypoint /bin/bash \
-            -v ${{ env.CONFIG_DIR }}:/home/somisana \
-            ghcr.io/saeon/somisana-croco_run_main:latest \
-              -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
+        # this step sometimes gets cancelled by github while running
+        # not sure why, but may have to do with intermittent connectivity?
+        # the problem is often resolved by simply re-running the model manually
+        # so I'm using this retry approach to do this automatically of it fails
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 3
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: true
+          on_retry_command: sudo rm -f ${{ env.SCRATCH_DIR }}/croco_avg*nc && sudo rm -f ${{ env.SCRATCH_DIR }}/croco
+          command: |
+            # get the grid file and croco executable (the only outstanding inputs)
+            cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
+            cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
+            # run the model
+            docker run \
+              --rm \
+              --entrypoint /bin/bash \
+              -v ${{ env.CONFIG_DIR }}:/home/somisana \
+              ghcr.io/saeon/somisana-croco_run_main:latest \
+                -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
@@ -383,7 +392,7 @@ jobs:
           # replace underscores with hyphens for the archive directory - probably looks better
           domain=${domain//_/-}
           #
-          archive_dir=/mnt/saeon-somisana/data/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          archive_dir=/mnt/ocims-somisana/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
         run: |

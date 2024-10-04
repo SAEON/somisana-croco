@@ -1,0 +1,42 @@
+name: cleanup commands
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+
+jobs:
+  cleanup-files:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
+        # remove all directories older than 5 days on the the server where the model is run 
+        # anything not archived will be lost!
+        id: cleanup_runner
+        run: |
+          find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
+      - name: Clean /mnt/ocims-somisana
+        # clean certain file types in the public facing archive
+        # we only want to keep the forecast portion of the archived forecast runs
+        # (the various tiered outputs can be regenerated if needed) 
+        id: cleanup_archive
+        run: |
+          # have to run as sudo as the archive is owned by root
+          # BE CAREFUL IF YOU EDIT THIS LINE!! you could delete the entire archive if you get it wrong!!
+          # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
+          sudo find /mnt/ocims-somisana/ -path "/mnt/ocims-somisana/lost+found" -prune -o -type f,d \( -name "*t1*" -o -name "*_06*" -o -name "*_12*" -o -name "*_18*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+  
+  prune-images:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: remove all unused docker images and containers
+        run: |
+          # ensure that we don't keep building up a stash of images, which can use a lot of resources
+          docker system prune -f
