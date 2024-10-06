@@ -333,11 +333,14 @@ jobs:
                 --fname /tmp/postprocess/croco_avg_t2.nc \
                 --fname_out /tmp/postprocess/croco_avg_t3.nc \
                 --spacing 0.02
-       # here we can add the extraction of time-series 
-       # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
-      - name: ensure permissions
-        run: |
-          chmod -R 775 ${{ env.RUN_DIR }}
+        
+      # here we can add the extraction of time-series 
+      # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
+      
+      # this tripped up the workflow once (very randomly), but we do we really need it?
+      #- name: ensure permissions
+      #  run: |
+      #    chmod -R 775 ${{ env.RUN_DIR }}
 
   # make plots/animations of the outout
   plotting:
