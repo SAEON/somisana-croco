@@ -21,7 +21,19 @@ def lookvar(input):
       V_i   Northward velocity imaginary part
     '''
 
-    if input == 'tpxo9':
+    if input == 'tpxo10':
+        dico={ 'lonr':'lon_z','lonu':'lon_u','lonv':'lon_v',\
+               'latr':'lat_z','latu':'lat_u','latv':'lat_v',\
+               'H_r':'hRe',\
+               'H_i':'hIm',\
+               'U_r':'uRe',\
+               'U_i':'uIm',\
+               'V_r':'vRe',\
+               'V_i':'vIm',\
+               'topor':'hz','topou':'hu','topov':'hv'\
+              }
+
+    elif input == 'tpxo9':
         dico={ 'lonr':'lon_z','lonu':'lon_u','lonv':'lon_v',\
                'latr':'lat_z','latu':'lat_u','latv':'lat_v',\
                'H_r':'hRe',\
