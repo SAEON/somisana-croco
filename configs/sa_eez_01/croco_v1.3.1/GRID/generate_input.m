@@ -1,3 +1,3 @@
 start
-make_grid_d3d
+make_griyd_d3d
 mod_grid_GLORYS2R
