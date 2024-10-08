@@ -205,7 +205,7 @@ if __name__ == "__main__":
     passwd = 'your_passwd'
     # spatial extent
     domain = [23, 34, -37, -31]
-    outputDir='./algoa/'
+    outputDir='./sa_southeast/'
     # variables to extract
     varList = ['so', 'thetao', 'zos', 'uo', 'vo']
     # min and max depths

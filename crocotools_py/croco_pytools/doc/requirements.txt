@@ -1,0 +1,17 @@
+appdirs
+ipython
+nbsphinx
+sphinx
+sphinx-argparse
+sphinx-tabs
+sphinx_rtd_theme
+sphinx-book-theme
+sphinx-gallery
+sphinxcontrib-bibtex
+sphinxcontrib-applehelp
+sphinxcontrib-devhelp
+sphinxcontrib-htmlhelp
+sphinxcontrib-jsmath
+sphinxcontrib-programoutput
+sphinxcontrib-qthelp
+sphinxcontrib-serializinghtml

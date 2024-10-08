@@ -1,8 +1,10 @@
 name: Run SOMISANA forecast models on MIMS
 
 on:
-#  schedule:
-#    - cron: '0 6,18 * * *'
+  schedule:
+    # initialise twice a day
+    # (code is however designed to also be run every 6 hours)
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
     inputs:
       run_date:
@@ -33,16 +35,6 @@ jobs:
     with:
       IMAGE_ID: ${{ matrix.image_id }}
 
-  # ensure that we don't keep building up a stash of images, which can use a lot of resources
-  # we'll need to add more of these as we expand onto new servers
-  prune_images_mims1:
-    needs: [build_images]
-    runs-on: mims1
-    steps:
-      - name: remove all unused docker images and containers
-        run: |
-          docker system prune -f
-
   # set some environment variables
   envs:
     runs-on: ubuntu-latest
@@ -58,11 +50,11 @@ jobs:
           then
             run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
           else
-            # automatically set the run_date by finding the nearest 6 hourly time stamp in the past
+            # automatically set the run_date by finding an appropriate time stamp in the past (corresponding to our cron schedule)
             # Get the current time in UTC
             current_time=$(date -u +'%Y%m%d_%H')
-            # Extract the hour and calculate the nearest multiple of 6 in the past
-            hour=$(echo ${current_time:9:2} | awk '{print int($1 - ($1%6))}')
+            # Extract the hour and calculate the nearest multiple of 12 in the past (as per our cron schedule above)
+            hour=$(echo ${current_time:9:2} | awk '{print int($1 - ($1%12))}')
             # Correct hour formatting (ensure leading zero)
             hour=$(printf "%02d" $hour)
             # Assemble the run_date
@@ -77,12 +69,19 @@ jobs:
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
   
   # everything below here runs using the `mims1` self-hosted runner
-  # This is the `computecroco01` server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
+  # This is a server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
   # It is possible that we may want to use an additional modelling server (which will be a separate node on MIMS)
   # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
   # (note you'll also have to include another `git pull` command at the end of build_images.yml to make sure the latest images are available on the new server)
   #
+
+  cleanup:
+    needs: [envs,build_images]
+    uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
+    with:
+      RUNNER_NAME: mims1
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
@@ -98,71 +97,135 @@ jobs:
       FDAYS: 5
     secrets: inherit
   
-  # prepare croco config dirs
-  prep_configdirs:
+  # prepare croco config dirs for each domain
+  prep_domains:
     needs: [envs,get_forcing]
     if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['algoa_01','swcape_02'] 
-    uses: ./.github/workflows/prep_configdir.yml  # Path to your reusable workflow
+        domain: ['sa_southeast_01','sa_west_02'] 
+    uses: ./.github/workflows/prep_domain.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
+      COMP: C03
+      # in future we may want to use different compile options for each domain
+      # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
+      # and then tease out the domain and compile option inside prep_domain.yml
 
-  # prepare croco forcing files, run the model, do the postprocessing
-  #
-  # we're using separate jobs for the different domains, rather than using the matrix strategy, as if one of the domains fails, then it cancels all others running in parallel... to separating the jobs makes it more robust... and also easier to follow in the actions log on github
-  # we're also seprating jobs for gfs and saws forcing, rather than using the matrix strategy, as they have different HDAYS and FDAYS inputs (otherwise we could have included both in a single job using the matrix strategy)
-  # we will probably be able to use the matrix strategy for the different ogcm forcings though (let's see how this goes)
+  # prepare croco boundary forcing for each domain
+  make_forcing:
+    needs: [envs,get_forcing,prep_domains]
+    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
+    strategy:
+      matrix:
+        # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
+        domain: ['sa_southeast_01','sa_west_02'] 
+        ogcm: ['MERCATOR']
+    uses: ./.github/workflows/make_forcing.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+      OGCM: ${{ matrix.ogcm }}
+      HDAYS: 5
   
-  run_swcape_gfs:
-    needs: [envs,get_forcing,prep_configdirs]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
+  # run the model, do the postprocessing, archive the output
+  #
+  # we considered using githubs 'matrix' strategy to run different domains in parallel, 
+  # but opted against it as if one of the domains fails, then it cancels all others running in parallel... 
+  # so separating the jobs makes it more robust... and also easier to follow in the actions log on github
+  # here's an idea...
+  # when we end up with 4 domains, each needing 30-ish processors we'll be able to run all 4 in parallel
+  # we could put those 4 jobs in a calleable workflow, called run_all_domains.yml which takes the atmospheric and boundary forcings as inputs and runs 4 models in parallel
+  #
+  # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
+  
+  run_sa_west_gfs:
+    needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
-      DOMAIN: swcape_02
-      COMP: C01
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C03
       INP: I99
       BLK: GFS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 5
 
-  run_algoa_gfs:
-    needs: [envs,get_forcing,prep_configdirs]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
-    strategy:
-      matrix:
-        # matrix strategy allows us to run different model forcings in parallel
-        frc: ['']
-        ogcm: ['MERCATOR']
+  run_sa_southeast_gfs:
+    needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
-      DOMAIN: algoa_01
-      COMP: C01
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C03
       INP: I99
       BLK: GFS
-      FRC: ${{ matrix.frc }}
-      OGCM: ${{ matrix.ogcm }}
+      FRC: ''
+      OGCM: MERCATOR
       HDAYS: 5
       FDAYS: 5
+
+  # Now the SAWS forced runs
+  # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
+  # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
+  # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
+  # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
+  # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
+  run_sa_west_saws:
+    needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C03
+      INP: I99
+      BLK: SAWS
+      FRC: ''
+      OGCM: MERCATOR
+      HDAYS: 5
+      FDAYS: 2.45
+
+  run_sa_southeast_saws:
+    needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C03
+      INP: I99
+      BLK: SAWS
+      FRC: ''
+      OGCM: MERCATOR
+      HDAYS: 5
+      FDAYS: 2.45
 

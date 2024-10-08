@@ -1,0 +1,6 @@
+#  input_file     |    Lon    |  Lat/Qmin  |
+#2ddata.nc             X            10
+#river.nc            -2.05        47.30
+#loire.dat           -2.05        47.30
+#Rhone.txt            4.82        43.37
+
