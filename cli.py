@@ -8,8 +8,9 @@ The only functions I'm adding here are ones which produce an output e.g. a netcd
 Feel free to add more functions from the repo as we need them in the cli
 '''
 import argparse
-from datetime import datetime
-from crocotools_py.preprocess import reformat_gfs_atm,reformat_saws_atm,make_ini_fcst,make_bry_fcst
+import sys, os
+from datetime import datetime, timedelta
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini_fcst,make_bry_fcst
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
@@ -290,6 +291,70 @@ def main():
                write_nc=True, # default behaviour in the cli is to write a file
                fname_nc=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
+
+    # ----------------
+    # make_tides_fcst
+    # ----------------
+    parser_make_tides_fcst = subparsers.add_parser('make_tides_fcst',
+            help='Make a tidal forcing file for as part of the CROCO operational workflow')
+    parser_make_tides_fcst.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the raw tidal files from e.g. TPXO')
+    parser_make_tides_fcst.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing file will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_tides_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
+            help='datetime of operational workflow initialisation in format i.e. "YYYY-MM-DD HH:MM:SS"')
+    parser_make_tides_fcst.add_argument('--hdays', required=True, type=int,
+            help='Number of days before run_date, corresponding to the run start time')
+    parser_make_tides_fcst.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model')
+    def make_tides_fcst_handler(args):
+        
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        fname_out = params.croco_prefix + args.run_date.strftime('_%Y%m%d_%H.nc')
+        run_date_ini = args.run_date - timedelta(days=args.hdays)
+        
+        make_tides(args.input_dir,args.output_dir,run_date_ini,args.Yorig,fname_out)
+        
+    parser_make_tides_fcst.set_defaults(func=make_tides_fcst_handler)
+    
+    # ----------------
+    # make_tides_inter
+    # ----------------
+    parser_make_tides_inter = subparsers.add_parser('make_tides_inter',
+            help='Make monthly tidal forcing files for CROCO interannual runs')
+    parser_make_tides_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the raw tidal files from e.g. TPXO')
+    parser_make_tides_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing file will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_tides_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_tides_inter.add_argument('--month_end', required=True, type=str,
+            help='last month in the interannual run in format "YYYY-MM"')
+    parser_make_tides_inter.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model')
+    def make_tides_inter_handler(args):
+        
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        month_now = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
+        month_end = datetime.strptime(args.month_end+'-01','%Y-%m-%d')
+        
+        while month_now <= month_end:
+            
+            print('working on '+month_now.strftime('%Y-%m'))
+            
+            fname_out = params.croco_prefix + month_now.strftime('_Y%YM%m.nc')
+            
+            make_tides(args.input_dir,args.output_dir,month_now,args.Yorig,fname_out)
+            
+            month_now=month_now+timedelta(days=32) # 32 days ensures we get to the next month
+            month_now=datetime(month_now.year, month_now.month, 1) # set to the first day of the month
+        
+    parser_make_tides_inter.set_defaults(func=make_tides_inter_handler)
+    
 
     # ----------------
     # make_ini
