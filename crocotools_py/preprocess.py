@@ -471,7 +471,7 @@ def make_tides(input_dir,output_dir,run_ini_date,Yorig,fname_out):
     We just adjust how the inputs are handled
     Most of the inputs are contained in a crocotools_param.py file, while
     a few others are direct inputs to this function. The direct inputs are for 
-    things which we may want to be update as part of an operational/hindcast workflow
+    things which we may want to be update as part of an operational/inter-annual workflow
 
     input_dir - Path to directory containing the raw tidal files from e.g. TPXO
     output_dir - Path to where the forcing file will be saved. This directory also needs a crocotools_param.py file
@@ -1212,86 +1212,77 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         for idx_file in glob.glob(os.path.join(gfs_dir, '*.idx')):
             os.remove(idx_file)
         
-def make_ini_fcst(input_file,param_dir,run_date,hdays):
+def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
     '''
+    Make CROCO initial conditions file from an OGCM file
     
-    Make CROCO initial file for SAOMISANA
+    This function is mostly taken from croco_pytools/prepro/make_ini.py
+    We just adjust how the inputs are handled
+    Most of the inputs are contained in a crocotools_param.py file, while
+    a few others are direct inputs to this function. The direct inputs are for 
+    things which we may want to be update as part of an operational/inter-annual workflow
     
-    input_file - path and filename for the initial file.
-    param_dir  - the directory where the crocotools_param.py is. The crocotools_param.py contains all the configurable parameters.
-    run_date   - the time when the operational run was initialised, as a datetime.datetime object. 
-    hdays      - the number of hindcast days used in the operational run (time of the ini file will be run_date - hdays)
+    input_file  - path and filename for the initial file.
+    output_dir  - where the output file gets written. This directory must also contain the crocotools_param.py file which contains configurable parameters not already provided as direct inputs.
+    ini_date    - the model initialisation time, as a datetime.datetime object. 
+    Yorig       - the Yorig value used in setting up the CROCO model
+    fname_out   - output ini filename (only the filename, not the full path)
     
     '''  
-    # --------
+    
     # imports
-    # --------
-    #
-    sys.path.append(param_dir)
+    sys.path.append(output_dir)
     import crocotools_param as params
     
-    # edit ini_filename to add starting date
-    ini_filename = params.ini_filename.replace('.nc', run_date.strftime('_%Y%m%d_%H.nc'))
-
     # Load croco_grd
-    crocogrd = Croco.CROCO_grd(params.croco_grd, params.sigma_params)
-    #--- Load input (restricted to croco_grd) ----------------------------  
+    # (assumes params.croco_grd is a relative path from output_dir)
+    croco_grd = os.path.join(output_dir, params.croco_grd)
+    crocogrd = Croco.CROCO_grd(croco_grd, params.sigma_params)
     
-    multi_files=False
+    #--- Load input (restricted to croco_grd) ----------------------------  
+    multi_files=params.multi_files
     print(params.inputdata)
     print(input_file)
     print(crocogrd)
     inpdat=Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,params.tracers)
-    #inpdat=Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,params.tracers,bdy=[params.obc_dict,params.cycle_bry])
     print(inpdat)
-    # --- Create the initial file -----------------------------------------
-
     
-    Croco.CROCO.create_ini_nc(None,''.join((params.croco_dir + ini_filename)),crocogrd,
+    # --- Create the initial file -----------------------------------------
+    fname_out = os.path.join(output_dir,fname_out)
+    Croco.CROCO.create_ini_nc(None,fname_out,crocogrd,
                               tracers=params.tracers)
 
     # --- Handle initial time ---------------------------------------------
     
-    Yorig,Morig,Dorig = int(params.Yorig), int(params.Morig), int(params.Dorig)
-
-    _epoch = date2num( datetime( Yorig, Morig, Dorig  ) ) 
-
-    ini_date = run_date - timedelta(days=hdays)
-
-    ini_datenum = date2num(ini_date) - _epoch
+    # get Yorig-01-01 in days since 1970-01-01
+    ref_datenum = date2num(datetime(Yorig,1, 1)) 
+    # convert ini_date to days since Yorig-01-01
+    ini_datenum = date2num(ini_date) - ref_datenum
+    # Read the time from the input file, and convert to days since Yorig-01-01
+    input_datenums = date2num(inpdat.ncglo['ssh'].time.values) - ref_datenum
+    # find the nearest index corresponding to the requested ini_date
+    tndx = np.argmin(abs(input_datenums-ini_datenum))
     
-    # Read the input dataset and extract the time dimension as an array
-    ds = xr.open_dataset(input_file)
-    input_file_datetime = ds.time[:].data
-    
-    # Convert the np.datetime64 array format to a datetime.datetime format (i.e. datetime.datetime(YYYY, MM, DD, HH, SS))
-    input_file_timestamp = [pd.Timestamp(dt).to_pydatetime() for dt in input_file_datetime]
-    ds.close()
-    
-    times_from_epoch = [(date2num(ts) - _epoch) for ts in input_file_timestamp]
-    
-    tndx = np.argmin([abs(ts - ini_datenum) for ts in times_from_epoch])
-    
-    tstart=0
-
-    scrumt = times_from_epoch[tndx] * 86400
-
-    oceant = times_from_epoch[tndx] * 86400
-
-    tend=0.
+    # start and end time in days (not sure why we need this in the file?)
+    tstart=input_datenums[tndx]
+    tend=input_datenums[tndx]
+    # scrumt and oceant, in seconds since Yorig-01-01
+    # this is what is used to define the initial time in the model
+    scrumt = input_datenums[tndx] * 86400
+    oceant = input_datenums[tndx] * 86400
     
    #  --- Compute and save variables on CROCO grid ---------------
 
     for vars in ['ssh','tracers','velocity']:
         print('\nProcessing *%s*' %vars)
-        nc=netcdf.Dataset(params.croco_dir+ini_filename, 'a')
+        nc=netcdf.Dataset(fname_out, 'a')
         if vars == 'ssh' :
             (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,tndx,tndx)
             nc.variables['zeta'][0,:,:] = zeta*crocogrd.maskr
             nc.Input_data_type=params.inputdata
             nc.variables['ocean_time'][:] = oceant
             nc.variables['scrum_time'][:] = scrumt
-            nc.variables['scrum_time'].units='seconds since %s-%s-%s 00:00:00' %(params.Yorig,params.Morig,params.Dorig)
+            nc.variables['scrum_time'].units='seconds since %s-01-01 00:00:00'%Yorig
             nc.variables['tstart'][:] = tstart
             nc.variables['tend'][:] = tend
             z_rho = crocogrd.scoord2z_r(zeta=zeta)
@@ -1323,89 +1314,80 @@ def make_ini_fcst(input_file,param_dir,run_date,hdays):
             nc.variables['vbar'][0,:,:] = vbar * crocogrd.vmask
 
    
-    nc.close()
+        nc.close()
     
     print('')
     print(' Initial file created ')
-    print(' Path to file is ', params.croco_dir + ini_filename)
+    print(' Path to file is ', fname_out)
     print('')
 
-def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
+def make_bry(input_file,output_dir,start_date,end_date,Yorig,fname_out):
     '''
+    Make CROCO boundary file from an OGCM file
     
-    Make CROCO boundary file for SAOMISANA
-
-    input_file - path and filename for the boundary file.
-    param_dir  - the directory where the crocotools_param.py is. The crocotools_param.py contains all the configurable parameters.
-    run_date   - the time when the operational run was initialised, as a datetime.datetime object. 
-    hdays      - the number of hindcast days used in the operational run.
-    fdays      - the number of forecast days used in the operational run.
+    This function is mostly taken from croco_pytools/prepro/make_bry.py
+    We just adjust how the inputs are handled
+    Most of the inputs are contained in a crocotools_param.py file, while
+    a few others are direct inputs to this function. The direct inputs are for 
+    things which we may want to be update as part of an operational/inter-annual workflow
+    
+    input_file  - path and filename for the OGCM file. TODO: I think this should also work with a list of files (to be checked)
+    output_dir  - where the output file gets written. This directory must also contain the crocotools_param.py file which contains configurable parameters not already provided as direct inputs.
+    start_date  - start of the bry file, as a datetime.datetime object. 
+    end_date    - end of the bry file, as a datetime.datetime object. 
+    Yorig       - the Yorig value used in setting up the CROCO model
+    fname_out   - output bry filename (only the filename, not the full path)
+    
     '''  
 
-    # --------
     # imports
-    # --------
-    #
-    sys.path.append(param_dir)
+    sys.path.append(output_dir)
     import crocotools_param as params
     
-    # --- Make filename --------------------------------------------------
-
-    bry_filename = params.bry_filename.replace('.nc', run_date.strftime('_%Y%m%d_%H.nc'))
-
     # --- Load croco_grd --------------------------------------------------
-
-    crocogrd = Croco.CROCO_grd(params.croco_grd, params.sigma_params)
+    # (assumes params.croco_grd is a relative path from output_dir)
+    croco_grd = os.path.join(output_dir, params.croco_grd)
+    crocogrd = Croco.CROCO_grd(croco_grd, params.sigma_params)
 
     # --- Initialize boundary vars ----------------------------------------
-
     crocogrd.WEST_grid()
     crocogrd.EAST_grid()
     crocogrd.SOUTH_grid()
     crocogrd.NORTH_grid()
 
     # --- Initialize input data class -------------------------------------
-    
-    multi_files=False
+    multi_files=params.multi_files
     inpdat = Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,
                          params.tracers,
                          bdy=[params.obc_dict,params.cycle_bry])
 
-    Croco.CROCO.create_bry_nc(None,params.croco_dir + bry_filename,crocogrd,params.obc_dict,params.cycle_bry,tracers=params.tracers)
+    fname_out = os.path.join(output_dir,fname_out)
+    Croco.CROCO.create_bry_nc(None,fname_out,crocogrd,params.obc_dict,params.cycle_bry,tracers=params.tracers)
 
     # --- Handle bry_time --------------------------------------------
-    nc=netcdf.Dataset(params.croco_dir + bry_filename, 'a')
-
-    # Load full time dataset
-    time = date2num(inpdat.ncglo['time'].values)
     
-    # define start and end bry dates
-    hdays += 1
-    fdays += 1
-    bry_start_date = date2num(run_date - timedelta(days=hdays))
-    bry_end_date = date2num(run_date + timedelta(days=fdays))
-    print(num2date(bry_start_date),num2date(bry_end_date))
-    # find index for the time range
-    # ind = np.where((time>=bry_start_date) & (time<=bry_end_date))
-    # [dtmin,dtmax] = np.min(ind),np.max(ind)
-    [dtmin,dtmax] = np.argmin(abs(time-bry_start_date)),np.argmin(abs(time-bry_end_date)+1)
+    # get Yorig-01-01 in days since 1970-01-01
+    ref_datenum = date2num(datetime(Yorig,1,1))
+    # Load full time dataset in days since Yorig
+    input_datenums = date2num(inpdat.ncglo['time'].values) - ref_datenum
+    # get the start and end times in days since Yorig
+    start_datenum = date2num(start_date) - ref_datenum
+    end_datenum = date2num(end_date) - ref_datenum    
+    # find nearest indices in input_datenums for start_date and end_date
+    [dtmin,dtmax] = np.argmin(abs(input_datenums-start_datenum)),np.argmin(abs(input_datenums-end_datenum))
+    # get the bry_time as a subset of input_datenums
+    bry_time=input_datenums[dtmin:dtmax+1]
     
-    # because the epoch date on the downloaded dataset differes to the model run, we have to define new dates that corrispond to the datetime
-    Yorig,Morig,Dorig      = int(params.Yorig), int(params.Morig), int(params.Dorig)
-    _epoch                 = date2num( datetime( Yorig, Morig, Dorig ) )
-    run_date_from_origin   = date2num(run_date) - _epoch
-    start_date_from_origin = run_date_from_origin - hdays
-    end_date_from_origin   = run_date_from_origin + fdays
-    bry_time               = np.arange(start_date_from_origin,end_date_from_origin+1,1)
     print('bry_time: ', bry_time)
 
     # write the dates to the file
+    nc=netcdf.Dataset(fname_out, 'a')
     nc.Input_data_type=params.inputdata
     nc.variables['bry_time'].cycle=params.cycle_bry
     nc.variables['bry_time'][:]=bry_time
     
     if params.cycle_bry==0:
-        nc.variables['bry_time'].units='days since %s-01-01 00:00:00' %(params.Yorig)
+        nc.variables['bry_time'].units='days since %s-01-01 00:00:00' %(Yorig)
 
     # --- Loop on boundaries ------------------------------------------
     prev=0
@@ -1490,7 +1472,7 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
 
     print('')
     print(' Boundary file created ')
-    print(' Path to file is ', params.croco_dir + bry_filename)
+    print(' Path to file is ', fname_out)
     print('')
 
 
@@ -1500,5 +1482,5 @@ if __name__ == '__main__':
     run_date   = datetime(2024,10,3)
     hdays      = 1
     fdays      = 1
-    make_ini_fcst(input_file,param_dir,run_date,hdays)
-    #make_bry_fcst(input_file,param_dir,run_date,hdays,fdays)
+    # make_ini_fcst(input_file,param_dir,run_date,hdays)
+    # make_bry_fcst(input_file,param_dir,run_date,hdays,fdays)
