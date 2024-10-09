@@ -1,9 +1,11 @@
 import xarray as xr
 from datetime import datetime, timedelta
 import calendar
+import cftime
 import numpy as np
 import pandas as pd
 import os, sys, glob
+from os import path
 # import fnmatch
 from scipy.interpolate import griddata
 import crocotools_py.postprocess as post
@@ -17,6 +19,8 @@ import sigmagrid_tools as sig_tools
 import croco_class as Croco
 import ibc_class as Inp
 from matplotlib.dates import date2num,num2date
+import tides_class as Inp_tides
+import pylab as plt
 import netCDF4 as netcdf
 
 def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
@@ -461,6 +465,252 @@ def WASA3_2_nc(wasa_grid,
     ds_wasa.close()
     ds_wasa_grd.close()  
 
+def make_tides(input_dir,output_dir,run_ini_date,Yorig,fname_out):
+    '''
+    This function is mostly taken from croco_pytools/prepro/make_tides.py
+    We just adjust how the inputs are handled
+    Most of the inputs are contained in a crocotools_param.py file, while
+    a few others are direct inputs to this function. The direct inputs are for 
+    things which we may want to be update as part of an operational/hindcast workflow
+
+    input_dir - Path to directory containing the raw tidal files from e.g. TPXO
+    output_dir - Path to where the forcing file will be saved. This directory also needs a crocotools_param.py file
+    run_ini_date - datetime.datetime object representing the initial time for the run
+    Yorig - the Yorig value used in setting up the CROCO model
+    fname_out - output filename (only the filename, not the full path)
+    '''
+    
+    # read in variables from the crocotools_param.py file
+    sys.path.append(output_dir)
+    import crocotools_param as params
+    inputdata=params.inputdata
+    input_type=params.input_type
+    multi_files=params.multi_files
+    waves_separated=params.waves_separated
+    elev_file=params.elev_file
+    u_file=params.u_file
+    v_file=params.v_file
+    croco_grd = os.path.join(output_dir, params.croco_grd)
+    tides=params.tides
+    cur=params.cur
+    pot=params.pot
+    Correction_ssh =params.Correction_ssh
+    Correction_uv = params.Correction_uv
+    
+    fname_out = os.path.join(output_dir,fname_out)
+    
+    #read tides and periods
+    tides_txt_file=os.path.join(os.path.dirname(__file__),'croco_pytools/prepro/Modules/tides.txt')
+    tides_param=np.loadtxt(tides_txt_file,skiprows=3,comments='^',usecols=(0,4),dtype=str)
+    tides_names=tides_param[:,0].tolist()
+    tides_periods=tides_param[:,1].tolist()
+    tides_names=[x.lower() for x in tides_names]
+    tides_names=np.array(tides_names)
+
+    # Load croco_grd
+    sigma_params = dict(theta_s=0, theta_b=0, N=1, hc=1) # not relevant as 2d
+    crocogrd = Croco.CROCO_grd(croco_grd, sigma_params)
+
+    # --- Load input (restricted to croco_grd) ----------------------------
+    if multi_files:
+        if waves_separated:
+            input_file_ssh=[]
+            input_file_u=[]
+            input_file_v=[]
+            for inp in tides:
+                if path.isfile(input_dir+elev_file.replace('<tides>',inp)):
+                    input_file_ssh+=[input_dir+elev_file.replace('<tides>',inp)]
+                elif path.isfile(input_dir+elev_file.replace('<tides>',inp.lower())):
+                    input_file_ssh+=[input_dir+elev_file.replace('<tides>',inp.lower())]
+                else:
+                    sys.exit('Elevation file %s for wave %s is missing' % (input_dir+elev_file.replace('<tides>',inp), inp))
+               
+                if cur:
+                    if path.isfile(input_dir+u_file.replace('<tides>',inp)):
+                        input_file_u+=[input_dir+u_file.replace('<tides>',inp)]
+                    elif path.isfile(input_dir+u_file.replace('<tides>',inp.lower())):
+                        input_file_u+=[input_dir+u_file.replace('<tides>',inp.lower())]
+                    else:
+                        sys.exit('Eastward current file for wave %s is missing' % inp)
+
+                    if path.isfile(input_dir+v_file.replace('<tides>',inp)):
+                        input_file_v+=[input_dir+v_file.replace('<tides>',inp)]
+                    elif path.isfile(input_dir+v_file.replace('<tides>',inp.lower())):
+                        input_file_v+=[input_dir+v_file.replace('<tides>',inp.lower())]
+                    else:
+                        sys.exit('Northward current file for wave %s is missing' % inp)
+            
+            input_file_ssh = list(input_file_ssh)
+            if cur:
+                input_file_u = list(input_file_u)
+                input_file_v = list(input_file_v)
+            else: 
+                input_file_u = None
+                input_file_v = None
+        else:
+            input_file_ssh=list(input_dir+elev_file)
+            if cur:
+                input_file_u = list(input_dir+u_file)
+                input_file_v = list(input_dir+v_file)
+            else:
+                input_file_u = None
+                input_file_v = None
+    else:
+        input_file_ssh=list([input_dir+params.input_file])
+        if cur:
+            input_file_u=list([input_dir+params.input_file])
+            input_file_v=list([input_dir+params.input_file])
+        else:
+            input_file_u=None
+            input_file_v=None
+
+    inpdat=Inp_tides.getdata(inputdata,input_file_ssh,crocogrd,input_type,tides,input_file_u,input_file_v)
+
+    # --- Create the initial file -----------------------------------------
+
+    Croco.CROCO.create_tide_nc(None,fname_out,crocogrd,cur=cur,pot=pot)
+
+    if Correction_ssh or Correction_uv:
+        date=cftime.datetime(run_ini_date.year,run_ini_date.month,run_ini_date.day)
+        date_orig=cftime.datetime(Yorig,1,1)
+
+    todo=['H']
+
+    if cur:
+        todo+=['cur']
+    if pot:
+        todo+=['pot']
+        coslat2=np.cos(np.deg2rad(crocogrd.lat))**2
+        sin2lat=np.sin(2.*np.deg2rad(crocogrd.lat))
+
+    # --- Start loop on waves --------------------------------------------
+    nc=netcdf.Dataset(fname_out, 'a')
+
+    if Correction_ssh or Correction_uv:
+        nc.Nodal_Correction=''.join(('Origin time is ',str(date_orig)))
+    else:
+        nc.Nodal_Correction='No nodal correction'
+
+    for i,tide in enumerate(tides) :
+        print('\nProcessing *%s* wave' %(tide))
+        print('-----------------------')
+        index=np.argwhere(tides_names==tide.lower())
+        if (len(index)>0):
+            print("  tides %s is in the list"%(tide))
+            # get period
+            index=index[0][0]
+            period=float(tides_periods[index])
+            print("  Period of the wave %s is %f"%(tide,period))
+            
+            nc.variables['tide_period'][i]=period
+        if multi_files:
+            # In this case waves had been concatenated in the order they appear in the list
+            tndx=i
+        else:
+            # read ntime/periods dimension and find the closest wave
+            tndx=np.argwhere(abs(inpdat.ntides-period)<1e-4)
+            if len(tndx)==0:
+                sys.exit('  Did not find wave %s in input file' % tide)
+            else:
+                tndx=tndx[0]
+
+        [pf,pu,mkB]=inpdat.egbert_correction(tide,date)
+        # For phase shift time should be in seconds relatively Jan 1 1992
+        # As mkB is the wave phase at this date
+        t0 = cftime.date2num(date_orig,'seconds since 1992-01-01:00:00:00')
+        if Correction_ssh or Correction_uv:      
+            correc_amp   = pf
+            correc_phase = mkB+np.deg2rad(t0/(period*10)) +         pu
+            #              |--- phase at origin time ---|  |nodal cor at ini time|
+        else:
+            correc_amp=1
+            correc_phase= mkB+np.deg2rad(t0/(period*10))
+
+        # --- Start loop on var ------------------------------------------
+        for vars in todo:
+            # get data
+            if vars == 'H':
+                print('\n  Processing tidal elevation')
+                print('  -------------------------')
+                (tide_complex,NzGood) = interp_tools.interp_tides(inpdat,vars,-1,crocogrd,tndx,tndx,input_type)
+                if Correction_ssh:
+                    tide_amp=np.ma.abs(tide_complex)*correc_amp
+                    if 'tpxo' in inputdata :
+                        tide_phase=np.mod(np.ma.angle(tide_complex)*-180/np.pi-correc_phase*180/np.pi,360)
+                    else:
+                        tide_phase=np.mod(np.ma.angle(tide_complex)*180./np.pi-correc_phase*180/np.pi,360)
+                else:
+                    tide_amp=np.ma.abs(tide_complex)
+                    if 'tpxo' in inputdata :
+                        tide_phase=np.mod(np.ma.angle(tide_complex)*-180/np.pi,360)
+                    else:
+                        tide_phase=np.mod(np.ma.angle(tide_complex)*180./np.pi,360)  
+
+                nc.variables['tide_Ephase'][i,:]=tide_phase*crocogrd.maskr
+                nc.variables['tide_Eamp'][i,:]=tide_amp*crocogrd.maskr
+
+            #########################
+            elif vars == 'cur':
+                print('\n  Processing tidal currents')
+                print('  -------------------------')
+                (u_tide_complex,v_tide_complex,NzGood) = interp_tools.interp_tides(inpdat,vars,-1,crocogrd,tndx,tndx,input_type)
+                
+                if Correction_uv:
+                    u_tide_amp=np.ma.abs(u_tide_complex)*correc_amp
+                    v_tide_amp=np.ma.abs(v_tide_complex)*correc_amp
+     
+                    if 'tpxo' in inputdata:
+                        u_tide_phase=np.mod(np.ma.angle(u_tide_complex)*-180/np.pi-correc_phase*180/np.pi,360)
+                        v_tide_phase=np.mod(np.ma.angle(v_tide_complex)*-180/np.pi-correc_phase*180/np.pi,360)
+                    else:
+                        u_tide_phase=np.mod(np.ma.angle(u_tide_complex)*180./np.pi-correc_phase*180/np.pi,360)
+                        v_tide_phase=np.mod(np.ma.angle(v_tide_complex)*180./np.pi-correc_phase*180/np.pi,360)
+                else:
+                    u_tide_amp=np.ma.abs(u_tide_complex)
+                    v_tide_amp=np.ma.abs(v_tide_complex)
+
+                    if 'tpxo' in inputdata:
+                        u_tide_phase=np.mod(np.ma.angle(u_tide_complex)*-180/np.pi,360)
+                        v_tide_phase=np.mod(np.ma.angle(v_tide_complex)*-180/np.pi,360)
+                    else:
+                        u_tide_phase=np.mod(np.ma.angle(u_tide_complex)*180./np.pi,360)
+                        v_tide_phase=np.mod(np.ma.angle(v_tide_complex)*180./np.pi,360)
+
+
+                major,eccentricity,inclination,phase=inpdat.ap2ep(u_tide_amp,u_tide_phase,v_tide_amp,v_tide_phase)
+      
+                nc.variables['tide_Cmin'][i,:,:]=major[:,:]*eccentricity[:,:]*crocogrd.maskr
+                nc.variables['tide_Cmax'][i,:,:]=major[:,:]*crocogrd.maskr
+                nc.variables['tide_Cangle'][i,:,:]=inclination[:,:]*crocogrd.maskr
+                nc.variables['tide_Cphase'][i,:,:]=phase[:,:]*crocogrd.maskr
+            #########################
+            elif vars == 'pot':
+                print('\n  Processing equilibrium tidal potential')
+                print('  --------------------------------------')
+                try:
+                    coef=eval(''.join(('inpdat.pot_tide.',tide.lower())))
+                except:
+                    try:
+                        # some waves start with a number (ex: 2N2) and python do not like it
+                        coef=eval(''.join(('inpdat.pot_tide._',tide.lower())))
+                    except:
+                        print('No potential prameter defined for wave %s' % tide)
+                        coef=[1 ,0]
+
+                if period<13:  # semidiurnal
+                    Pamp=correc_amp*coef[0]*coef[1]*coslat2
+                    Ppha=np.mod(-2*crocogrd.lon-correc_phase*180/np.pi,360)
+                elif period<26: # diurnal
+                    Pamp=correc_amp*coef[0]*coef[1]*sin2lat;
+                    Ppha=np.mod(-crocogrd.lon-correc_phase*180/np.pi,360)
+                else: # long-term
+                    Pamp=correc_amp*coef[0]*coef[1]*(1-1.5*coslat2);
+                    Ppha=np.mod(-correc_phase*180/np.pi,360.0)
+     
+                nc.variables['tide_Pamp'][i,:,:]   = Pamp*crocogrd.maskr
+                nc.variables['tide_Pphase'][i,:,:] = Ppha*crocogrd.maskr
+
+    nc.close()
     
 def make_SAWS_from_blk(saws_dir, 
                  croco_grd,
