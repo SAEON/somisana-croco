@@ -16,7 +16,7 @@ import interp_tools
 import sigmagrid_tools as sig_tools
 import croco_class as Croco
 import ibc_class as Inp
-from matplotlib.dates import date2num
+from matplotlib.dates import date2num,num2date
 import netCDF4 as netcdf
 
 def fill_blk(croco_grd,croco_blk_file_in,croco_blk_file_out):
@@ -1001,40 +1001,35 @@ def make_ini_fcst(input_file,param_dir,run_date,hdays):
                               tracers=params.tracers)
 
     # --- Handle initial time ---------------------------------------------
+    
+    Yorig,Morig,Dorig = int(params.Yorig), int(params.Morig), int(params.Dorig)
 
+    _epoch = date2num( datetime( Yorig, Morig, Dorig  ) ) 
+
+    ini_date = run_date - timedelta(days=hdays)
+
+    ini_datenum = date2num(ini_date) - _epoch
+    
     # Read the input dataset and extract the time dimension as an array
     ds = xr.open_dataset(input_file)
-    
     input_file_datetime = ds.time[:].data
     
     # Convert the np.datetime64 array format to a datetime.datetime format (i.e. datetime.datetime(YYYY, MM, DD, HH, SS))
     input_file_timestamp = [pd.Timestamp(dt).to_pydatetime() for dt in input_file_datetime]
-    
     ds.close()
-
-    # Get the initial date
-    ini_date = run_date - timedelta(days=hdays)
-
-    # Get origin date from when model was launched
-    origin_date = datetime(int(params.Yorig), int(params.Morig), int(params.Dorig))
-
-    # Convert the list of datetimes from the input data to timestamps using the origin date
-    timestamps = [(dt - origin_date).total_seconds() for dt in input_file_timestamp]
     
-    # Convert the initial datetime from to a timestamp using the origin date
-    ini_timestamp = (ini_date - origin_date).total_seconds()
+    times_from_epoch = [(date2num(ts) - _epoch) for ts in input_file_timestamp]
     
-    # Find the closest timestamp to the initial datetime.
-    tndx = np.argmin([abs(ts - ini_timestamp) for ts in timestamps])
-
+    tndx = np.argmin([abs(ts - ini_datenum) for ts in times_from_epoch])
+    
     tstart=0
 
-    scrumt = timestamps[tndx]
+    scrumt = times_from_epoch[tndx] * 86400
 
-    oceant = timestamps[tndx]
+    oceant = times_from_epoch[tndx] * 86400
 
     tend=0.
-
+    
    #  --- Compute and save variables on CROCO grid ---------------
 
     for vars in ['ssh','tracers','velocity']:
@@ -1139,20 +1134,21 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
     fdays += 1
     bry_start_date = date2num(run_date - timedelta(days=hdays))
     bry_end_date = date2num(run_date + timedelta(days=fdays))
-    
+    print(num2date(bry_start_date),num2date(bry_end_date))
     # find index for the time range
     # ind = np.where((time>=bry_start_date) & (time<=bry_end_date))
     # [dtmin,dtmax] = np.min(ind),np.max(ind)
-    [dtmin,dtmax] = np.argmin(abs(time-bry_start_date)),np.argmin(abs(time-bry_end_date))
-
+    [dtmin,dtmax] = np.argmin(abs(time-bry_start_date)),np.argmin(abs(time-bry_end_date)+1)
+    
     # because the epoch date on the downloaded dataset differes to the model run, we have to define new dates that corrispond to the datetime
     Yorig,Morig,Dorig      = int(params.Yorig), int(params.Morig), int(params.Dorig)
     _epoch                 = date2num( datetime( Yorig, Morig, Dorig ) )
     run_date_from_origin   = date2num(run_date) - _epoch
     start_date_from_origin = run_date_from_origin - hdays
     end_date_from_origin   = run_date_from_origin + fdays
-    bry_time               = np.arange(start_date_from_origin,end_date_from_origin,1) 
-   
+    bry_time               = np.arange(start_date_from_origin,end_date_from_origin+1,1)
+    print('bry_time: ', bry_time)
+
     # write the dates to the file
     nc.Input_data_type=params.inputdata
     nc.variables['bry_time'].cycle=params.cycle_bry
@@ -1160,7 +1156,7 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
     
     if params.cycle_bry==0:
         nc.variables['bry_time'].units='days since %s-01-01 00:00:00' %(params.Yorig)
-        
+
     # --- Loop on boundaries ------------------------------------------
     prev=0
     nxt=0
@@ -1249,10 +1245,10 @@ def make_bry_fcst(input_file,param_dir,run_date,hdays,fdays):
 
 
 if __name__ == '__main__':
-    input_file = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/MERCATOR/MERCATOR_20240829_00.nc'
-    param_dir  = '/home/g.rautenbach/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/MERCATOR/'
-    run_date   = datetime(2024,8,28)
-    hdays      = 5
-    fdays      = 5
-    #make_ini_fcst(input_file,param_dir,run_date,hdays)
-    make_bry_fcst(input_file,param_dir,run_date,hdays,fdays)
+    input_file = '~/Projects/somisana-croco/DATASETS_CROCOTOOLS/MERCATOR/MERCATOR_20241004_07.nc'
+    param_dir  = '/home/g.rautenbach/tmp/croco_forecast_2024104_00/MERCATOR/'
+    run_date   = datetime(2024,10,3)
+    hdays      = 1
+    fdays      = 1
+    make_ini_fcst(input_file,param_dir,run_date,hdays)
+    #make_bry_fcst(input_file,param_dir,run_date,hdays,fdays)
