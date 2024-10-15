@@ -225,8 +225,8 @@ def plot_uv(ax,fname,
 
 def plot_isobaths(ax,fname,isobaths):
     h = post.get_grd_var(fname,'h')
-    lon=h.lon_rho.values
-    lat=h.lat_rho.values
+    lon=post.get_grd_var(fname,'lon_rho')
+    lat=post.get_grd_var(fname,'lat_rho')
     contour = ax.contour(lon,lat,h,isobaths,colors='k', 
                linestyles='dashed',
                linewidths=1,
@@ -306,8 +306,8 @@ def plot(fname,
     
     # compute the extents from the grid if not explicitly defined
     if extents is None:
-        lon = post.get_grd_var(fname,'lon_rho')
-        lat = post.get_grd_var(fname,'lat_rho')
+        lon = post.get_grd_var(grdname,'lon_rho')
+        lat = post.get_grd_var(grdname,'lat_rho')
         lon_min = min(np.ravel(lon))
         lon_max = max(np.ravel(lon))
         lat_min = min(np.ravel(lat))

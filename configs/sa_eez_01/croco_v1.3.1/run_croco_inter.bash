@@ -1,0 +1,294 @@
+#!/bin/bash
+#
+#unalias cp
+#unalias mv
+#limit coredumpsize unlimited
+CP=/bin/cp
+MV=/bin/mv
+LN=/bin/ln
+MK=/bin/mkdir
+########################################################
+#  Define files and run parameters
+########################################################
+
+source myenv_inter.sh
+
+RUNDIR=`pwd`
+EXEDIR=$RUNDIR/$EXENAME
+CODFILE=croco
+
+INPUTDIR_IN=$RUNDIR/${INNAME}
+source ${INPUTDIR_IN}/myenv_in.sh
+INPUTDIR_SRF=$RUNDIR/$ATMOS_BULK
+INPUTDIR_BRY=$RUNDIR/$OGCM
+INPUTDIR_GRD=$RUNDIR/GRID
+
+MODEL=croco
+RUNNAME=${EXENAME}_${INNAME}_${OGCM}_${ATMOS_BULK}
+SCRATCHDIR=$RUNDIR/$RUNNAME/scratch
+OUTPUTDIR=$RUNDIR/$RUNNAME/output
+
+########################################################
+#
+if [[ $TIME_SCHED == 0 ]]; then
+  NM_START=1979
+  NM_END=1979
+fi
+#
+# netcdf file prefixes
+#
+GRDFILE=${MODEL}_grd
+FRCFILE=${MODEL}_frc
+BLKFILE=${MODEL}_blk
+INIFILE=${MODEL}_ini
+CLMFILE=${MODEL}_clm
+BRYFILE=${MODEL}_bry
+#
+if [[ $RSTFLAG != 0 ]]; then
+  NY=$NY_START
+  NM=$NM_START
+  if [[ $TIME_SCHED == 0 ]]; then
+    NY=$((NY - 1))
+    TIME=Y${NY}
+  else
+    NM=$((NM - 1))
+    if [[ $NM == 0 ]]; then
+      NM=12
+      NY=$((NY - 1))
+    fi
+    TIME=Y${NY}M$( printf ${MTH_FORMAT} ${NM})
+  fi
+  RSTFILE=${MODEL}_rst_${TIME}
+fi
+#
+if [[ $TIME_SCHED == 0 ]]; then
+  TIME=Y${NY_START}
+else
+  TIME=Y${NY_START}M$( printf ${MTH_FORMAT} ${NM_START})
+fi
+#
+# Get the code
+#
+$MK $RUNDIR/$RUNNAME
+$MK $SCRATCHDIR
+$MK $OUTPUTDIR
+cd $SCRATCHDIR
+echo "Getting $CODFILE from $EXEDIR"
+$CP -f $EXEDIR/$CODFILE $SCRATCHDIR
+chmod u+x $CODFILE
+#echo "Getting Agrif file from $INPUTDIR_IN"
+#$CP -f $INPUTDIR_IN/AGRIF_FixedGrids.in $SCRATCHDIR
+#echo "Getting stations file from $INPUTDIR_IN"
+#$CP -f $INPUTDIR_IN/stations.in $SCRATCHDIR
+#$CP -f $TIDEDIR/frc.nc $SCRATCHDIR
+
+#
+# Get the netcdf files for run initiation
+#
+LEVEL=0
+while [ $LEVEL != $NLEVEL ]; do
+  if [[ ${LEVEL} == 0 ]]; then
+    ENDF=
+  else
+    ENDF=.${LEVEL}
+  fi
+  echo "Getting ${GRDFILE}.nc${ENDF} from ${INPUTDIR_GRD}${ENDF}"
+  $LN -sf ${INPUTDIR_GRD}${ENDF}/${GRDFILE}.nc${ENDF} $SCRATCHDIR
+  echo "Getting ${MODEL}_inter.in${ENDF} from $INPUTDIR_IN${ENDF}"
+  $CP -f $INPUTDIR_IN${ENDF}/${MODEL}_inter.in${ENDF} $SCRATCHDIR
+  if [[ $RSTFLAG == 0 ]]; then
+    echo "Getting ${INIFILE}_${OGCM}_${TIME}.nc${ENDF} from ${INPUTDIR_BRY}${ENDF}"
+    $CP -f ${INPUTDIR_BRY}${ENDF}/${INIFILE}_${OGCM}_${TIME}.nc${ENDF} $SCRATCHDIR
+    $CP -f ${INIFILE}_${OGCM}_${TIME}.nc${ENDF} ${INIFILE}.nc${ENDF}
+  else
+    echo "Getting ${RSTFILE}.nc${ENDF} from $OUTPUTDIR"
+    $CP -f $OUTPUTDIR/${RSTFILE}.nc${ENDF} $SCRATCHDIR
+    $CP -f ${RSTFILE}.nc${ENDF} ${INIFILE}.nc${ENDF}
+  fi
+  LEVEL=$((LEVEL + 1))
+done
+###########################################################
+#  Compute
+###########################################################
+#
+NY_END=$((NY_END + 1))
+NM_END=$((NM_END + 1))
+NY=$NY_START
+while [ $NY != $NY_END ]; do
+  if [[ $NY == $NY_START ]]; then
+    NM=$NM_START
+   else 
+     NM=1
+  fi
+   MY_YEAR=$NY
+   MY_YEAR=$((MY_YEAR + 1))
+  if [[ $MY_YEAR == $NY_END ]]; then
+     MONTH_END=$NM_END
+  else 
+     MONTH_END=13
+  fi
+  if [[ $TIME_SCHED == 0 ]]; then
+     MONTH_END=2
+  fi
+  while [ $NM != $MONTH_END ]; do
+    if [[ $TIME_SCHED == 0 ]]; then
+      TIME=Y${NY}
+      echo "Computing YEAR $NY"
+    else
+      TIME=Y${NY}M$( printf ${MTH_FORMAT} ${NM})
+      echo "Computing YEAR $NY MONTH $NM"
+    fi
+#
+# Get forcing and clim for this time
+#
+    LEVEL=0
+    while [ $LEVEL != $NLEVEL ]; do
+      if [[ ${LEVEL} == 0 ]]; then
+        ENDF=
+      else
+        ENDF=.${LEVEL}
+      fi
+      if [[ ${FORCING_FILES} == 1 ]]; then
+        echo "Getting ${FRCFILE}_${ATMOS_FRC}_${TIME}.nc${ENDF} from ${INPUTDIR_SRF}${ENDF}"
+        $LN -sf ${INPUTDIR_SRF}${ENDF}/${FRCFILE}_${ATMOS_FRC}_${TIME}.nc${ENDF} ${FRCFILE}.nc${ENDF}
+      fi
+      if [[ ${BULK_FILES} == 1 ]]; then
+        echo "Getting ${BLKFILE}_${ATMOS_BULK}_${TIME}.nc${ENDF} from ${INPUTDIR_SRF}${ENDF}"
+        $LN -sf ${INPUTDIR_SRF}${ENDF}/${BLKFILE}_${ATMOS_BULK}_${TIME}.nc${ENDF} ${BLKFILE}.nc${ENDF}
+      fi
+      LEVEL=$((LEVEL + 1))
+    done
+#
+# No child climatology or boundary files
+#
+    if [[ ${CLIMATOLOGY_FILES} == 1 ]]; then
+      echo "Getting ${CLMFILE}_${OGCM}_${TIME}.nc from ${INPUTDIR_BRY}"
+      $LN -sf ${INPUTDIR_BRY}/${CLMFILE}_${OGCM}_${TIME}.nc ${CLMFILE}.nc
+    fi
+    if [[ ${BOUNDARY_FILES} == 1 ]]; then
+      echo "Getting ${BRYFILE}_${OGCM}_${TIME}.nc from ${INPUTDIR_BRY}"
+      $LN -sf ${INPUTDIR_BRY}/${BRYFILE}_${OGCM}_${TIME}.nc ${BRYFILE}.nc
+    fi
+#
+# Set the number of time steps for each month 
+# (30 or 31 days + 28 or 29 days for february)
+#
+    NUMTIMES=0
+#
+    if [[ ${NM} == 1 || ${NM} == 3 || ${NM} == 5 || ${NM} == 7 || ${NM} == 8 || ${NM} == 10 || ${NM} == 12 ]]; then
+      NDAYS=31
+    else
+      NDAYS=30
+      if [[ ${NM} == 2 ]]; then
+        NDAYS=28
+# February... check if it is a leap year
+
+        B4=0
+        B100=0
+        B400=0
+
+        B4=$((4 * ( NY / 4 )))
+        B100=$((100 * ( NY / 100 )))
+        B400=$((400 * ( NY / 400 )))
+
+	
+        if [[ $NY == $B4 && ((!($NY == $B100))||($NY == $B400)) ]]; then
+#
+          BSPIN=$(( NY - NY_START + 1 ))
+          if [[ $BSPIN -gt $NY_SPIN ]]; then
+	     echo Leap Year - $NY $B4 $B100 $B400
+             NDAYS=29
+          else
+#.........   SPINUP!!!! In case of spinup I cant have leap years.
+	     echo year $NY should be a Leap Year     
+	     echo 'BUT : Spinup case: no leap year'
+             NDAYS=28
+          fi
+#
+        else
+	  echo Not a Leap Year - $NY $B4 $B100 $B400
+          NDAYS=28	  		  
+        fi
+      fi
+    fi
+    NUMTIMES=$((NDAYS * 24 * 3600))
+    NUMTIMES=$((NUMTIMES / DT))
+
+    NUMAVG=$((NH_AVG*3600))
+    NUMAVG=$((NUMAVG / DT))
+
+    NUMHIS=$((NH_HIS*3600))
+    NUMHIS=$((NUMHIS / DT))
+
+    NUMAVGSURF=$((NH_AVGSURF*3600))
+    NUMAVGSURF=$((NUMAVGSURF / DT))
+
+    NUMHISSURF=$((NH_HISSURF*3600))
+    NUMHISSURF=$((NUMHISSURF / DT))
+
+    NUMSTA=$((NH_STA*3600))
+    NUMSTA=$((NUMSTA / DT))
+
+    echo "YEAR = $NY MONTH = $NM DAYS = $NDAYS DT = $DT NTIMES = $NUMTIMES NUMAVG = $NUMAVG NUMHIS = $NUMHIS"
+# 
+    echo "Writing in ${MODEL}_${TIME}_inter.in"
+    LEVEL=0
+    while [[ $LEVEL != $NLEVEL ]]; do
+      if [[ ${LEVEL} == 0 ]]; then
+        ENDF=
+      else
+        ENDF=.${LEVEL}
+	NUMTIMES=$((T_REF * NUMTIMES))
+      fi
+      echo "USING NUMTIMES = $NUMTIMES"
+      sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/NUMSTA/'$NUMSTA'/' -e 's/NYONLINE/'$NY'/' -e 's/NMONLINE/'$NM'/' < ${MODEL}_inter.in${ENDF} > ${MODEL}_${TIME}_inter.in${ENDF}
+      LEVEL=$((LEVEL + 1))
+    done
+#
+#  COMPUTE
+#
+    date
+    mpirun -np $MPI_NUM_PROCS ./$CODFILE ${MODEL}_${TIME}_inter.in > ${MODEL}_${TIME}.out
+    date
+#
+# Test if the month has finised properly
+    echo "Test ${MODEL}_${TIME}.out"
+    status=`tail -2 ${MODEL}_${TIME}.out | grep DONE | wc -l`
+    if [[ $status == 1 ]]; then
+      echo "All good"
+      echo "XXXX${MYTEST}XXXX"
+    else
+      echo
+      echo "Warning: month not finished properly"
+      echo
+      tail -20 ${MODEL}_${TIME}.out
+      echo
+      echo "Month ${TIME} did not work"
+      echo
+      exit 1
+    fi
+#
+#  Archive
+#
+    LEVEL=0
+    while [[ $LEVEL != $NLEVEL ]]; do
+      if [[ ${LEVEL} == 0 ]]; then
+        ENDF=
+      else
+        ENDF=.${LEVEL}
+      fi
+	  $CP -f ${MODEL}_rst.nc${ENDF} ${INIFILE}.nc${ENDF}
+	  $MV -f ${MODEL}_his.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_${TIME}.nc${ENDF}
+	  $MV -f ${MODEL}_rst.nc${ENDF} ${OUTPUTDIR}/${MODEL}_rst_${TIME}.nc${ENDF}
+	  $MV -f ${MODEL}_avg.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_${TIME}.nc${ENDF}
+	  $MV -f ${MODEL}_his_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_surf_${TIME}.nc${ENDF}
+	  $MV -f ${MODEL}_avg_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_surf_${TIME}.nc${ENDF}
+          $MV -f ${MODEL}_sta.nc${ENDF} ${OUTPUTDIR}/${MODEL}_sta_${TIME}.nc${ENDF}
+      LEVEL=$((LEVEL + 1))
+    done
+    NM=$((NM + 1))
+  done
+  NY=$((NY + 1))
+done
+#
+#############################################################

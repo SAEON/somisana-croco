@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import netCDF4 as netcdf
 import xarray as xr
@@ -121,7 +122,7 @@ class getdata():
 
             if x[i+1]-x0 < 0 or x0-x[i] < 0 :
                 print('### ERROR: indx_bound :: ',x[i], x0, x[i+1], x0-x[i], x[i+1]-x0)
-                exit()
+                sys.exit()
         indx_bound=i
         return indx_bound
 
@@ -162,11 +163,12 @@ class getdata():
             if lon[i]<lon[i-1]:        # between 180/-180 in the
                 lon[i]=lon[i]+360      # middle
         ####
+        dl = 0.2 # buffer around grid in degrees
         if bdy is not None:
-            geolim=[np.min(eval(''.join(('crocogrd.lon_',bdy))))-1,np.max(eval(''.join(('crocogrd.lon_',bdy))))+1,\
-                    np.min(eval(''.join(('crocogrd.lat_',bdy))))-1,np.max(eval(''.join(('crocogrd.lat_',bdy))))+1]
+            geolim=[np.min(eval(''.join(('crocogrd.lon_',bdy))))-dl,np.max(eval(''.join(('crocogrd.lon_',bdy))))+dl,\
+                    np.min(eval(''.join(('crocogrd.lat_',bdy))))-dl,np.max(eval(''.join(('crocogrd.lat_',bdy))))+dl]
         else:
-            geolim=[crocogrd.lonmin()-1,crocogrd.lonmax()+1,crocogrd.latmin()-1,crocogrd.latmax()+1]
+            geolim=[crocogrd.lonmin()-dl,crocogrd.lonmax()+dl,crocogrd.latmin()-dl,crocogrd.latmax()+dl]
 
         jmin=self.indx_bound(lat.data, geolim[2])
         jmax=self.indx_bound(lat.data, geolim[-1])
@@ -178,7 +180,7 @@ class getdata():
             jmax=jmax+2
         else:
             print('North-south extents of the dataset ',lat.data[0],lat.data[-1],' are not sufficient to cover the entire model grid.')
-            exit()
+            sys.exit()
         ####
         imin=self.indx_bound(lon, geolim[0])
         imax=self.indx_bound(lon, geolim[1])
@@ -206,7 +208,7 @@ class getdata():
                 print('Identified periodicity domain in data of ', period,' points out of', lon.shape[0])
             else :
                 print('ERROR: The data does not cover the entire grid. Change your grid definition')
-                exit()
+                sys.exit()
         ##
             shft_west=0
             if imin==-1 :
@@ -235,7 +237,7 @@ class getdata():
                 imax=imax+1
             else:
                 print('ERROR: Data longitude covers 360 degrees, but still cannot find  starting and ending indices.')
-                exit()
+                sys.exit()
 
         print('Bounding indices of the relevant part to be extracted from the entire dataset:\n', 
               'imin,imax =', imin,imax,'out of', lon.shape[0],'jmin,jmax =',jmin,jmax, 'out of',lat.shape[0])
@@ -262,7 +264,7 @@ class getdata():
                     lon_tmp[i]=lon[i+ishft]
             else:
                 print('Error in shifting algoritm')
-                exit()
+                sys.exit()
             (lon,lat)=np.meshgrid(lon_tmp,lat_tmp)
         ###
         elif imin>imax:
