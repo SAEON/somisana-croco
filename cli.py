@@ -10,18 +10,16 @@ Feel free to add more functions from the repo as we need them in the cli
 import argparse
 import sys, os
 from datetime import datetime, timedelta
-<<<<<<< Updated upstream
-from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini_fcst,make_bry_fcst
-=======
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
->>>>>>> Stashed changes
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 from download.cmems import download_glorys, download_mercator
 from download.gfs import download_gfs_atm
 from download.hycom import download_hycom
+from crocotools_py.regridding_cfc import regrid1_cf_compliant,regrid2_cf_compliant,regrid3_cf_compliant
+
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
     try:
@@ -38,7 +36,7 @@ def parse_int(value):
         raise argparse.ArgumentTypeError(f"Invalid integer value: {value}")
 
 def parse_list(value):
-    return [x.strip() for x in value.split(',')]
+    return [float(x) for x in value.split(',')]
 
 def parse_bool(s: str) -> bool:
     try:
@@ -251,8 +249,8 @@ def main():
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
-    parser_regrid_tier2.add_argument('--depths', type=parse_list,
-                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
+    parser_regrid_tier2.add_argument('--depths', type=int, nargs='+',
+                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999], # Doesn't work if you do not include zero. See how it is done in regriddding for the CF-complient. 
                          help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)')
     def regrid_tier2_handler(args):
         regrid_tier2(args.fname, args.fname_out, depths = args.depths)
@@ -285,7 +283,7 @@ def main():
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
-    parser_get_ts_multivar.add_argument('--depths', type=parse_list, 
+    parser_get_ts_multivar.add_argument('--depths', type=int, nargs='+',  
                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
                         help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')
@@ -307,7 +305,7 @@ def main():
     parser_make_tides_fcst.add_argument('--output_dir', required=True, type=str,
             help='Path to where the forcing file will be saved. This directory also needs a crocotools_param.py file')
     parser_make_tides_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
-            help='datetime of operational workflow initialisation in format i.e. "YYYY-MM-DD HH:MM:SS"')
+            help='operational workflow initialisation time in format "YYYY-MM-DD HH:MM:SS"')
     parser_make_tides_fcst.add_argument('--hdays', required=True, type=int,
             help='Number of days before run_date, corresponding to the run start time')
     parser_make_tides_fcst.add_argument('--Yorig', required=True, type=int,
@@ -360,23 +358,30 @@ def main():
         
     parser_make_tides_inter.set_defaults(func=make_tides_inter_handler)
     
-
     # ----------------
     # make_ini_fcst
     # ----------------
     parser_make_ini_fcst = subparsers.add_parser('make_ini_fcst',
-            help='Make ocean initial conditions for the CROCO operational model.')
             help='Make initial condition file from OGCM data as part of the CROCO operational workflow.')
     parser_make_ini_fcst.add_argument('--input_file', required=True, type=str, 
-            help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
+            help='Path and filename of the OGCM input file i.e. "path/to/file/direcory/and/filename.nc"')
     parser_make_ini_fcst.add_argument('--output_dir', required=True, type=str,
-            help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
+            help='Path to where the ini file will be saved. This directory also needs a crocotools_param.py file')
     parser_make_ini_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
-            help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
+            help='operational workflow initialisation time in format "YYYY-MM-DD HH:MM:SS"')
     parser_make_ini_fcst.add_argument('--hdays', required=True, type=int,
-            help='Number of days to develop the boundary file hindcast')
+            help='Number of days before run_date to initialise model')
+    parser_make_ini_fcst.add_argument('--Yorig', required=True, type=int,
+            help='the Yorig value used in setting up the CROCO model')
     def make_ini_fcst_handler(args):
-        make_ini_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        fname_out = params.ini_prefix + args.run_date.strftime('_%Y%m%d_%H.nc')
+        ini_date = args.run_date - timedelta(days=args.hdays)
+        
+        make_ini(args.input_file,args.output_dir,ini_date,args.Yorig,fname_out)
+    
     parser_make_ini_fcst.set_defaults(func=make_ini_fcst_handler)
     
     # ----------------
@@ -409,18 +414,34 @@ def main():
     # make_bry_fcst
     # ----------------
     parser_make_bry_fcst = subparsers.add_parser('make_bry_fcst',
-            help='Make ocean boundary conditions for the CROCO operational model.')
+            help='Make ocean boundary conditions as part of the CROCO operational workflow.')
     parser_make_bry_fcst.add_argument('--input_file', required=True, type=str, 
             help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
-            help='Path and filename of input OGCM file i.e. "path/to/file/direcory/and/filename.nc"')
     parser_make_bry_fcst.add_argument('--output_dir', required=True, type=str,
-            help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
+            help='Path to where the bry file will be saved. This directory also needs a crocotools_param.py file')
     parser_make_bry_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
-            help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
+            help='Operational workflow initialisation time in format "YYYY-MM-DD HH:MM:SS"')
     parser_make_bry_fcst.add_argument('--hdays', required=True, type=int,
-            help='Number of days to develop the boundary file hindcast')
+            help='Number of hindcast days to add to the boundary file')
+    parser_make_bry_fcst.add_argument('--fdays', required=True, type=int,
+            help='Number of forecast days to add to the boundary file')
+    parser_make_bry_fcst.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model')
     def make_bry_fcst_handler(args):
-        make_bry_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        # create a 2 day buffer around the time span of the CROCO simulation
+        # (2 days is just to be safe - the nearest available times to ini_date and end_date are used in make_bry())
+        hdays = args.hdays + 2
+        fdays = args.fdays + 2
+        
+        fname_out = params.bry_prefix + args.run_date.strftime('_%Y%m%d_%H.nc')
+        ini_date = args.run_date - timedelta(days=hdays)
+        end_date = args.run_date + timedelta(days=fdays)
+        
+        make_bry(args.input_file,args.output_dir,ini_date,end_date,args.Yorig,fname_out)
+        
     parser_make_bry_fcst.set_defaults(func=make_bry_fcst_handler)
     
     # ----------------
@@ -437,7 +458,7 @@ def main():
     parser_make_bry_inter.add_argument('--month_end', required=True, type=str,
             help='last month in the interannual run in format "YYYY-MM"')
     parser_make_bry_inter.add_argument('--Yorig', required=True, type=int,
-                        help='the Yorig value used in setting up the CROCO model')
+            help='the Yorig value used in setting up the CROCO model')
     def make_bry_inter_handler(args):
         
         sys.path.append(args.output_dir)
@@ -461,7 +482,7 @@ def main():
             # (to do this I think we'd need to create the input_file list with file names which do exist,
             # and then we'd need a check inside make_bry() where we check that ini_date and end_date are 
             # covered by the OGCM files, and if not we'd pad with the nearest available values)
-            # But I'm in a hurry so for now we'll just make sure that these files exist
+            # But I'm in a hurry so for now we'll just make sure that these files do exist
             if not os.path.exists(fname_month_prev):
                 raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_prev)
             if not os.path.exists(fname_month_now):
@@ -534,6 +555,8 @@ def main():
         regrid3_cf_compliant(args.fname, args.info_dir, args.spacing, args.out_dir)
     parser_regrid3_cfc.set_defaults(func=regrid3_cfc_handler)
     
+
+
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
@@ -542,4 +565,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
