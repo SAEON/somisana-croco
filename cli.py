@@ -10,7 +10,12 @@ Feel free to add more functions from the repo as we need them in the cli
 import argparse
 import sys, os
 from datetime import datetime, timedelta
+<<<<<<< Updated upstream
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini_fcst,make_bry_fcst
+=======
+import calendar
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
+>>>>>>> Stashed changes
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
@@ -357,48 +362,177 @@ def main():
     
 
     # ----------------
-    # make_ini
+    # make_ini_fcst
     # ----------------
     parser_make_ini_fcst = subparsers.add_parser('make_ini_fcst',
             help='Make ocean initial conditions for the CROCO operational model.')
-
+            help='Make initial condition file from OGCM data as part of the CROCO operational workflow.')
     parser_make_ini_fcst.add_argument('--input_file', required=True, type=str, 
             help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
-
     parser_make_ini_fcst.add_argument('--output_dir', required=True, type=str,
             help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
-
     parser_make_ini_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
             help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
-
     parser_make_ini_fcst.add_argument('--hdays', required=True, type=int,
             help='Number of days to develop the boundary file hindcast')
-
     def make_ini_fcst_handler(args):
         make_ini_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
     parser_make_ini_fcst.set_defaults(func=make_ini_fcst_handler)
     
     # ----------------
-    # make_bry
+    # make_ini_inter
+    # ----------------
+    parser_make_ini_inter = subparsers.add_parser('make_ini_inter',
+            help='Make initial condition file from OGCM data for an inter-annual run.')
+    parser_make_ini_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the monthly OGCM files')
+    parser_make_ini_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the ini file will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_ini_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_ini_inter.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model')
+    def make_ini_inter_handler(args):
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        ini_date = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
+        fname_in = os.path.join(args.input_dir, ini_date.strftime(params.input_file_fmt))
+        
+        fname_out = params.ini_prefix + ini_date.strftime('_Y%YM%m.nc')
+        
+        make_ini(fname_in,args.output_dir,ini_date,args.Yorig,fname_out)
+    
+    parser_make_ini_inter.set_defaults(func=make_ini_inter_handler)
+    
+    # ----------------
+    # make_bry_fcst
     # ----------------
     parser_make_bry_fcst = subparsers.add_parser('make_bry_fcst',
             help='Make ocean boundary conditions for the CROCO operational model.')
-
     parser_make_bry_fcst.add_argument('--input_file', required=True, type=str, 
             help='Path and filename of input file i.e. "path/to/file/direcory/and/filename.nc"')
-
+            help='Path and filename of input OGCM file i.e. "path/to/file/direcory/and/filename.nc"')
     parser_make_bry_fcst.add_argument('--output_dir', required=True, type=str,
             help='Directory of where the boundary file will be saved i.e. "path/to/save/directory/"')
-
     parser_make_bry_fcst.add_argument('--run_date', required=True, type=parse_datetime, 
             help='Reference date in datetime format i.e. "YYYY-MM-DD HH:MM:SS"')
-
     parser_make_bry_fcst.add_argument('--hdays', required=True, type=int,
             help='Number of days to develop the boundary file hindcast')
-
     def make_bry_fcst_handler(args):
         make_bry_fcst(args.input_file,args.output_dir,args.run_date,args.hdays)
     parser_make_bry_fcst.set_defaults(func=make_bry_fcst_handler)
+    
+    # ----------------
+    # make_bry_inter
+    # ----------------
+    parser_make_bry_inter = subparsers.add_parser('make_bry_inter',
+            help='Make monthly ocean boundary condition files for CROCO interannual runs')
+    parser_make_bry_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the monthly OGCM files')
+    parser_make_bry_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing files will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_bry_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_bry_inter.add_argument('--month_end', required=True, type=str,
+            help='last month in the interannual run in format "YYYY-MM"')
+    parser_make_bry_inter.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model')
+    def make_bry_inter_handler(args):
+        
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        month_now = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
+        month_end = datetime.strptime(args.month_end+'-01','%Y-%m-%d')
+        
+        while month_now <= month_end:
+            
+            print('working on '+month_now.strftime('%Y-%m'))
+            
+            # define a list of 3 input files - last month, this month and next month
+            # This is to ensure that we always have boundary data for the start and end of the CROCO run for this month
+            month_prev = month_now - timedelta(days=10) # an arbitrary date in the pervious month
+            month_next = month_now + timedelta(days=32) # 32 days ensures we get to the next month
+            fname_month_prev = os.path.join(args.input_dir, month_prev.strftime(params.input_file_fmt))
+            fname_month_now = os.path.join(args.input_dir, month_now.strftime(params.input_file_fmt))
+            fname_month_next = os.path.join(args.input_dir, month_next.strftime(params.input_file_fmt))
+            # We could handle the case where the user doesn't have files for the previous and next month
+            # (to do this I think we'd need to create the input_file list with file names which do exist,
+            # and then we'd need a check inside make_bry() where we check that ini_date and end_date are 
+            # covered by the OGCM files, and if not we'd pad with the nearest available values)
+            # But I'm in a hurry so for now we'll just make sure that these files exist
+            if not os.path.exists(fname_month_prev):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_prev)
+            if not os.path.exists(fname_month_now):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_now)
+            if not os.path.exists(fname_month_next):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_next)
+            input_file=[fname_month_prev,
+                        fname_month_now,
+                        fname_month_next]
+            
+            # define ini_date and end_date using a 1 day buffer either side of the month
+            ini_date = month_now - timedelta(days=1)
+            day_end = calendar.monthrange(month_now.year,month_now.month)[1]
+            end_date = datetime(month_now.year,month_now.month,day_end) + timedelta(days=2)    
+            
+            # make the boundary file for this month
+            fname_out = params.bry_prefix + month_now.strftime('_Y%YM%m.nc')
+            make_bry(input_file,args.output_dir,ini_date,end_date,args.Yorig,fname_out)
+            
+            month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
+        
+    parser_make_bry_inter.set_defaults(func=make_bry_inter_handler)
+    
+    # ----------------
+    # Regrid Tier 1 CF-Compliant
+    # ----------------
+    parser_regrid1_cfc = subparsers.add_parser('regrid1_cfc',
+            help='Tier 1 regridding of a raw CROCO model output file/s: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> adds a depth variable providing the depths of each sigma level at each time-step -> saves outputs in a CF-Compliant netCDF that can be published')
+    parser_regrid1_cfc.add_argument('--fname', required=True, type=str,nargs='+', 
+            help='Native CROCO filename. Can be filename (fname = /path/to/file.nc), list of files (fname = [file1,file2,file2]) or wildcard (fname = /path/to/*.nc).')
+    parser_regrid1_cfc.add_argument('--info_dir', required=True, 
+            help='Path to directory containing the configuration information (crocotools_param.py and croco_cf_compliance.py).')
+    parser_regrid1_cfc.add_argument('--out_dir', required=False, default=None, 
+            help='Save directory. If out_dir is None, then a new directory is made where fname is.')
+    def regrid1_cfc_handler(args):
+        regrid1_cf_compliant(args.fname, args.info_dir, args.out_dir)
+    parser_regrid1_cfc.set_defaults(func=regrid1_cfc_handler)
+    
+    # ----------------
+    # Regrid Tier 2 CF-Compliant
+    # ----------------
+    parser_regrid2_cfc = subparsers.add_parser('regrid2_cfc',
+            help='Tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z-levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values. Outputs are stored in CF-Compliant netCDF files that can be pubplished.')
+    parser_regrid2_cfc.add_argument('--fname', required=True, type=str,nargs='+',
+            help='Native CROCO filename. Can be filename (fname = /path/to/file.nc), list of files (fname = [file1,file2,file2]) or wildcard (fname = /path/to/*.nc).')
+    parser_regrid2_cfc.add_argument('--info_dir', required=True,
+            help='Path to directory containing the configuration information (crocotools_param.py and croco_cf_compliance.py).')
+    parser_regrid2_cfc.add_argument('--depths',required=False,default=None,type=parse_list,
+            help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer). Usually this is set at: depths = [0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999]')
+    parser_regrid2_cfc.add_argument('--out_dir', required=False,default=None,
+            help='Save directory. If out_dir is None, then a new directory is made where fname is.')
+    def regrid2_cfc_handler(args):
+        regrid2_cf_compliant(args.fname, args.info_dir, args.depths, args.out_dir)
+    parser_regrid2_cfc.set_defaults(func=regrid2_cfc_handler)
+    
+    # ----------------
+    # Regrid Tier 3 CF-Compliant
+    # ----------------
+    parser_regrid3_cfc = subparsers.add_parser('regrid3_cfc',
+            help='Tier 3 regridding of a CROCO output: takes the output of regrid-tier2 as input and regrids the curvilinear grid to rectilinear -> output variables are the same as tier 1 and 2, only now longitude and lititude are 1-Dimensional arrays -> Outputs are stored in CF-Compliant netCDF files that can be pubplished -> Outputs are mostly used for visualisation and web display and not for science due to the interpolation.')
+    parser_regrid3_cfc.add_argument('--fname', required=True, type=str,nargs='+',
+            help='Input filename from tier 2 regridding. Can be filename (fname = /path/to/file.nc), list of files (fname = [file1,file2,file2]) or wildcard (fname = /path/to/*.nc).')
+    parser_regrid3_cfc.add_argument('--info_dir', required=True,
+            help='Path to directory that contains the configuration information (crocotools_param.py and croco_cf_compliance.py).')
+    parser_regrid3_cfc.add_argument('--spacing',  required=False, type=float, default=None,
+            help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
+    parser_regrid3_cfc.add_argument('--out_dir', required=False,default=None,
+            help='Save directory. If out_dir is None, then a new directory is made where fname is.')
+    def regrid3_cfc_handler(args):
+        regrid3_cf_compliant(args.fname, args.info_dir, args.spacing, args.out_dir)
+    parser_regrid3_cfc.set_defaults(func=regrid3_cfc_handler)
     
     args = parser.parse_args()
     if hasattr(args, 'func'):
