@@ -283,7 +283,7 @@ def main():
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
-    parser_get_ts_multivar.add_argument('--depths', type=parse_list,
+    parser_get_ts_multivar.add_argument('--depths',required=False, type=parse_list,
                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
                         help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')

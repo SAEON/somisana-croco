@@ -135,6 +135,7 @@ jobs:
       DOMAIN: ${{ matrix.domain }}
       OGCM: ${{ matrix.ogcm }}
       HDAYS: 5
+      FDAYS: 5
   
   # run the model, do the postprocessing, archive the output
   #
