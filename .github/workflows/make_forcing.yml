@@ -44,7 +44,7 @@ env:
   DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
   INPUT_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data/${{ inputs.OGCM }}
-  OUTPUT_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/ ${{ inputs.MODEL }}/${{ inputs.OGCM }}
+  OUTPUT_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }}
 
 jobs:
   make_ogcm:
@@ -89,9 +89,9 @@ jobs:
             ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest 
             make_bry_fcst 
               --input_file /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc
-              --output_dir /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/ ${{ inputs.MODEL }}/${{ inputs.OGCM }}/
+              --output_dir /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }}/
               --run_date ${{ inputs.RUN_DATE }}
               --hdays ${{ inputs.HDAYS }}
               --fdays ${{ inputs.FDAYS }}
               --Yorig 2000
-            #  -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},1); exit;\""
+              #              -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},1); exit;\""
