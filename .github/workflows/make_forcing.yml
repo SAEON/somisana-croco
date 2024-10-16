@@ -67,6 +67,7 @@ jobs:
         
       - name: generate the initial file
         id: make_ini_ogcm_file
+        run: |
           docker run
             --rm
             -v ${{ env.INPUT_DIR }}:/home/matlab/somisana
