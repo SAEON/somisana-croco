@@ -249,8 +249,8 @@ def main():
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
-    parser_regrid_tier2.add_argument('--depths', type=int, nargs='+',
-                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999], # Doesn't work if you do not include zero. See how it is done in regriddding for the CF-complient. 
+    parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
+                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],  
                          help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)')
     def regrid_tier2_handler(args):
         regrid_tier2(args.fname, args.fname_out, depths = args.depths)
