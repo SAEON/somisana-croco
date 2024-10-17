@@ -70,12 +70,12 @@ jobs:
         run: |
           docker run \
             --rm \
-            -v ${{ env.INPUT_DIR }}:/tmp/input_dir \
-            -v ${{ env.OUTPUT_DIR }}:/tmp/output_dir \
+            -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
+            -v ${{ env.OUTPUT_DIR }}:/mnt/tmp/output_dir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             make_ini_fcst \
-              --input_file /tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
-              --output_dir /tmp/output_dir/ \
+              --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
+              --output_dir /mnt/tmp/output_dir/ \
               --run_date ${{ inputs.RUN_DATE }} \
               --hdays ${{ inputs.HDAYS }} \
               --Yorig 2000
@@ -85,13 +85,13 @@ jobs:
         run: |
           docker run \
             --rm \
-            -v ${{ env.INPUT_DIR }}:/tmp/input_dir \
-            -v ${{ env.INPUT_DIR }}:/tmp/output_dir \
-            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+            -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
+            -v ${{ env.INPUT_DIR }}:/mnt/tmp/output_dir \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             make_bry_fcst \
-              --input_file /tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
-              --output_dir /tmp/output_dir/ \
+              --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
+              --output_dir /mnt/tmp/output_dir/ \
               --run_date ${{ inputs.RUN_DATE }} \
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
-              --Yorig 2000 
+              --Yorig 2000

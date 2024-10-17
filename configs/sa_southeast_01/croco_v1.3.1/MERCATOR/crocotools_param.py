@@ -23,7 +23,7 @@ ini_prefix = 'croco_ini_MERCATOR'
 
 # Bry filename prefinformations
 bry_prefix = 'croco_bry_MERCATOR' 
-obc_dict = dict(south=1, west=1, east=0, north=1) # open boundaries (1=open , [S W E N])
+obc_dict = dict(south=1, west=1, east=1, north=0) # open boundaries (1=open , [S W E N])
 cycle_bry=0
 
 
