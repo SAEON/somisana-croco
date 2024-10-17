@@ -112,7 +112,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
-      COMP: C03
+      COMP: C04
       # in future we may want to use different compile options for each domain
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
       # and then tease out the domain and compile option inside prep_domain.yml
@@ -159,7 +159,7 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C03
+      COMP: C04
       INP: I99
       BLK: GFS
       FRC: ''
@@ -178,7 +178,7 @@ jobs:
         #      MODEL: croco_v1.3.1
         #      DOMAIN: sa_southeast_01
         #      VERSION: v1.0
-        #      COMP: C03
+        #      COMP: C04
         #      INP: I99
         #      BLK: GFS
         #      FRC: ''
@@ -203,7 +203,7 @@ jobs:
   #      MODEL: croco_v1.3.1
   #      DOMAIN: sa_west_02
   #      VERSION: v1.0
-  #      COMP: C03
+  #      COMP: C04
   #      INP: I99
   #      BLK: SAWS
   #      FRC: ''
@@ -222,7 +222,7 @@ jobs:
         #      MODEL: croco_v1.3.1
         #      DOMAIN: sa_southeast_01
         #      VERSION: v1.0
-        #      COMP: C03
+        #      COMP: C04
         #      INP: I99
         #      BLK: SAWS
         #      FRC: ''

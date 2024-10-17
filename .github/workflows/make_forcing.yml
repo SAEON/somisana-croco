@@ -68,31 +68,30 @@ jobs:
       - name: generate the initial file
         id: make_ini_ogcm_file
         run: |
-          docker run
-            --rm
-            -v ${{ env.INPUT_DIR }}:/home/matlab/somisana
-            -v ${{ env.OUTPUT_DIR }}:/home/matlab/somisana
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest
-            make_ini_fcst
-              --input_file /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc
-              --output_dir /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }}/
-              --run_date ${{ inputs.RUN_DATE }}
-              --hdays ${{ inputs.HDAYS }}
+          docker run \
+            --rm \
+            -v ${{ env.INPUT_DIR }}:/tmp/input_dir \
+            -v ${{ env.OUTPUT_DIR }}:/tmp/output_dir \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            make_ini_fcst \
+              --input_file /tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
+              --output_dir /tmp/output_dir/ \
+              --run_date ${{ inputs.RUN_DATE }} \
+              --hdays ${{ inputs.HDAYS }} \
               --Yorig 2000
 
       - name: generate the OGCM forcing file (and ini file which will only be used if a suitable restart file isn't available)
         id: make_ogcm_file
         run: |
-          docker run 
-            --rm
-            -v ${{ env.INPUT_DIR }}:/home/matlab/somisana 
-            -v ${{ env.INPUT_DIR }}:/home/matlab/somisana
-            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest 
-            make_bry_fcst 
-              --input_file /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc
-              --output_dir /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }}/
-              --run_date ${{ inputs.RUN_DATE }}
-              --hdays ${{ inputs.HDAYS }}
-              --fdays ${{ inputs.FDAYS }}
-              --Yorig 2000
-              #              -c "cd /home/matlab/somisana/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }} && matlab -nodisplay -nosplash -nodesktop -r \"start; make_${{ inputs.OGCM }}_ocims(${{ steps.format_date.outputs.value }},${{ inputs.HDAYS }},1); exit;\""
+          docker run \
+            --rm \
+            -v ${{ env.INPUT_DIR }}:/tmp/input_dir \
+            -v ${{ env.INPUT_DIR }}:/tmp/output_dir \
+            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
+            make_bry_fcst \
+              --input_file /tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
+              --output_dir /tmp/output_dir/ \
+              --run_date ${{ inputs.RUN_DATE }} \
+              --hdays ${{ inputs.HDAYS }} \
+              --fdays ${{ inputs.FDAYS }} \
+              --Yorig 2000 
