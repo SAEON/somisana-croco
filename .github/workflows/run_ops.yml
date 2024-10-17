@@ -30,7 +30,7 @@ jobs:
     if: ${{ github.event.schedule || github.event.inputs.build_images == 'true' }}  
     strategy:
       matrix: # the 'matrix' strategy allows us to build all three docker images in parallel using the same reusable workflow
-        image_id: ['cli', 'run', 'matlab']
+        image_id: ['cli', 'run']
     uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
       IMAGE_ID: ${{ matrix.image_id }}
