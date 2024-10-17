@@ -22,6 +22,7 @@ source ${INPUTDIR_IN}/myenv_in.sh
 INPUTDIR_SRF=$RUNDIR/$ATMOS_BULK
 INPUTDIR_BRY=$RUNDIR/$OGCM
 INPUTDIR_GRD=$RUNDIR/GRID
+INPUTDIR_TID=$RUNDIR/$TIDE_FRC
 
 MODEL=croco
 RUNNAME=${EXENAME}_${INNAME}_${OGCM}_${ATMOS_BULK}
@@ -39,6 +40,7 @@ fi
 #
 GRDFILE=${MODEL}_grd
 FRCFILE=${MODEL}_frc
+TIDFILE=${MODEL}_frc
 BLKFILE=${MODEL}_blk
 INIFILE=${MODEL}_ini
 CLMFILE=${MODEL}_clm
@@ -80,7 +82,6 @@ chmod u+x $CODFILE
 #$CP -f $INPUTDIR_IN/AGRIF_FixedGrids.in $SCRATCHDIR
 #echo "Getting stations file from $INPUTDIR_IN"
 #$CP -f $INPUTDIR_IN/stations.in $SCRATCHDIR
-#$CP -f $TIDEDIR/frc.nc $SCRATCHDIR
 
 #
 # Get the netcdf files for run initiation
@@ -155,6 +156,10 @@ while [ $NY != $NY_END ]; do
       if [[ ${BULK_FILES} == 1 ]]; then
         echo "Getting ${BLKFILE}_${ATMOS_BULK}_${TIME}.nc${ENDF} from ${INPUTDIR_SRF}${ENDF}"
         $LN -sf ${INPUTDIR_SRF}${ENDF}/${BLKFILE}_${ATMOS_BULK}_${TIME}.nc${ENDF} ${BLKFILE}.nc${ENDF}
+      fi
+      if [[ ${TIDE_FILES} == 1 ]]; then
+        echo "Getting ${TIDFILE}_${TIDE_FRC}_${TIME}.nc${ENDF} from ${INPUTDIR_TID}${ENDF}"
+        $LN -sf ${INPUTDIR_TID}${ENDF}/${TIDFILE}_${TIDE_FRC}_${TIME}.nc${ENDF} ${FRCFILE}.nc${ENDF}
       fi
       LEVEL=$((LEVEL + 1))
     done
