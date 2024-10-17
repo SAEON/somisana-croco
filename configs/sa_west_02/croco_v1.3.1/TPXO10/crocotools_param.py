@@ -1,8 +1,7 @@
 '''
-Namelist file for generating tidal forcing files
+params required by make_tides()
 '''
 inputdata = 'tpxo10' # Input data dictionnary as defined in the Readers/tides_reader.py
-input_dir = '/home/gfearon/code/somisana-croco/DATASETS_CROCOTOOLS/TPXO10/' # where the raw tpx files are located
 input_file = '' # Leave empty if you have multiple files
 input_type = 'Re_Im' # Format of the input data 'Amp_phase'or 'Re_Im'
 multi_files  = True # Set to True if several input files
