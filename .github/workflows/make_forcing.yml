@@ -53,7 +53,7 @@ jobs:
       - name: make temporary directory for the reformatted OGCM file
         # fyi this is not needed for the blk files as the reformated blk file is saved in the directory where the data are downloaded
         run: |
-          rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
+          rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco 
           mkdir -p ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
           chmod -R 775 ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
@@ -61,9 +61,9 @@ jobs:
       - name: Format RUN_DATE
         id: format_date
         run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'"
-          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+          run_date=${{ inputs.RUN_DATE }} 
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}'" 
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT 
         
       - name: generate the initial file
         id: make_ini_ogcm_file
@@ -76,7 +76,7 @@ jobs:
             make_ini_fcst \
               --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
               --output_dir /mnt/tmp/output_dir/ \
-              --run_date ${{ inputs.RUN_DATE }} \
+              --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --Yorig 2000
 
@@ -91,7 +91,7 @@ jobs:
             make_bry_fcst \
               --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
               --output_dir /mnt/tmp/output_dir/ \
-              --run_date ${{ inputs.RUN_DATE }} \
+              --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
               --Yorig 2000
