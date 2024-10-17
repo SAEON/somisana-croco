@@ -44,20 +44,11 @@ env:
   DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
   INPUT_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data/${{ inputs.OGCM }}
-  OUTPUT_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.OGCM }}
 
 jobs:
   make_ogcm:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
-      - name: make temporary directory for the reformatted OGCM file
-        # fyi this is not needed for the blk files as the reformated blk file is saved in the directory where the data are downloaded
-        run: |
-          rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco 
-          mkdir -p ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-          chown -R :runners ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-          chmod -R 775 ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/tmp_for_croco
-
       - name: Format RUN_DATE
         id: format_date
         run: |
@@ -71,11 +62,11 @@ jobs:
           docker run \
             --rm \
             -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
-            -v ${{ env.OUTPUT_DIR }}:/mnt/tmp/output_dir \
+            -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             make_ini_fcst \
               --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
-              --output_dir /mnt/tmp/output_dir/ \
+              --output_dir /mnt/tmp/config_dir/${{ inputs.OGCM }}/ \
               --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --Yorig 2000
@@ -86,11 +77,11 @@ jobs:
           docker run \
             --rm \
             -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
-            -v ${{ env.INPUT_DIR }}:/mnt/tmp/output_dir \
+            -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             make_bry_fcst \
               --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
-              --output_dir /mnt/tmp/output_dir/ \
+              --output_dir /mnt/tmp/config_dir/ \
               --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
