@@ -60,7 +60,7 @@ jobs:
         id: make_ini_ogcm_file
         run: |
           docker run \
-            --rm \
+            --sudo rm \
             -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
             -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -75,7 +75,7 @@ jobs:
         id: make_ogcm_file
         run: |
           docker run \
-            --rm \
+            --sudo rm \
             -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
             -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \

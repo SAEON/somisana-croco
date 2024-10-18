@@ -76,7 +76,7 @@ jobs:
       - name: create the run directory
         id: make_dir
         run: |
-          rm -rf ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}  
+          sudo rm -rf ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}  
           mkdir -p ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/{scratch,output,postprocess}
           chown -R :runners ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
           chmod -R 775 ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
@@ -260,7 +260,7 @@ jobs:
             cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
             # run the model
             docker run \
-              --rm \
+              --sudo rm \
               --entrypoint /bin/bash \
               -v ${{ env.CONFIG_DIR }}:/home/somisana \
               ghcr.io/saeon/somisana-croco_run_main:latest \
@@ -287,7 +287,7 @@ jobs:
   #          HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
   #          #
   #          docker run \
-  #            --rm \
+  #            -- sudo rm \
   #            --entrypoint /bin/bash \
   #            -v ${{ env.RUN_DIR }}:/tmp \
   #            ghcr.io/saeon/somisana-croco_run_main:latest \
@@ -300,7 +300,7 @@ jobs:
   #        run: |
   #          docker run \
   #            --user $(id -u):$(id -g) \
-  #            --rm \
+  #            --sudo rm \
   #            -v ${{ env.RUN_DIR }}:/tmp \
   #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
   #              regrid_tier1 \
@@ -313,7 +313,7 @@ jobs:
   #        run: |
   #          docker run \
   #            --user $(id -u):$(id -g) \
-  #            --rm \
+  #            --sudo rm \
   #            -v ${{ env.RUN_DIR }}:/tmp \
   #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
   #              regrid_tier2 \
@@ -326,7 +326,7 @@ jobs:
   #        run: |
   #          docker run \
   #            --user $(id -u):$(id -g) \
-  #            --rm \
+  #            --sudo rm \
   #            -v ${{ env.RUN_DIR }}:/tmp \
   #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
   #              regrid_tier3 \
@@ -353,7 +353,7 @@ jobs:
   #        continue-on-error: true
   #        run: |
   #          docker run \
-  #            --rm \
+  #            --sudo rm \
   #            -v ${{ env.RUN_DIR }}:/tmp \
   #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
   #              crocplot \
@@ -365,7 +365,7 @@ jobs:
   #        continue-on-error: true
   #        run: |
   #          docker run \
-  #            --rm \
+  #            --sudo rm \
   #            -v ${{ env.RUN_DIR }}:/tmp \
   #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
   #              crocplot \
@@ -419,5 +419,5 @@ jobs:
   #        run: |
   #          # the .nc files we previously copied files from elsewhere into the scratch directory are redundant
   #          # (it's useful to just dump them in scratch but are just copies so we don't need to keep them at all)
-  #          rm -f ${{ env.RUN_DIR }}/scratch/*.nc
+  #          sudo rm -f ${{ env.RUN_DIR }}/scratch/*.nc
  
