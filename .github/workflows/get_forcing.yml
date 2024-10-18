@@ -63,7 +63,7 @@ jobs:
           command: |
             if [ ! -f /mnt/somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
               docker run \
-                --sudo rm \
+                --rm \
                 -v /home/giles/mercator_download:/tmp/download \
                 ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
                 download_mercator \
@@ -86,7 +86,7 @@ jobs:
           # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
           # so I'm using the cli docker image to remove the files it originally created
           docker run \
-            --sudo rm \
+            --rm \
             --entrypoint /bin/bash \
             -v /home/giles/mercator_download/:/mnt/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -124,7 +124,7 @@ jobs:
 #          command: >-
 #            docker run \
 #              --user $(id -u):$(id -g) \
-#              --sudo rm \
+#              --rm \
 #              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
 #              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
 #              download_mercator \
@@ -171,7 +171,7 @@ jobs:
           command: >-
             docker run \
               --user $(id -u):$(id -g) \
-              --sudo rm \
+              --rm \
               -v ${{ env.DATA_DIR }}/GFS:/tmp \
               ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               download_gfs_atm \
@@ -184,7 +184,7 @@ jobs:
 #      - name: prepare a single netcdf file from the downloaded grb files
 #        run: >-
 #          docker run \
-#            --sudo rm \
+#            --rm \
 #            --mac-address 02:42:ff:ff:ff:ff \
 #            --entrypoint /bin/bash \
 #            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
@@ -196,7 +196,7 @@ jobs:
         run: |
           docker run \
             --user $(id -u):$(id -g) \
-            --sudo rm \
+            --rm \
             -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             reformat_gfs_atm \
@@ -231,7 +231,7 @@ jobs:
         run: |
           docker run \
             --user $(id -u):$(id -g) \
-            --sudo rm \
+            --rm \
             -v ${{ env.DATA_DIR }}:/tmp/dataDir \
             -v /mnt/saws-um-data:/tmp/sawsDir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
