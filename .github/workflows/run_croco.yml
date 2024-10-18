@@ -164,8 +164,8 @@ jobs:
     steps:
       - name: copy OGCM file to scratch dir
         run: |
-          ogcm_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_clm_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
-          cp ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_clm.nc
+          ogcm_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_bry_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
+          cp ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_bry.nc
       - name: copy ini file to scratch dir, if made from OGCM
         run: |
           ogcm_ini=${{ env.ogcm_ini }}
