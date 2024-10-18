@@ -81,7 +81,7 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             make_bry_fcst \
               --input_file /mnt/tmp/input_dir/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
-              --output_dir /mnt/tmp/config_dir/ \
+              --output_dir /mnt/tmp/config_dir/${{ inputs.OGCM }}/ \
               --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
