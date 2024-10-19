@@ -270,154 +270,154 @@ jobs:
           chmod -R 775 ${{ env.RUN_DIR }}
 
   # postprocess the raw croco output files into something more user-friendly
-  #  postprocess:
-  #    needs: [setup_rundir,run_croco]
-  #    env:
-  #      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
-  #    runs-on: ${{ inputs.RUNNER_NAME }}
-  #    steps:
-  #      - name: subset the raw CROCO NetCDF file for archiving
-  #        continue-on-error: true
-  #        run: |
-  #          # we only want to archive the nowcast to forecast, so we chop off the hindcast part of the output
-  #          # this is dependent on the avg output frequency, which we read from the myenv_in.sh file
-  #          source ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/myenv_in.sh
-  #          HINDCAST_DAYS=${{ inputs.HDAYS }}
-  #          HINDCAST_HOURS=$((HINDCAST_DAYS * 24))
-  #          HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
-  #          #
-  #          docker run \
-  #            -- rm \
-  #            --entrypoint /bin/bash \
-  #            -v ${{ env.RUN_DIR }}:/tmp \
-  #            ghcr.io/saeon/somisana-croco_run_main:latest \
-  #            -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
-  #      # Regrid CROCO u,v to rho grid,
-  #      # rotate u,v components from grid aligned to east/north aligned and
-  #      # work out depth levels of sigma grid in meters (tier 1)
-  #      - name: Tier 1 regridding
-  #        continue-on-error: true
-  #        run: |
-  #          docker run \
-  #            --user $(id -u):$(id -g) \
-  #            --rm \
-  #            -v ${{ env.RUN_DIR }}:/tmp \
-  #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-  #              regrid_tier1 \
-  #                --fname /tmp/output/croco_avg.nc \
-  #                --fname_out /tmp/postprocess/croco_avg_t1.nc \
-  #                --ref_date '2000-01-01 00:00:00'
-  #      # interpolate data to constant vertical levels (tier 2)
-  #      - name: Tier 2 regridding
-  #        continue-on-error: true
-  #        run: |
-  #          docker run \
-  #            --user $(id -u):$(id -g) \
-  #            --rm \
-  #            -v ${{ env.RUN_DIR }}:/tmp \
-  #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-  #              regrid_tier2 \
-  #                --fname /tmp/postprocess/croco_avg_t1.nc \
-  #                --fname_out /tmp/postprocess/croco_avg_t2.nc \
-  #                --depths 0,-5,-10,-50,-100,-500,-1000,-99999
-  #      # and interpolate data to a constant horizontal grid (tier 3)
-  #      - name: Tier 3 regridding
-  #        continue-on-error: true
-  #        run: |
-  #          docker run \
-  #            --user $(id -u):$(id -g) \
-  #            --rm \
-  #            -v ${{ env.RUN_DIR }}:/tmp \
-  #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-  #              regrid_tier3 \
-  #                --fname /tmp/postprocess/croco_avg_t2.nc \
-  #                --fname_out /tmp/postprocess/croco_avg_t3.nc \
-  #                --spacing 0.02
-  #        
-  #      # here we can add the extraction of time-series 
-  #      # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
-  #      
-  #      # this tripped up the workflow once (very randomly), but we do we really need it?
-  #      #- name: ensure permissions
-  #      #  run: |
-  #      #    chmod -R 775 ${{ env.RUN_DIR }}
-  #
-  #  # make plots/animations of the outout
-  #  plotting:
-  #    needs: [setup_rundir,run_croco]
-  #    env:
-  #      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
-  #    runs-on: ${{ inputs.RUNNER_NAME }}
-  #    steps:
-  #      - name: animate surface temperature and currents
-  #        continue-on-error: true
-  #        run: |
-  #          docker run \
-  #            --rm \
-  #            -v ${{ env.RUN_DIR }}:/tmp \
-  #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-  #              crocplot \
-  #                --fname /tmp/output/croco_avg.nc \
-  #                --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
-  #                --ref_date '2000-01-01 00:00:00'
-  #          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
-  #      - name: animate 100m temperature and currents
-  #        continue-on-error: true
-  #        run: |
-  #          docker run \
-  #            --rm \
-  #            -v ${{ env.RUN_DIR }}:/tmp \
-  #            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-  #              crocplot \
-  #                --fname /tmp/output/croco_avg.nc \
-  #                --level -100 \
-  #                --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
-  #                --ref_date '2000-01-01 00:00:00'
-  #          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
-  #      - name: ensure permissions
-  #        run: |
-  #          chmod -R 775 ${{ env.RUN_DIR }}
-  #
-  #  # copy data over to where it will be archived
-  #  archive:
-  #    needs: [setup_rundir,postprocess,plotting]
-  #    runs-on: ${{ inputs.RUNNER_NAME }}
-  #    env:
-  #      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
-  #    steps:
-  #      - name: get archive dir
-  #        id: archive_dir
-  #        run: |
-  #          run_date=${{ inputs.RUN_DATE }}
-  #          run_date_yyyymm=${run_date:0:6}
-  #          # cut off the last three characters of the domain name for the archive directory e.g. the *_02 part
-  #          domain=$(echo ${{ inputs.DOMAIN }} | sed 's/...$//')
-  #          # replace underscores with hyphens for the archive directory - probably looks better
-  #          domain=${domain//_/-}
-  #          #
-  #          archive_dir=/mnt/ocims-somisana/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
-  #          echo "value=$archive_dir" >> $GITHUB_OUTPUT
-  #      - name: copy files to the archive directory if needed
-  #        run: |
-  #          # only copy if we're on the main branch
-  #          if [ ${{ inputs.BRANCH_REF }} = "main" ]; then
-  #            if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
-  #              sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
-  #              sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
-  #            fi
-  #            # apparently we need sudo permissions to copy to the archive directory
-  #            # we have set up the somisana user to be able to do this without the need for a password
-  #            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
-  #           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
-  #            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
-  #            sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-  #            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
-  #          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
-  #          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
-  #          fi
-  #      - name: clean up
-  #        run: |
-  #          # the .nc files we previously copied files from elsewhere into the scratch directory are redundant
-  #          # (it's useful to just dump them in scratch but are just copies so we don't need to keep them at all)
-  #          sudo rm -f ${{ env.RUN_DIR }}/scratch/*.nc
+  postprocess:
+    needs: [setup_rundir,run_croco]
+    env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: subset the raw CROCO NetCDF file for archiving
+        continue-on-error: true
+        run: |
+          # we only want to archive the nowcast to forecast, so we chop off the hindcast part of the output
+          # this is dependent on the avg output frequency, which we read from the myenv_in.sh file
+          source ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/myenv_in.sh
+          HINDCAST_DAYS=${{ inputs.HDAYS }}
+          HINDCAST_HOURS=$((HINDCAST_DAYS * 24))
+          HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
+          #
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_run_main:latest \
+            -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
+      # Regrid CROCO u,v to rho grid,
+      # rotate u,v components from grid aligned to east/north aligned and
+      # work out depth levels of sigma grid in meters (tier 1)
+      - name: Tier 1 regridding
+        continue-on-error: true
+        run: |
+          docker run \
+            --user $(id -u):$(id -g) \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              regrid_tier1 \
+                --fname /tmp/output/croco_avg.nc \
+                --fname_out /tmp/postprocess/croco_avg_t1.nc \
+                --ref_date '2000-01-01 00:00:00'
+      # interpolate data to constant vertical levels (tier 2)
+      - name: Tier 2 regridding
+        continue-on-error: true
+        run: |
+          docker run \
+            --user $(id -u):$(id -g) \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              regrid_tier2 \
+                --fname /tmp/postprocess/croco_avg_t1.nc \
+                --fname_out /tmp/postprocess/croco_avg_t2.nc \
+                --depths 0,-5,-10,-50,-100,-500,-1000,-99999
+      # and interpolate data to a constant horizontal grid (tier 3)
+      - name: Tier 3 regridding
+        continue-on-error: true
+        run: |
+          docker run \
+            --user $(id -u):$(id -g) \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              regrid_tier3 \
+                --fname /tmp/postprocess/croco_avg_t2.nc \
+                --fname_out /tmp/postprocess/croco_avg_t3.nc \
+                --spacing 0.02
+        
+      # here we can add the extraction of time-series 
+      # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
+      
+      # this tripped up the workflow once (very randomly), but we do we really need it?
+      #- name: ensure permissions
+      #  run: |
+      #    chmod -R 775 ${{ env.RUN_DIR }}
+
+  # make plots/animations of the outout
+  plotting:
+    needs: [setup_rundir,run_croco]
+    env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: animate surface temperature and currents
+        continue-on-error: true
+        run: |
+          docker run \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg.nc \
+                --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+      - name: animate 100m temperature and currents
+        continue-on-error: true
+        run: |
+          docker run \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg.nc \
+                --level -100 \
+                --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
+      - name: ensure permissions
+        run: |
+          chmod -R 775 ${{ env.RUN_DIR }}
+
+  # copy data over to where it will be archived
+  archive:
+    needs: [setup_rundir,postprocess,plotting]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    env:
+      RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
+    steps:
+      - name: get archive dir
+        id: archive_dir
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_yyyymm=${run_date:0:6}
+          # cut off the last three characters of the domain name for the archive directory e.g. the *_02 part
+          domain=$(echo ${{ inputs.DOMAIN }} | sed 's/...$//')
+          # replace underscores with hyphens for the archive directory - probably looks better
+          domain=${domain//_/-}
+          #
+          archive_dir=/mnt/ocims-somisana/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          echo "value=$archive_dir" >> $GITHUB_OUTPUT
+      - name: copy files to the archive directory if needed
+        run: |
+          # only copy if we're on the main branch
+          if [ ${{ inputs.BRANCH_REF }} = "main" ]; then
+            if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
+              sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
+              sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
+            fi
+            # apparently we need sudo permissions to copy to the archive directory
+            # we have set up the somisana user to be able to do this without the need for a password
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+          fi
+      - name: clean up
+        run: |
+          # the .nc files we previously copied files from elsewhere into the scratch directory are redundant
+          # (it's useful to just dump them in scratch but are just copies so we don't need to keep them at all)
+          sudo rm -f ${{ env.RUN_DIR }}/scratch/*.nc
  
