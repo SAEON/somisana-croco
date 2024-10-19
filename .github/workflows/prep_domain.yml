@@ -66,7 +66,7 @@ jobs:
       - name: compile the code
         run: |
           docker run \
-            --sudo rm \
+            --rm \
             --entrypoint /bin/bash \
             -v ${{ env.CONFIG_DIR }}:/home/somisana \
             ghcr.io/saeon/somisana-croco_run_${{ inputs.BRANCH_REF }}:latest \
