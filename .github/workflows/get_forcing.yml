@@ -142,6 +142,45 @@ jobs:
           # We need to use sudo in the line below because the mounted dir is owned by root
           sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
 
+  # Download hycom 
+  hycom:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: create the HYCOM directory
+        run: |
+          sudo rm -rf ${{ env.DATA_DIR }}/HYCOM
+          chown -R :runners ${{ env.DATA_DIR }}/HYCOM
+          chmod -R 774 ${{ env.DATA_DIR }}/HYCOM
+      - name: Download HYCOM
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/HYCOM/*.nc
+          command: |
+            docker run \
+              --user $(id -u):$(id -g) \
+              --rm \
+              -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_hycom \
+                --outDir '/tmp' \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }}
+
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
@@ -168,7 +207,7 @@ jobs:
           shell: bash
           continue_on_error: false
           on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/GFS/*grb*
-          command: >-
+          command: |
             docker run \
               --user $(id -u):$(id -g) \
               --rm \
@@ -182,7 +221,7 @@ jobs:
                 --outputDir '/tmp'
 # I'm commenting this job since we are moving to ONLINE surface interpolation
 #      - name: prepare a single netcdf file from the downloaded grb files
-#        run: >-
+#        run: |
 #          docker run \
 #            --rm \
 #            --mac-address 02:42:ff:ff:ff:ff \
