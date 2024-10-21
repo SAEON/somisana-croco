@@ -21,7 +21,8 @@ on:
         type: string
       SAWS_OK:
         description: "Indicates whether the SAWS job completed successfully"
-        value: ${{ jobs.saws.outputs.SAWS_OK }}
+        required: true
+        type: int
 
 
 
@@ -48,8 +49,8 @@ jobs:
     if: ${{ always() }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
       RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
@@ -69,8 +70,8 @@ jobs:
     if: ${{ always() && inputs.SAWS_OK == 1 }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
       RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
@@ -85,11 +86,11 @@ jobs:
 
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
+    if: ${{ always() && inputs.SAWS_OK == 1 }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
       RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
