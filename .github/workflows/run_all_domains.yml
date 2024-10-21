@@ -24,8 +24,6 @@ on:
         required: true
         type: int
 
-
-
 jobs:
   run_sa_west_gfs:
     if: ${{ always() }}
@@ -59,6 +57,9 @@ jobs:
       INP: I99
       BLK: GFS
       FRC: ''
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 5
 
   # Now the SAWS forced runs
   # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
