@@ -190,19 +190,18 @@ def download_hycom_series(ds,domain,depths,varList,outDir):
             print('Error: number of dimensions are all wrong!')
             print('')
    
-def download_hycom(outDir,domain=None,depths=None,varList=None,run_date=None,hdays=None,fdays=None,cleanDir=True,parallel=True):
+def download_hycom(outDir,domain=None,depths=None,varList=None,run_date=None,hdays=None,fdays=None,parallel=True):
     """
     Download HYCOM analysis using xarrray opendap.
 
     INPUTS:
+    outDir   : Directory to save files in (e.g. "/path/to/save/files/in/").
     domain   : List of geographical coordinates to subset the data and download (e.g. []).
     depths   : List of depths to download (e.g. [lomin,lonmax,latmin,latmax]).
     varList  : List of variables to download (e.g. [0,2,4,...,3000,4000,5000])
     run_date : Todays datetime to ensure downloaded data corosponts (e.g. ).
     hdays    : Days to hindcast (e.g. hdays = 5).
     fdays    : Days to forecast (e.g. fdays = 5).
-    outDir   : Directory to save files in (e.g. "/path/to/save/files/in/").
-    cleanDir : Boolean to downloaded files after they have been merged (e.g. True = remove the zeta.nc, temp.nc, salt.nc and ect. files | False = keep the zeta.nc, temp.nc, salt.nc and ect. files). 
     parallel : Boolean to download in parallel or series (True = download the files in parallel | False = download the files in series).
 
     OUTPUT:
@@ -292,24 +291,15 @@ def download_hycom(outDir,domain=None,depths=None,varList=None,run_date=None,hda
 
     checkTimeRange(start_date,end_date,time_coords)
 
-    if os.path.exists(outDir + 'HYCOM.nc'):
-            os.remove(outDir + 'HYCOM.nc')
+    outfile = os.path.abspath(os.path.join(outDir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
 
-    ds.to_netcdf(outDir + 'HYCOM.nc','w')
+    if os.path.exists(outfile):
+            os.remove(outfile)
 
-    subprocess.call(["chmod", "-R", "775", outDir +'HYCOM.nc'])
+    ds.to_netcdf(outfile,'w')
 
-    if cleanDir:
+    subprocess.call(["chmod", "-R", "775", outfile])
 
-        print('')
-        print('removing files in ', outDir)
-        print('')
-
-        delFiles = glob(outDir + 'HYCOM_*.nc')
-
-        for file in range(len(delFiles)):
-            subprocess.call(["rm", "-rf", delFiles[file]])
-    
     print('')
     print('created: ' + outDir + 'HYCOM.nc')
     print('')

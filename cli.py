@@ -144,14 +144,11 @@ def main():
     parser_download_hycom.add_argument('--fdays', required=False, type=float, 
             default=5.,
             help='forecast days i.e before run_date')
-    parser_download_hycom.add_argument('--cleanDir', required=False, type=parse_bool, 
-            default=True,
-            help='Clean the directory after merging the files')
     parser_download_hycom.add_argument('--parallel', required=False, type=parse_bool, 
             default=True,
             help='Type of download. If parallel, then the download occurs in parellel. If parallel is false, then the download occurs in series. ')
     def download_hycom_handler(args):
-        download_hycom(args.outDir,args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays,  args.cleanDir, args.parallel)
+        download_hycom(args.outDir,args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays, args.parallel)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
     
     # ------------------
