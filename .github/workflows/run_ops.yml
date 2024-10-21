@@ -147,15 +147,39 @@ jobs:
   # we could put those 4 jobs in a calleable workflow, called run_all_domains.yml which takes the atmospheric and boundary forcings as inputs and runs 4 models in parallel
   #
   # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
-  
-  run_sa_west_gfs:
+
+  run_mercator_domains:
     needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
+      OGCM: MERCATOR
+      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
+
+  run_hycom_domains:
+    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains]
+    if: ${{ always() }}
+    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      OGCM: HYCOM
+      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
+
+
+(inside run_all_domains.yml)
+
+  run_sa_west_gfs:
+    if: ${{ always() }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
@@ -163,18 +187,17 @@ jobs:
       INP: I99
       BLK: GFS
       FRC: ''
-      OGCM: MERCATOR
+      OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
 
   run_sa_southeast_gfs:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
     if: ${{ always() }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
@@ -182,7 +205,7 @@ jobs:
       INP: I99
       BLK: GFS
       FRC: ''
-      OGCM: MERCATOR
+      OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
 
@@ -193,13 +216,12 @@ jobs:
   # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
   # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
   run_sa_west_saws:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
+    if: ${{ always() && inputs.SAWS_OK == 1 }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
@@ -207,7 +229,7 @@ jobs:
       INP: I99
       BLK: SAWS
       FRC: ''
-      OGCM: MERCATOR
+      OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
 
@@ -218,7 +240,7 @@ jobs:
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
@@ -226,7 +248,7 @@ jobs:
       INP: I99
       BLK: SAWS
       FRC: ''
-      OGCM: MERCATOR
+      OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
 
