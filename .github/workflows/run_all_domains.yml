@@ -1,0 +1,103 @@
+name: run all domains
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      RUN_DATE:
+        description: 'time of T0 of the model run - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR'
+        required: true
+        type: string
+      SAWS_OK:
+        description: "Indicates whether the SAWS job completed successfully"
+        value: ${{ jobs.saws.outputs.SAWS_OK }}
+
+
+
+jobs:
+  run_sa_west_gfs:
+    if: ${{ always() }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C04
+      INP: I99
+      BLK: GFS
+      FRC: ''
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 5
+
+  run_sa_southeast_gfs:
+    if: ${{ always() }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C04
+      INP: I99
+      BLK: GFS
+      FRC: ''
+
+  # Now the SAWS forced runs
+  # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
+  # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
+  # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
+  # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
+  # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
+  run_sa_west_saws:
+    if: ${{ always() && inputs.SAWS_OK == 1 }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C04
+      INP: I99
+      BLK: SAWS
+      FRC: ''
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 2.45
+
+  run_sa_southeast_saws:
+    needs: [envs,get_forcing,prep_domains,make_forcing]
+    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
+    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C04
+      INP: I99
+      BLK: SAWS
+      FRC: ''
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 2.45
