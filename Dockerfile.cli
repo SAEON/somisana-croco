@@ -1,29 +1,23 @@
 # This Dockerfile provides instructions to build a docker image 
-# which can be used to run the comman line interface  - cli.py in the root of this repo
+# which is the command line interface  - cli.py in the root of this repo
 # the cli allows us to call whatever python functions in this repo that we
 # need for our SOMISANA operations
 #
-# The docker image is built by .github/workflows/build_images.yml
+# The docker image is built by .github/workflows/build_cli_image.yml (which calles .github/workflows/build_images.yml)
+# which gets triggered whenever the operational workflow is run (either manually or as part of the scheduled workflow)
 #
-# This Dockerfile is based on the opendrift Dockerfile - See https://opendrift.github.io
-# We bake the somisana_croco environment into the image and use the cli.py as the entry point
-#
-# TODO: add a user and run the image as a user rather than as root?
+# All we do here is to over-write the code files inside the cli_base image, without having to recreate the environment.
+# We intentionally separate the cli_base image and this one, as the base image takes quite a lot of time to build
+# which gets annoying when testing new features of the operational workflow
 
-# FROM condaforge/mambaforge
-FROM condaforge/mambaforge:22.9.0-1
+# build from the cli_base image
+FROM ghcr.io/saeon/somisana-croco_cli_base_main:latest
 
 ENV DEBIAN_FRONTEND noninteractive
 
-RUN mkdir /somisana-croco
+# over-write the somisana-croco code
 WORKDIR /somisana-croco
-
-# Install somisana-croco environment into base conda environment
-COPY environment.yml .
-RUN mamba env update -n base -f environment.yml
-
-# Install somisana-croco
 ADD . /somisana-croco
-RUN pip install -e .
 
+# Set the cli.py as the entry point
 ENTRYPOINT ["python", "cli.py"]

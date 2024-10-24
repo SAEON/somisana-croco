@@ -12,28 +12,22 @@ on:
         required: false
         default: ''
         type: string
-      build_images:
-        description: 'Run the image builds?'
-        required: true
-        default: 'true'
-        type: boolean
+      #build_images:
+      #  description: 'Run the image builds?'
+      #  required: true
+      #  default: 'true'
+      #  type: boolean
 
 jobs:
   # note that the jobs aren't executed in the order they are written below
   # they are executed in the order depending on the 'needs' attribute of each job
 
-  # start by building our docker images needed in the workflow
-  build_images:
-    # conditional execution when run manually as a workflow_dispatch 
-    # saves time when testing something and we don't want to build the images every time
-    # but it'll get executed every time when run as a scheduled workflow
-    if: ${{ github.event.schedule || github.event.inputs.build_images == 'true' }}  
-    strategy:
-      matrix: # the 'matrix' strategy allows us to build all three docker images in parallel using the same reusable workflow
-        image_id: ['cli', 'run', 'matlab']
+  build_cli:
+    # do we still need this to be conditional?
+    # if: ${{ github.event.schedule || github.event.inputs.build_images == 'true' }}  
     uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
-      IMAGE_ID: ${{ matrix.image_id }}
+      IMAGE_ID: cli
 
   # set some environment variables
   envs:
@@ -77,7 +71,7 @@ jobs:
   #
 
   cleanup:
-    needs: [envs,build_images]
+    needs: [envs,build_cli]
     uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
@@ -86,8 +80,7 @@ jobs:
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
   get_forcing:
-    needs: [envs, build_images]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    needs: [envs, build_cli]
     uses: ./.github/workflows/get_forcing.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
@@ -100,7 +93,6 @@ jobs:
   # prepare croco config dirs for each domain
   prep_domains:
     needs: [envs,get_forcing]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
@@ -120,7 +112,6 @@ jobs:
   # prepare croco boundary forcing for each domain
   make_forcing:
     needs: [envs,get_forcing,prep_domains]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job

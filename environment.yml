@@ -47,3 +47,5 @@ dependencies:
   - gcc>=8.3.0
   - gfortran>=8.3.0
   - netcdf-fortran=4.6.0
+  # this is to try and handle dependency issues with compiling with f2py 
+  - setuptools=72.1.0
