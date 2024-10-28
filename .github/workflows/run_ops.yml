@@ -156,7 +156,8 @@ jobs:
         #      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
 
   run_hycom_domains:
-    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains]
+    needs: [envs,get_forcing,prep_domains,make_forcing]
+    #needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains] 
     if: ${{ always() }}
     uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
