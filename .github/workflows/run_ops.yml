@@ -97,7 +97,8 @@ jobs:
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_southeast_01','sa_west_02'] 
+        domain: ['sa_southeast_01']
+          #,'sa_west_02'] 
     uses: ./.github/workflows/prep_domain.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -117,10 +118,10 @@ jobs:
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_west_02']
-          #['sa_southeast_01','sa_west_02'] 
-        ogcm: ['MERCATOR']
-          #,'HYCOM']
+        domain: ['sa_southeast_01']
+          #[,'sa_southeast_01','sa_west_02'] 
+        ogcm: ['HYCOM']
+          #['MERCATOR','HYCOM']
     uses: ./.github/workflows/make_forcing.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -143,24 +144,24 @@ jobs:
   #
   # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
 
-  run_mercator_domains:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() }}
-    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
-    with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
-      OGCM: MERCATOR
-      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
-
-        #  run_hycom_domains:
-        #    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains]
+        #  run_mercator_domains:
+        #    needs: [envs,get_forcing,prep_domains,make_forcing]
         #    if: ${{ always() }}
         #    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
         #    with:
         #      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
         #      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
         #      RUNNER_NAME: mims1
-        #      OGCM: HYCOM
+        #      OGCM: MERCATOR
         #      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
+
+  run_hycom_domains:
+    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains]
+    if: ${{ always() }}
+    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      OGCM: HYCOM
+      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
