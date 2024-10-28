@@ -258,10 +258,14 @@ jobs:
             # get the grid file and croco executable (the only outstanding inputs)
             cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
             cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
+            # get ${MPI_NUM_PROCS} i.e. the number of cpus to assign to the container
+            # (this is an attempt to avoid the container from overloading the server, which has been an issue)
+            source ${{ env.CONFIG_DIR }}/myenv_frcst.sh
             # run the model
             docker run \
               --rm \
               --entrypoint /bin/bash \
+              --cpus=${MPI_NUM_PROCS} \
               -v ${{ env.CONFIG_DIR }}:/home/somisana \
               ghcr.io/saeon/somisana-croco_run_main:latest \
                 -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"

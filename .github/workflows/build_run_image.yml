@@ -1,0 +1,15 @@
+name: Build the run docker image
+
+# this workflow only gets executed when changes are pushed to Dockerfile.run
+
+on:
+  push:
+    paths:
+      - 'Dockerfile.run'
+
+jobs:
+  build_images:
+    uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
+    with:
+      IMAGE_ID: run
+
