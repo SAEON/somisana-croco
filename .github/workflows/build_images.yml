@@ -3,7 +3,7 @@ name: build and push docker image
 on:
   workflow_call:
     inputs:
-      # which image are we building? IMAGE_ID can either be `cli`, `matlab`, or `run`
+      # which image are we building? IMAGE_ID can either be `cli` or `run`
       IMAGE_ID:
         required: true
         type: string
