@@ -87,7 +87,7 @@ jobs:
         #
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() && "${{ inputs.SAWS_OK }}" == 1 }}
+    if: ${{ always() && inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
