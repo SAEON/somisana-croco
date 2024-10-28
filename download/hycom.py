@@ -245,13 +245,6 @@ def download_hycom(outDir,domain=None,depths=None,varList=None,run_date=None,hda
         print(fdays)
         print('')
 
-    print('Downloading in parallel: ')
-    print(parallel)
-    print('')
-    print('Cleaning the directory after downloads are completed: ')
-    print(cleanDir)
-    print('')
-
     start_date = pd.Timestamp(run_date) + timedelta(days=-hdays)
 
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
