@@ -295,7 +295,8 @@ jobs:
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
     # (note we intentionally do not copy saws data as the archive dir will be public facing in future)
-    needs: [mercator_saeon,mercator,gfs]
+    needs: [gfs,hycom]
+      #[mercator_saeon,mercator,gfs,saws,hycom]
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: archive forcing files on ocims infrastructure
