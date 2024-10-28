@@ -135,14 +135,14 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: move downloaded file from the shared mount
-        # we only need this since we have the workaround of downloading on saeonapps
-        # so this essentially replaces the commented download step above
-        run: |
-          # We need to use sudo in the line below because the mounted dir is owned by root
-          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
-
-  # Download hycom 
+#      - name: move downloaded file from the shared mount
+#        # we only need this since we have the workaround of downloading on saeonapps
+#        # so this essentially replaces the commented download step above
+#        run: |
+#          # We need to use sudo in the line below because the mounted dir is owned by root
+#          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
+#
+#  # Download hycom 
   hycom:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
