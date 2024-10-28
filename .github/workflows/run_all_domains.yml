@@ -68,8 +68,7 @@ jobs:
         #  # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
         #  # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
         #  run_sa_west_saws:
-        #    SAWS_OK_numeric = "${{ inputs.SAWS_OK }}"
-        #    if: ${{ always() && SAWS_OK_numeric == 1 }}
+        #    if: ${{ always() && "${{ inputs.SAWS_OK }}" == 1 }}
         #    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
         #    with:
         #      RUN_DATE: ${{ inputs.RUN_DATE }}
@@ -88,8 +87,7 @@ jobs:
         #
   run_sa_southeast_saws:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    SAWS_OK_numeric = "${{ inputs.SAWS_OK }}"
-    if: ${{ always() && SAWS_OK_numeric == 1 }}
+    if: ${{ always() && "${{ inputs.SAWS_OK }}" == 1 }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
