@@ -117,8 +117,8 @@ jobs:
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_southeast_01']
-          #,'sa_west_02'] 
+        domain: ['sa_west_02']
+          #['sa_southeast_01','sa_west_02'] 
         ogcm: ['MERCATOR']
           #,'HYCOM']
     uses: ./.github/workflows/make_forcing.yml  # Path to your reusable workflow
