@@ -118,8 +118,7 @@ def main():
     parser_download_gfs_atm.add_argument('--outputDir', required=True, help='Directory to save files')
     def download_gfs_atm_handler(args):
         download_gfs_atm(args.domain, args.run_date, args.hdays, args.fdays, args.outputDir)
-    parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler)
-    
+    parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler) 
     # -------------------
     # download_hycom
     # -------------------
