@@ -158,8 +158,6 @@ jobs:
           mkdir -p ${{ env.DATA_DIR }}/HYCOM
           chown -R :runners ${{ env.DATA_DIR }}/HYCOM
           chmod -R 774 ${{ env.DATA_DIR }}/HYCOM
-          export MPLCONFIGDIR=/tmp/matplotlib_cache
-          mkdir -p /tmp/matplotlib_cache
       - name: Download HYCOM
         uses: nick-fields/retry@master
         with:
@@ -176,8 +174,6 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
-              -e PROJ_LIB=/opt/conda/share/proj \
-              -e MPLCONFIGDIR=/tmp/matplotlib_cache \
               ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               download_hycom \
                 --domain 11,36,-39,-25 \
