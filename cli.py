@@ -125,32 +125,28 @@ def main():
     # -------------------
     parser_download_hycom = subparsers.add_parser('download_hycom', 
             help='Download a subset of  HYCOM analysis data using xarray OpenDAP')
-    parser_download_hycom.add_argument('--outDir', required=True, help='Directory to save files')
-    parser_download_hycom.add_argument('--domain', required = False, type=parse_list,
-            default=[10.0, 25.0, -40.0, -20.0],
-            help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
-    parser_download_hycom.add_argument('--depths', required = False, type=parse_list,
-            default=[0,2,4,6,8,10,12,15,20,25,30,35,40,45,50,60,70,80,90,100,125,150,200,250,300,350,400,500,600,700,800,900,1000,1250,1500,2000,2500,3000,4000,5000],
-            help='comma separated list of depths to download i.e. "[0,2,4,...,3000,4000,5000]"')
-    parser_download_hycom.add_argument('--variables', required = False, type=parse_list,
-            default=['surf_el','salinity','water_temp','water_v','water_u'],
-            help='List of strings of variable names found in HYCOM to download i.e.["surf_el","salinity","water_temp","water_u","water_v"].')
-    parser_download_hycom.add_argument('--run_date', required=False, type=parse_datetime,
-            default=None,
-            help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_hycom.add_argument('--hdays', required=False, type=float, 
-            default=5.,
-            help='hindcast days i.e before run_date')
+    parser_download_hycom.add_argument('--variables',required=False,
+                                       default = ['salinity', 'water_temp', 'surf_el', 'water_u', 'water_v'],
+                                       help='List of variables to download.')    
+    parser_download_hycom.add_argument('--domain', required=False, type=parse_list,
+                                       default=[10, 25, -40, -25],
+                                       help='comma separated list of domain extent to download i.e. [lon_min,lon_max,lat_min,lat_max]')
+    parser_download_hycom.add_argument('--depths', required=False, type=parse_list,
+                                       default=[0,5000],
+                                       help='Minimum and maximum depths to download. Values must be positive. Default is [0,5000]')
+    parser_download_hycom.add_argument('--run_date', required=True, type=parse_datetime,
+                                       help='start time in datetime format "YYYY-MM-DD HH:MM:SS"')
+    parser_download_hycom.add_argument('--hdays', required=False, type=float,
+                                       default=5.,
+                                       help='hindcast days i.e before run_date')
     parser_download_hycom.add_argument('--fdays', required=False, type=float, 
-            default=5.,
-            help='forecast days i.e before run_date')
-    parser_download_hycom.add_argument('--parallel', required=False, type=parse_bool, 
-            default=True,
-            help='Type of download. If parallel, then the download occurs in parellel. If parallel is false, then the download occurs in series. ')
+                                       default=5.,
+                                       help='forecast days i.e before run_date')
+    parser_download_hycom.add_argument('--savedir', required=True, 
+                                       help='Directory to save files')
     def download_hycom_handler(args):
-        download_hycom(args.outDir,args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays, args.parallel)
+        download_hycom(args.variables,args.domain, args.depths, args.run_date, args.hdays, args.fdays, args.savedir)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
-    
     # ------------------
     # reformat_saws_atm
     # ------------------
