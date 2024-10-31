@@ -3,7 +3,6 @@ import cftime
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-from glob import glob
 import subprocess
 import numpy as np
 from threading import Thread
@@ -114,7 +113,8 @@ def download_var(varlist,domain,depths,savedir):
     ds = None
     MAX_RETRIES = 3
     RETRY_WAIT = 20
-    engines = ["pydap","netcdf4"]
+    #engines = ["pydap","netcdf4"]
+    engines = ["netcdf4","pydap"]
     i = 0
     while i < MAX_RETRIES:
         print('')
