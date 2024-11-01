@@ -113,57 +113,56 @@ def download_var(varlist,domain,depths,savedir):
     ds = None
     MAX_RETRIES = 3
     RETRY_WAIT = 20
-    engines = ["pydap","netcdf4"]
+    engine = "netcdf4"
     i = 0
     while i < MAX_RETRIES:
         print('')
         print(f"Attempt {i+1} of {MAX_RETRIES}")
         print('')
-        for engine in engines:
-            try:
-                ds = xr.open_dataset(varlist["url"], drop_variables=varsToDrop, decode_times = False, engine=engine)
-                print(f"Successfully opened {varlist['vars'][0]} with engine: {engine}")
-                # decode the time
-                if 'time' in ds:
-                    ds['time'] = decode_time_units(ds['time'])
-                else:
-                    pass
-                    # Assign the correct variable
-                if varlist["vars"][0]=='surf_el':
-                    variable = ds.surf_el
-                elif varlist["vars"][0]=='salinity':
-                    variable = ds.salinity
-                elif varlist["vars"][0]=='water_temp':
-                    variable = ds.water_temp
-                elif varlist["vars"][0]=='water_u':
-                    variable = ds.water_u
-                elif varlist["vars"][0]=='water_v':
-                    variable = ds.water_v
-                else:
-                    print(varlist["vars"][0])
-                    print('')
-                    print(f'Invalid variable name: {varlist["vars"][0]}')
-                    print('Valid variable names are: salinity, water_temp, surf_el, water_u, water_v')
-                    print('')
-                    break
-                # Subset the variable
-                if np.ndim(variable)==3:
-                    var_subset = variable.sel({'lat' : lat_range, 'lon' : lon_range})
-                else:
-                    var_subset = variable.sel({'lat' : lat_range, 'lon' : lon_range, 'depth' : depth_range})
-                # Compute daily averages (this can take a while)
-                var_resampled = var_subset.resample(time='1D').mean()
-                # Save and download the dataset
-                sname = savedir + 'HYCOM_' + varlist["name"] + '.nc'
-                var_resampled.to_netcdf(sname,'w')
-                ds.close()
-                i = MAX_RETRIES
+        try:
+            ds = xr.open_dataset(varlist["url"], drop_variables=varsToDrop, decode_times = False, engine=engine)
+            print(f"Successfully opened {varlist['vars'][0]} with engine: {engine}")
+            # decode the time
+            if 'time' in ds:
+                ds['time'] = decode_time_units(ds['time'])
+            else:
+                pass
+            # Assign the correct variable
+            if varlist["vars"][0]=='surf_el':
+                variable = ds.surf_el
+            elif varlist["vars"][0]=='salinity':
+                variable = ds.salinity
+            elif varlist["vars"][0]=='water_temp':
+                variable = ds.water_temp
+            elif varlist["vars"][0]=='water_u':
+                variable = ds.water_u
+            elif varlist["vars"][0]=='water_v':
+                variable = ds.water_v
+            else:
+                print(varlist["vars"][0])
+                print('')
+                print(f'Invalid variable name: {varlist["vars"][0]}')
+                print('Valid variable names are: salinity, water_temp, surf_el, water_u, water_v')
+                print('')
                 break
-            except Exception as e:
-                print(f"Failed to open {varlist['vars'][0]} with engine '{engine}': {e}")
+            # Subset the variable
+            if np.ndim(variable)==3:
+                var_subset = variable.sel({'lat' : lat_range, 'lon' : lon_range})
+            else:
+                var_subset = variable.sel({'lat' : lat_range, 'lon' : lon_range, 'depth' : depth_range})
+            # Compute daily averages (this can take a while)
+            var_resampled = var_subset.resample(time='1D').mean()
+            # Save and download the dataset
+            sname = savedir + 'HYCOM_' + varlist["name"] + '.nc'
+            var_resampled.to_netcdf(sname,'w')
+            ds.close()
+            i = MAX_RETRIES
+            break
         
-        time.sleep(RETRY_WAIT)
-        i+=1
+        except Exception as e:
+            print(f"Failed to open {varlist['vars'][0]} with engine '{engine}': {e}")
+            time.sleep(RETRY_WAIT)
+            i+=1
 
     print('File saved: ', sname)
 
