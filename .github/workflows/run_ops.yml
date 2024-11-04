@@ -97,8 +97,7 @@ jobs:
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_west_02']
-          #['sa_southeast_01','sa_west_02']
+        domain: ['sa_southeast_01','sa_west_02']
     uses: ./.github/workflows/prep_domain.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
