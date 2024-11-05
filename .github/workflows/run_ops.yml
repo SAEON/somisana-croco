@@ -14,18 +14,11 @@ on:
         required: false
         default: ''
         type: string
-      skip_downloads:
-        description: 'Skip the download of the atmospheric and/or OGCM datasets?'
-        required: true
-        default: 'false'
-        type: boolean
 
 jobs:
   # note that the jobs aren't executed in the order they are written below
   # they are executed in the order depending on the 'needs' attribute of each job
   build_cli:
-    # do we still need this to be conditional?
-    # if: ${{ github.event.schedule || github.event.inputs.build_images == 'true' }}  
     uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
       IMAGE_ID: cli
@@ -81,7 +74,6 @@ jobs:
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
   get_forcing:
-    if: ${{ github.event.schedule || github.event.inputs.skip_downloads == 'false' }}
     needs: [envs, build_cli]
     uses: ./.github/workflows/get_forcing.yml  # Path to your reusable workflow
     with:
@@ -95,7 +87,6 @@ jobs:
   # prepare croco config dirs for each domain
   prep_domains:
     needs: [envs,get_forcing]
-    if: ${{ always() }}
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
@@ -115,7 +106,6 @@ jobs:
   # prepare croco boundary forcing for each domain
   make_forcing:
     needs: [envs,get_forcing,prep_domains]
-    if: ${{ always() }}
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
@@ -147,7 +137,6 @@ jobs:
 
   run_mercator_domains:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() }}
     uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -158,7 +147,7 @@ jobs:
 
   run_hycom_domains:
     needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains] 
-    if: ${{ always() }}
+    if: ${{ always() }} # execute even if there was an error with the mercator runs
     uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}

@@ -92,7 +92,7 @@ jobs:
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
     steps:
-      - name: Try to find a suitable restart/ini file
+      - name: copy restart/ini file to scratch dir
         id: get_ini
         run: |
           # get the run_date as an epoch time (seconds since 1970-01-01)
@@ -200,12 +200,12 @@ jobs:
             < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in \
             > ${{ env.SCRATCH_DIR }}/croco.in
 
-      - name: get the grid file
+      - name: copy grid file to scratch dir
         id: get_grd
         run: |
           cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
 
-      - name: get the croco executable file
+      - name: copy croco executable file to scratch dir
         id: get_exe
         run: |
           cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
