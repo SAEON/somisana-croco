@@ -22,7 +22,7 @@ figsize=(6,6) # (hz,vt)
 # ticks = np.linspace(0,100,num=11) # the ticks to plot
 ticks = [0,20,50,100,200,300,500,1000,2000,3000]
 cmap = cmo.deep
-extents = []
+extents = None
 cbar_loc = [0.8, 0.2, 0.02, 0.6]
 cbar_label = 'bathymetry (m)'
 
@@ -43,7 +43,7 @@ var_plt = ax.pcolormesh(lon_rho,
                           norm=cmap_norm,
                           transform=ccrs.PlateCarree())
 
-crocplot.plot_cbar(var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc)
+crocplot.plot_cbar(ax,var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc)
 
 jpg_out = 'plot_bathy.jpg'
 plt.savefig(jpg_out,dpi=500,bbox_inches = 'tight')

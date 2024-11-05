@@ -20,7 +20,7 @@ lon_rho, lat_rho, mask_rho = post.get_lonlatmask(fname)
 
 figsize=(6,6) # (hz,vt)
 # extents = [17.5,19,-33.5,-32]
-extents = []
+extents = None
 
 fig = plt.figure(figsize=figsize) 
 ax = plt.axes(projection=ccrs.Mercator())
