@@ -137,15 +137,17 @@ jobs:
   # we considered using githubs 'matrix' strategy to run different domains in parallel, 
   # but opted against it as if one of the domains fails, then it cancels all others running in parallel... 
   # so separating the jobs makes it more robust... and also easier to follow in the actions log on github
-  # here's an idea...
-  # when we end up with 4 domains, each needing 30-ish processors we'll be able to run all 4 in parallel
-  # we could put those 4 jobs in a calleable workflow, called run_all_domains.yml which takes the atmospheric and boundary forcings as inputs and runs 4 models in parallel
+  # 
+  # we rather run 4 jobs in prallel inside a calleable workflow, called run_all_domains.yml
+  # for now this is 2 domains, each with a single OGCM and both SAWS and GFS forcing
+  # but this could be changed in future, depending on how we develop further
   #
-  # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
+  # the point is that run_all_domains.yml must use less than 120 processors in parallel - this is our limit
+  # then we can have sequential calls to run_all_domains.yml in series
 
   run_mercator_domains:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-      #if: ${{ always() }}
+    if: ${{ always() }}
     uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -155,8 +157,8 @@ jobs:
       SAWS_OK: needs.get_forcing.outputs.SAWS_OK
 
   run_hycom_domains:
-    needs: [envs,get_forcing,prep_domains,make_forcing] 
-      #if: ${{ always() }}
+    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains] 
+    if: ${{ always() }}
     uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}

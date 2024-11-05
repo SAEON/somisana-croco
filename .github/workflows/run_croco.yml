@@ -86,19 +86,14 @@ jobs:
           echo "output_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/output" >> $GITHUB_OUTPUT 
           echo "postprocess_dir=${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}/postprocess" >> $GITHUB_OUTPUT 
   
-  # see if we can restart from a previous run
-  get_rst:
+  get_input_files:
     needs: [setup_rundir]
     runs-on: ${{ inputs.RUNNER_NAME }}
     env:
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-    outputs:
-      OGCM_INI: ${{ steps.check_restart.outputs.ogcm_ini }}
-      RST_DATE: ${{ steps.check_restart.outputs.rst_date }}
-      RST_STEP: ${{ steps.check_restart.outputs.rst_step }}
     steps:
-      - name: Try to find a suitable restart file
-        id: check_restart
+      - name: Try to find a suitable restart/ini file
+        id: get_ini
         run: |
           # get the run_date as an epoch time (seconds since 1970-01-01)
           run_date=${{ inputs.RUN_DATE }}
@@ -144,57 +139,31 @@ jobs:
           done
 
           if [[ $step_count -eq $MAX_STEPS ]]; then
+            # use the ini file interpolated from the OGCM data
             echo "using ${{ inputs.OGCM }} to interpolate initial conditions"
-            echo "ogcm_ini=1" >> $GITHUB_OUTPUT
-            echo "rst_date=NA" >> $GITHUB_OUTPUT
-            # since we're using an ini file, set rst_step to 1, which means we'll use the first value in the ini file 
+            ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
+            cp ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
+            # since we're using an ini file from the OGCM data, set rst_step to 1 i.e. the first (and only) value in the ini file 
             echo "rst_step=1" >> $GITHUB_OUTPUT
           else
-            echo "ogcm_ini=0" >> $GITHUB_OUTPUT
-            echo "rst_date=$current_date" >> $GITHUB_OUTPUT
             echo "rst_step=$rst_step" >> $GITHUB_OUTPUT
           fi
-  
-  get_ogcm:
-    needs: [setup_rundir,get_rst]
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    env:
-      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-      ogcm_ini: ${{ needs.get_rst.outputs.OGCM_INI}} 
-    steps:
-      - name: copy OGCM file to scratch dir
+      
+      - name: copy OGCM boundary file to scratch dir
+        id: get_bry
         run: |
           ogcm_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_bry_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
           cp ${ogcm_file} ${{ env.SCRATCH_DIR }}/croco_bry.nc
-      - name: copy ini file to scratch dir, if made from OGCM
-        run: |
-          ogcm_ini=${{ env.ogcm_ini }}
-          if [[ ${ogcm_ini} == 1 ]]; then
-            ini_file="${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/croco_ini_${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc"
-            cp ${ini_file} ${{ env.SCRATCH_DIR }}/croco_ini.nc
-          fi
-
-  get_blk:
-  # even though we are using ONLINE interpolation, let's copy the BLK data to this model run scratch dir 
-  # so there are no issues with multiple parallel runs trying to access the same file
-    needs: [setup_rundir]
-    env:
-      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    steps:
+      
       - name: copy BLK files to scratch dir
+        id: get_blk
+        # even though we are using ONLINE interpolation, let's copy the BLK data to this model run scratch dir 
+        # so there are no issues with multiple parallel runs trying to access the same file
         run: |
           cp ${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/* ${{ env.SCRATCH_DIR }}
   
-  # get the runtime input file        
-  get_inp:
-    needs: [setup_rundir,get_rst]
-    env:
-      SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
-      RST_STEP: ${{ needs.get_rst.outputs.RST_STEP}} 
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    steps:
       - name: prepare the runtime input file
+        id: get_inp
         run: |
           # compute the time parameters, using the my_env_in.sh file for this configuration
           source ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/myenv_in.sh
@@ -210,7 +179,7 @@ jobs:
           NUMAVGSURF=$((NH_AVGSURF * 3600 / DT))
           NUMHISSURF=$((NH_HISSURF * 3600 / DT))
           NUMRST=$((NH_RST * 3600 / DT)) # frequency of output in restart file to be written
-          RST_STEP=${{ env.RST_STEP }} # which time-step to restart from in this run
+          RST_STEP=${{ steps.get_ini.outputs.rst_step }} # which time-step to restart from in this run
           # directory where the surface files are for ONLINE interpolation 
           # (this is the path inside the docker image which runs the model!)
           DATA_DIR_BLK=/home/somisana/${{ env.RUN_NAME }}/scratch/
@@ -231,9 +200,19 @@ jobs:
             < ${{ env.CONFIG_DIR }}/${{ inputs.INP }}/croco_fcst.in \
             > ${{ env.SCRATCH_DIR }}/croco.in
 
+      - name: get the grid file
+        id: get_grd
+        run: |
+          cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
+
+      - name: get the croco executable file
+        id: get_exe
+        run: |
+          cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
+
   # run the model
   run_croco:
-    needs: [setup_rundir,get_inp,get_ogcm,get_rst]
+    needs: [setup_rundir,get_input_files]
     env:
       RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
       SCRATCH_DIR: ${{ needs.setup_rundir.outputs.SCRATCH_DIR}}
@@ -253,11 +232,8 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: sudo rm -f ${{ env.SCRATCH_DIR }}/croco_avg*nc* && sudo rm -f ${{ env.SCRATCH_DIR }}/croco_his*nc* && sudo rm -f ${{ env.SCRATCH_DIR }}/croco && sudo rm -f ${{ env.SCRATCH_DIR }}/croco_rst*nc* 
+          on_retry_command: sudo rm -f ${{ env.SCRATCH_DIR }}/croco_avg*nc* && sudo rm -f ${{ env.SCRATCH_DIR }}/croco_his*nc* && sudo rm -f ${{ env.SCRATCH_DIR }}/croco_rst*nc* 
           command: |
-            # get the grid file and croco executable (the only outstanding inputs)
-            cp ${{ env.CONFIG_DIR }}/GRID/croco_grd.nc ${{ env.SCRATCH_DIR }}
-            cp ${{ env.CONFIG_DIR }}/${{ inputs.COMP }}/croco ${{ env.SCRATCH_DIR }}
             # get ${MPI_NUM_PROCS} i.e. the number of cpus to assign to the container
             # (this is an attempt to avoid the container from overloading the server, which has been an issue)
             source ${{ env.CONFIG_DIR }}/myenv_frcst.sh
@@ -340,11 +316,6 @@ jobs:
         
       # here we can add the extraction of time-series 
       # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
-      
-      # this tripped up the workflow once (very randomly), but we do we really need it?
-      #- name: ensure permissions
-      #  run: |
-      #    chmod -R 775 ${{ env.RUN_DIR }}
 
   # make plots/animations of the outout
   plotting:
