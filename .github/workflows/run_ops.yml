@@ -143,7 +143,7 @@ jobs:
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       OGCM: MERCATOR
-      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
+      SAWS_OK: ${{ needs.get_forcing.outputs.SAWS_OK }}
 
   run_hycom_domains:
     needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains] 
@@ -154,4 +154,4 @@ jobs:
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       OGCM: HYCOM
-      SAWS_OK: needs.get_forcing.outputs.SAWS_OK
+      SAWS_OK: ${{ needs.get_forcing.outputs.SAWS_OK }}
