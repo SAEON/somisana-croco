@@ -178,7 +178,7 @@ def download_hycom(variables,domain,depths,run_date,hdays,fdays,savedir):
     
     checkTimeRange(start_date,end_date,time_coords)
     
-    outfile = os.path.abspath(os.path.join(savedir, f"HYCOM_{run_date.strftime('%Y%m%d_00')}.nc"))
+    outfile = os.path.abspath(os.path.join(savedir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
     
     if os.path.exists(outfile):
             os.remove(outfile)

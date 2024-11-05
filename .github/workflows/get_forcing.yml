@@ -33,6 +33,47 @@ env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
 
 jobs:
+  check_files:
+    # checks to see if files have maybe already been downloaded as part of a previous running of this workflow
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    outputs:
+      MERCATOR_OK: ${{ steps.check_mercator.outputs.value }}
+      HYCOM_OK: ${{ steps.check_hycom.outputs.value }}
+      GFS_OK: ${{ steps.check_gfs.outputs.value }}
+    steps:
+      - name: check mercator
+        id: check_mercator
+        run: |
+          FILE_PATH=${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+      - name: check hycom
+        id: check_hycom
+        run: |
+          FILE_PATH=${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+      - name: check gfs
+        id: check_gfs
+        run: |
+          # just use a single file as the check - assume others will be good too if one is
+          FILE_PATH=${{ env.DATA_DIR }}/GFS/for_croco/U-component_of_wind_Y9999M1.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+
+
   mercator_saeon:
     # we have had an issue with downloading from copernicus specifically on the mims network
     # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli at the time of testing
@@ -42,6 +83,8 @@ jobs:
     # the copernicusmarine tool works better on this network)
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.MERCATOR_OK == '0' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -61,22 +104,20 @@ jobs:
           continue_on_error: false
           on_retry_command: sudo rm -f /home/giles/mercator_download/*nc
           command: |
-            if [ ! -f /mnt/somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
-              docker run \
-                --rm \
-                -v /home/giles/mercator_download:/tmp/download \
-                ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-                download_mercator \
-                  --usrname ${{ secrets.COPERNICUS_USERNAME }} \
-                  --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
-                  --domain 11,36,-39,-25 \
-                  --run_date ${{ steps.format_date.outputs.value }} \
-                  --hdays ${{ inputs.HDAYS }} \
-                  --fdays ${{ inputs.FDAYS }} \
-                  --outputDir '/tmp/download'
-              # copy to a shared dir
-              cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
-            fi
+            docker run \
+              --rm \
+              -v /home/giles/mercator_download:/tmp/download \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_mercator \
+                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
+                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --outputDir '/tmp/download'
+            # copy to a shared dir
+            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
       - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
@@ -91,8 +132,9 @@ jobs:
               -c "rm -f /mnt/tmp/*nc"
 
   mercator:
-    needs: [mercator_saeon]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files,mercator_saeon]
+    if: ${{ always() && needs.check_files.outputs.MERCATOR_OK == '0' }}
     steps:
       - name: create the MERCATOR directory
         run: |
@@ -143,6 +185,8 @@ jobs:
   # Download hycom 
   hycom:
     runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.HYCOM_OK == '0' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -182,6 +226,8 @@ jobs:
                 
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.GFS_OK == '0' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -237,6 +283,7 @@ jobs:
     # the gfs prerequisite is because we are currently using GFS variables interpolated onto the SAWS grid for any variables not provided by SAWS
     # this could easily be changed to another data provider if available and we have good reason to switch
     runs-on: ${{ inputs.RUNNER_NAME }}
+    if: ${{ always() }} # so we always output the SAWS_OK variable
     outputs:
       SAWS_OK: ${{ steps.check_success.outputs.value }}
     steps:
@@ -283,6 +330,8 @@ jobs:
     # (note we intentionally do not copy saws data as the archive dir will be public facing in future)
     needs: [mercator_saeon,mercator,gfs,saws,hycom]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    if: ${{ always() }} 
+    continue-on-error: true
     steps:
       - name: archive forcing files on ocims infrastructure
         id: archive_dir
