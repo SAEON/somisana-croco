@@ -334,6 +334,7 @@ jobs:
               crocplot \
                 --fname /tmp/output/croco_avg.nc \
                 --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
+                --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
       - name: animate 100m temperature and currents
@@ -347,6 +348,7 @@ jobs:
                 --fname /tmp/output/croco_avg.nc \
                 --level -100 \
                 --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
+                --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
       - name: ensure permissions

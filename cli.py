@@ -146,6 +146,7 @@ def main():
     def download_hycom_handler(args):
         download_hycom(args.variables,args.domain, args.depths, args.run_date, args.hdays, args.fdays, args.savedir)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
+    
     # ------------------
     # reformat_saws_atm
     # ------------------
@@ -195,6 +196,8 @@ def main():
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
+    parser_crocplot.add_argument('--skip_time', required=False, type=int, default=1,
+            help='Number of time-steps to skip between frames in the animation')
     parser_crocplot.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
@@ -213,7 +216,7 @@ def main():
                       ref_date = args.ref_date,
                       cbar_label=args.cbar_label,
                       add_vectors = True,
-                      skip_time = 1,
+                      skip_time = args.skip_time,
                       isobaths=args.isobaths,
                       gif_out=args.gif_out,
                       write_gif = True
