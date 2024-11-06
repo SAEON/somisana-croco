@@ -357,6 +357,8 @@ jobs:
   archive:
     needs: [setup_rundir,postprocess,plotting]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    # only archive if we are on the main branch
+    if: ${{ inputs.BRANCH_REF == 'main' }}
     env:
       RUN_DIR: ${{ needs.setup_rundir.outputs.RUN_DIR}}
     steps:
@@ -374,22 +376,20 @@ jobs:
           echo "value=$archive_dir" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
         run: |
-          # only copy if we're on the main branch
-          if [ ${{ inputs.BRANCH_REF }} = "main" ]; then
-            if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
-              sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
-              sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
-            fi
-            # apparently we need sudo permissions to copy to the archive directory
-            # we have set up the somisana user to be able to do this without the need for a password
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
-            sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+          if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
+            sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
+            sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
           fi
+          # apparently we need sudo permissions to copy to the archive directory
+          # we have set up the somisana user to be able to do this without the need for a password
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+          
       - name: clean up
         run: |
           # the .nc files we previously copied files from elsewhere into the scratch directory are redundant

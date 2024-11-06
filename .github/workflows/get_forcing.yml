@@ -330,7 +330,8 @@ jobs:
     # (note we intentionally do not copy saws data as the archive dir will be public facing in future)
     needs: [mercator_saeon,mercator,gfs,saws,hycom]
     runs-on: ${{ inputs.RUNNER_NAME }}
-    if: ${{ always() }} 
+    # only archive if we are on the main branch
+    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
     continue-on-error: true
     steps:
       - name: archive forcing files on ocims infrastructure
