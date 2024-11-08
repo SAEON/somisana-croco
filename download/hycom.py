@@ -169,9 +169,6 @@ def download_hycom(variables,domain,depths,run_date,hdays,fdays,savedir):
     
     download_vars(variables,domain,depths,savedir)
 
-    hdays=hdays+1
-    fdays=fdays+1
-    
     start_date = pd.Timestamp(run_date) + timedelta(days=-hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
     
