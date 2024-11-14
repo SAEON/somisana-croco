@@ -135,7 +135,7 @@ def download_vars(variables,domain,depths,savedir):
             # Compute daily averages (this can take a while)
             print(f'Subsetting {varlist[var]["vars"][0]}.')
             print('')
-            var_resampled = var_subset.resample(time='1D').mean()
+            var_resampled = var_subset.resample(time='1D',offset='12H').mean()
             
             # Save and download the dataset
             print(f'Downloading {varlist[var]["vars"][0]}.')
@@ -189,3 +189,15 @@ def download_hycom(variables,domain,depths,run_date,hdays,fdays,savedir):
     
     print('created: ', outfile)
     print('')
+
+if __name__ == "__main__":
+    variables=['salinity', 'water_temp', 'surface_el', 'water_u', 'water_v']
+    domain=[23,34,-37,-31]
+    depths=[0,5000]
+    run_date=pd.Timestamp.now()
+    hdays=5
+    fdays=5
+    savedir='/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
+    download_hycom(variables,domain,depths,run_date,hdays,fdays,savedir)
+
+
