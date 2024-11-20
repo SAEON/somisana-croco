@@ -5,18 +5,16 @@ import os
 from datetime import datetime, timedelta
 import subprocess
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
-def checkTimeRange(startDate,endDate,timeCoords):
-    try:
-        # Attempt to divide by zero
-       if (timeCoords[0] <= startDate) & (endDate <= timeCoords[-1]):
-           print("")
-    except FileExceedTimeRange as e:
-        # Handle the specific exception
-        print(f"Caught an exception: {e}")
+def check_time_range(start_date, end_date, time_coords):
+    if (time_coords[0] <= start_date) & (end_date <= time_coords[-1]):
+        print("Time range is within bounds.")
+    else:
+        print("Warning: Specified time range exceeds dataset range.")
 
-def update_varList(varList):
-    # Define the mapping for variables to metadata
+def update_var_list(var_list):
     var_metadata = {
         'salinity': {
             "vars": ["salinity"],
@@ -40,38 +38,16 @@ def update_varList(varList):
         }
     }
 
-    # Build the dictionary for the output
-    updated_varDict = {}
+    return {var: var_metadata[var] for var in var_list if var in var_metadata}
 
-    for var in varList:
-        if var in var_metadata:
-            updated_varDict[var] = var_metadata[var]
-        else:
-            print(f"Oops, '{var}' is an invalid variable name. Please check variable names in varList.")
-
-    return updated_varDict
 
 def decode_time_units(time_var):
-    """
-    Convert a time variable from a NetCDF file to a pandas DatetimeIndex.
-
-    Parameters:
-    time_var: netCDF4.Variable
-        A NetCDF variable with 'units' and optional 'calendar' attributes.
-
-    Returns:
-    pandas.DatetimeIndex
-        A pandas DatetimeIndex corresponding to the time variable.
-    """
     try:
         units = time_var.units
-        calendar = getattr(time_var, 'calendar', 'standard')  # 'standard' as a common default
+        calendar = getattr(time_var, 'calendar', 'standard')
         time = cftime.num2date(
-            time_var[:],
-            units=units,
-            calendar=calendar,
-            only_use_cftime_datetimes=False,
-            only_use_python_datetimes=True
+            time_var[:], units=units, calendar=calendar,
+            only_use_cftime_datetimes=False, only_use_python_datetimes=True
         )
         return pd.DatetimeIndex(time)
     except AttributeError as e:
@@ -79,113 +55,80 @@ def decode_time_units(time_var):
     except Exception as e:
         raise RuntimeError(f"Error decoding time units: {e}")
 
-def download_vars(variables,domain,depths,savedir):    
-    for var in variables:
-        varlist = update_varList([var])
-        print(f'Connecting to {varlist[var]["url"]} to subset and download {varlist[var]["vars"][0]}.') 
-        
-        # List of variables to remove from dataset
-        varsToDrop = ['salinity_bottom','water_temp_bottom','water_u_bottom','water_v_bottom',
-                      'tau','time_offset','time_run','time1_offset','sst','sss','ssu','ssv',
-                      'sic','sih','siu','siv','surtx','surty','steric_ssh']
-
-        # lon, lat and depth limits 
-        lon_range = slice(domain[0],domain[1])
-        lat_range = slice(domain[2],domain[3])
-        depth_range = slice(depths[0],depths[1])
+def download_var(var, metadata, domain, depths, save_dir):
+    vars_to_drop = ['salinity_bottom', 'water_temp_bottom', 'water_u_bottom', 'water_v_bottom', 'tau', 'time_offset',
+                    'time_run', 'time1_offset', 'sst', 'sss', 'ssu', 'ssv', 'sic', 'sih', 'siu', 'siv', 'surtx', 
+                    'surty', 'steric_ssh']
+    lon_range, lat_range, depth_range = slice(domain[0], domain[1]), slice(domain[2], domain[3]), slice(depths[0], depths[1])
     
-        ds = None
-        MAX_RETRIES = 3
-        RETRY_WAIT = 20
-        download_engine = "netcdf4"
-        i = 0
-        while i < MAX_RETRIES:
-            print('')
-            print(f"Attempt {i+1} of {MAX_RETRIES}")
-            print('')
-        
-            ds = xr.open_dataset(varlist[var]["url"], drop_variables=varsToDrop, decode_times = False, engine="netcdf4")
+    MAX_RETRIES, RETRY_WAIT = 3, 20
+    variable=None
+    for attempt in range(MAX_RETRIES):
+        print('')
+        print(f'Attempt {attempt} out of {MAX_RETRIES} tries for {metadata["vars"][0]}.')
+        try:
+            print(f'Connecting to {metadata["url"]} to subset and download {metadata["vars"][0]}.')
+            ds = xr.open_dataset(metadata["url"], 
+                                 drop_variables=vars_to_drop, 
+                                 decode_times=False, 
+                                 engine="netcdf4").sel(lat=lat_range, 
+                                                       lon=lon_range)
             if 'time' in ds:
-                ds['time'] = decode_time_units(ds['time'])
+                ds['time'] = decode_time_units(ds['time'])                
+            
+            variable = ds[metadata["vars"][0]]
+            if variable.ndim == 4:
+                variable = variable.sel(depth=depth_range)
+            
+            #variable = variable.resample(time='1D').mean()
+            variable = variable.resample(time='1D', offset='12h').mean()
+            save_path = os.path.join(save_dir, f"hycom_{metadata['vars'][0]}.nc")
+            variable.to_netcdf(save_path, 'w')
+            print(f'File written to {save_path}')
+            ds.close()
+            break
+            
+        except Exception as e:
+            print(f"Error: {e}")
+            if attempt < MAX_RETRIES - 1:
+                print(f"Retrying in {RETRY_WAIT} seconds...")
+                time.sleep(RETRY_WAIT)
             else:
-                pass
+                print("Failed to download after multiple attempts.")
+                
+        finally:
+            # Explicitly delete large variables to free up memory
+            del variable
+
+def download_vars_parallel(variables, domain, depths, workers, save_dir):
+    var_metadata = update_var_list(variables)
+    
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_var = {
+            executor.submit(download_var, var, metadata, domain, depths, save_dir): var 
+            for var, metadata in var_metadata.items()
+        }
         
-            # Assign the correct variable
-            if varlist[var]["vars"][0]=='surf_el':
-                variable = ds.surf_el
-            elif varlist[var]["vars"][0]=='salinity':
-                variable = ds.salinity    
-            elif varlist[var]["vars"][0]=='water_temp':
-                variable = ds.water_temp    
-            elif varlist[var]["vars"][0]=='water_u':
-                variable = ds.water_u
-            elif varlist[var]["vars"][0]=='water_v':
-                variable = ds.water_v
-            else:
-                print(f'Invalid variable name: {varlist[var]["vars"]}')
-                print(f"Valid variable names are: salinity, water_temp, surface_el, water_u and water_v")
-                print('')
+        for future in as_completed(future_to_var):
+            var = future_to_var[future]
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Download failed for {var}: {e}")
 
-            # Subset the variable
-            if np.ndim(variable)==3:
-                var_subset = variable.sel({'lat' : lat_range, 'lon' : lon_range})
-            else:
-                var_subset = variable.sel({'lat' : lat_range, 'lon' : lon_range, 'depth' : depth_range})
-            
-            # Compute daily averages (this can take a while)
-            print(f'Subsetting {varlist[var]["vars"][0]}.')
-            print('')
-            var_resampled = var_subset.resample(time='1D').mean()
-            
-            # Save and download the dataset
-            print(f'Downloading {varlist[var]["vars"][0]}.')
-            print('')
-            sname = savedir + 'hycom_' + varlist[var]["vars"][0] + '.nc'
-            var_resampled.to_netcdf(sname,'w')
-            
-            if ds is not None:
-                ds.close()    
-                print(f'File written to {sname}')
-                print('')
-                i=MAX_RETRIES
-            else:
-                i+=1
-
-def download_hycom(variables,domain,depths,run_date,hdays,fdays,savedir):
-    """
-    Download HYCOM analysis using xarrray opendap.
-
-    INPUTS:
-    domain   : List of geographical coordinates to subset the data and download (e.g. [lon_min,lon_max,lat_min,lat_max]).
-    depths   : List of minimum and maximum depths to download. Values must be positive (e.g. [0,5000]).
-    variables: List of variables to download (e.g. ['salinity', 'water_temp', 'surface_el', 'water_u', 'water_v'])
-    run_date : Todays datetime to ensure downloaded data corosponds (e.g. datetime.datetime(YYYY,MM,DD)).
-    hdays    : Days to hindcast (e.g. hdays = 5).
-    fdays    : Days to forecast (e.g. fdays = 5).
-
-    OUTPUT:
-    NetCDF file containing the most recent HYCOM forcast run.
-    """
-    
-    download_vars(variables,domain,depths,savedir)
-    
-    start_date = pd.Timestamp(run_date) + timedelta(days=-hdays)
+def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,workers=None):
+    if workers is None:
+        workers=len(variables)
+    else:
+        pass
+    download_vars_parallel(variables, domain, depths, workers, save_dir) 
+    start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
-    
-    ds = xr.open_mfdataset(savedir + 'hycom_*.nc')
-    
-    time_coords = ds.coords['time'].values
-    
-    checkTimeRange(start_date,end_date,time_coords)
-    
-    outfile = os.path.abspath(os.path.join(savedir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
-    
+    ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
+    check_time_range(start_date, end_date, ds.coords['time'].values)
+    outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_00')}.nc"))
     if os.path.exists(outfile):
-            os.remove(outfile)
-    
-    ds.to_netcdf(outfile,'w')
-    
+        os.remove(outfile)
+    ds.to_netcdf(outfile, 'w')
     subprocess.call(["chmod", "-R", "775", outfile])
-    
-    print('created: ', outfile)
-    print('')
+    print('Created:', outfile)

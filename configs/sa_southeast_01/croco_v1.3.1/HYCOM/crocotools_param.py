@@ -25,5 +25,3 @@ ini_prefix = 'croco_ini_HYCOM'
 bry_prefix = 'croco_bry_HYCOM' 
 obc_dict = dict(south=1, west=1, east=1, north=0) # open boundaries (1=open , [S W E N])
 cycle_bry=0
-
-
