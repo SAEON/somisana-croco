@@ -238,13 +238,15 @@ jobs:
             # (this is an attempt to avoid the container from overloading the server, which has been an issue)
             source ${{ env.CONFIG_DIR }}/myenv_frcst.sh
             # run the model
-            docker run \
-              --rm \
-              --entrypoint /bin/bash \
-              --cpus=${MPI_NUM_PROCS} \
-              -v ${{ env.CONFIG_DIR }}:/home/somisana \
-              ghcr.io/saeon/somisana-croco_run_main:latest \
-                -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
+            #docker run \
+            #  --rm \
+            #  --entrypoint /bin/bash \
+            #  --cpus=${MPI_NUM_PROCS} \
+            #  -v ${{ env.CONFIG_DIR }}:/home/somisana \
+            #  ghcr.io/saeon/somisana-croco_run_main:latest \
+            #    -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
+            #
+            cd ${{ env.CONFIG_DIR }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
