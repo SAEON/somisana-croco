@@ -182,9 +182,9 @@ jobs:
           RST_STEP=${{ steps.get_ini.outputs.rst_step }} # which time-step to restart from in this run
           # directory where the surface files are for ONLINE interpolation 
           # (this is the path inside the docker image which runs the model!)
-          DATA_DIR_BLK=/home/somisana/${{ env.RUN_NAME }}/scratch/
+          # DATA_DIR_BLK=/home/somisana/${{ env.RUN_NAME }}/scratch/
           # (this is what the path would have been if we weren't running the model inside a docker image)
-          # DATA_DIR_BLK=${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/
+          DATA_DIR_BLK=${{ env.DATA_DIR }}/${{ inputs.BLK }}/for_croco/
           #
           # do a sed replacement on the template .in file, and write the output to the scratch dir
           sed -e 's|DTNUM|'$DT'|' \
@@ -246,8 +246,7 @@ jobs:
             #  ghcr.io/saeon/somisana-croco_run_main:latest \
             #    -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
             #
-            cd /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
-            #/home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
+            cd ${{ env.CONFIG_DIR }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
