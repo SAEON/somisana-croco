@@ -126,7 +126,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,w
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
     ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
     check_time_range(start_date, end_date, ds.coords['time'].values)
-    outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_00')}.nc"))
+    outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
     if os.path.exists(outfile):
         os.remove(outfile)
     ds.to_netcdf(outfile, 'w')

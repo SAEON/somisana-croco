@@ -1286,7 +1286,8 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
         nc=netcdf.Dataset(fname_out, 'a')
         if vars == 'ssh' :
             (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,\
-                                                        closest_indices[0],closest_indices[1])
+                                                        int(closest_indices[0]),int(closest_indices[1])
+                                                        )
             
             # interpolate in time to ini_datenum    
             interp_func = interp1d(input_datenums[closest_indices], zeta, axis=0, kind='linear')
@@ -1311,7 +1312,8 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
                 # variables so we have to extract the two nearest time-steps in a loop
                 for i in range(2):
                     trac_3d_at_i= interp_tools.interp(inpdat,tra,params.Nzgoodmin,z_rho,crocogrd,\
-                                                      closest_indices[i],closest_indices[i])
+                                                      int(closest_indices[i]),int(closest_indices[i])
+                                                      )
                     trac_3d.append(trac_3d_at_i.squeeze(axis=0)) 
                 trac_3d      = np.stack(trac_3d, axis=0)
                 
@@ -1332,7 +1334,8 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
             u,v,ubar,vbar=[],[],[],[]
             for i in range(2):
                 [u_i,v_i,ubar_i,vbar_i]=interp_tools.interp_uv(inpdat,params.Nzgoodmin,z_rho,cosa,sina,crocogrd,\
-                                                               closest_indices[i],closest_indices[i])
+                                                               int(closest_indices[i]),int(closest_indices[i])
+                                                               )
                 u.append(u_i.squeeze(axis=0)),v.append(v_i.squeeze(axis=0)),ubar.append(ubar_i.squeeze(axis=0)),vbar.append(vbar_i.squeeze(axis=0))
                 
             # interpolate in time to ini_datenum   
