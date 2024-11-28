@@ -246,7 +246,6 @@ jobs:
             #  ghcr.io/saeon/somisana-croco_run_main:latest \
             #    -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
             #
-            echo ${{ env.CONFIG_DIR }}
             cd ${{ env.CONFIG_DIR }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
       - name: ensure permissions
         run: |
