@@ -237,7 +237,6 @@ jobs:
           # We are preferring to rather run CROCO directly on the server due to issues with resource management
           # Before running the model, we implement a random pause in an attempt to stagger the launches of multiple runs in parallel
           # This is in an attempt to improve resource allocation at the start of the run and improve performance
-          sleep $((RANDOM % 120))
           cd ${{ env.CONFIG_DIR }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
       - name: ensure permissions
         run: |
