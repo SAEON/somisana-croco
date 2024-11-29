@@ -5,7 +5,7 @@
 # A lot of variables in myenv_inter.sh aren't here as they are already defined as part of the operational workflow
 
 # provide the path to the croco source code
-export SOURCE=/croco-v1.3.1/OCEAN/
+export SOURCE=/home/$USER/code/croco-v1.3.1/OCEAN/
 
 # MPI partitioning
 export MPI_NUM_X=4

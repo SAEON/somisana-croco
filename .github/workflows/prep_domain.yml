@@ -65,10 +65,14 @@ jobs:
     steps:
       - name: compile the code
         run: |
-          docker run \
-            --rm \
-            --entrypoint /bin/bash \
-            -v ${{ env.CONFIG_DIR }}:/home/somisana \
-            ghcr.io/saeon/somisana-croco_run_${{ inputs.BRANCH_REF }}:latest \
-              -c "cd /home/somisana && ./jobcomp_frcst.sh ${{ inputs.COMP }}"
-
+          #docker run \
+          #  --rm \
+          #  --entrypoint /bin/bash \
+          #  -v ${{ env.CONFIG_DIR }}:/home/somisana \
+          #  ghcr.io/saeon/somisana-croco_run_${{ inputs.BRANCH_REF }}:latest \
+          #    -c "cd /home/somisana && ./jobcomp_frcst.sh ${{ inputs.COMP }}"
+          #
+          # We compile the croco model outside the docker image because we are
+          # running the model outside the docker image. We hope that it speeds up
+          # the running of the model
+          cd ${{ env.CONFIG_DIR }} && ./jobcomp_frcst.sh ${{ inputs.COMP }} 

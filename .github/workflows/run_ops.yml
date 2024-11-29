@@ -46,7 +46,7 @@ jobs:
             # Correct hour formatting (ensure leading zero)
             hour=$(printf "%02d" $hour)
             # Assemble the run_date
-            run_date=$(echo ${current_time:0:8}_${hour})            
+            run_date=$(echo ${current_time:0:8}_${hour})
           fi
           echo "value=$run_date" >> $GITHUB_OUTPUT
           
