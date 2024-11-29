@@ -117,6 +117,22 @@ def download_vars_parallel(variables, domain, depths, workers, save_dir):
                 print(f"Download failed for {var}: {e}")
 
 def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,workers=None):
+    """
+    Downloads the most recent HYCOM analysis in daily outputs using xarrray opendap.
+
+    INPUTS:
+    variables: List of variables to download (e.g. ['salinity', 'water_temp', 'surface_el', 'water_u', 'water_v'])
+    domain   : List of geographical coordinates to subset the data and download (e.g. [lon_min,lon_max,lat_min,lat_max]).
+    depths   : List of minimum and maximum depths to download. Values must be positive (e.g. [0,5000]).
+    run_date : Todays datetime to check that the data fall within the range (e.g. datetime.datetime(YYYY,MM,DD)).
+    hdays    : Days to hindcast (e.g. hdays=5).
+    fdays    : Days to forecast (e.g. fdays=5).
+    save_dir : Directory to save the downloaded data (eg. save_dir='/path/and/directory/to/save/').
+    workers  : It is the number of variables to download in parallel. Default is None, in which cases it downloads all the variables in paralell. To note, the number of workers cannot exceed the number of variables.
+
+    OUTPUT:
+    NetCDF file containing the most recent HYCOM forcast run.
+    """    
     if workers is None:
         workers=len(variables)
     else:
