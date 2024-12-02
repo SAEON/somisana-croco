@@ -118,40 +118,36 @@ def main():
     parser_download_gfs_atm.add_argument('--outputDir', required=True, help='Directory to save files')
     def download_gfs_atm_handler(args):
         download_gfs_atm(args.domain, args.run_date, args.hdays, args.fdays, args.outputDir)
-    parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler)
-    
+    parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler) 
     # -------------------
     # download_hycom
     # -------------------
     parser_download_hycom = subparsers.add_parser('download_hycom', 
             help='Download a subset of  HYCOM analysis data using xarray OpenDAP')
-    parser_download_hycom.add_argument('--outDir', required=True, help='Directory to save files')
-    parser_download_hycom.add_argument('--domain', required = False, type=parse_list,
-            default=[10.0, 25.0, -40.0, -20.0],
-            help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
-    parser_download_hycom.add_argument('--depths', required = False, type=parse_list,
-            default=[0,2,4,6,8,10,12,15,20,25,30,35,40,45,50,60,70,80,90,100,125,150,200,250,300,350,400,500,600,700,800,900,1000,1250,1500,2000,2500,3000,4000,5000],
-            help='comma separated list of depths to download i.e. "[0,2,4,...,3000,4000,5000]"')
-    parser_download_hycom.add_argument('--variables', required = False, type=parse_list,
-            default=['surf_el','salinity','water_temp','water_v','water_u'],
-            help='List of strings of variable names found in HYCOM to download i.e.["surf_el","salinity","water_temp","water_u","water_v"].')
-    parser_download_hycom.add_argument('--run_date', required=False, type=parse_datetime,
-            default=None,
-            help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_hycom.add_argument('--hdays', required=False, type=float, 
-            default=5.,
-            help='hindcast days i.e before run_date')
+    parser_download_hycom.add_argument('--variables',required=False,
+                                       default = ['salinity', 'water_temp', 'surf_el', 'water_u', 'water_v'],
+                                       help='List of variables to download.')    
+    parser_download_hycom.add_argument('--domain', required=False, type=parse_list,
+                                       default=[10, 25, -40, -25],
+                                       help='comma separated list of domain extent to download i.e. [lon_min,lon_max,lat_min,lat_max]')
+    parser_download_hycom.add_argument('--depths', required=False, type=parse_list,
+                                       default=[0,5000],
+                                       help='Minimum and maximum depths to download. Values must be positive. Default is [0,5000]')
+    parser_download_hycom.add_argument('--run_date', required=True, type=parse_datetime,
+                                       help='start time in datetime format "YYYY-MM-DD HH:MM:SS"')
+    parser_download_hycom.add_argument('--hdays', required=False, type=float,
+                                       default=5.,
+                                       help='hindcast days i.e before run_date')
     parser_download_hycom.add_argument('--fdays', required=False, type=float, 
-            default=5.,
-            help='forecast days i.e before run_date')
-    parser_download_hycom.add_argument('--cleanDir', required=False, type=parse_bool, 
-            default=True,
-            help='Clean the directory after merging the files')
-    parser_download_hycom.add_argument('--parallel', required=False, type=parse_bool, 
-            default=True,
-            help='Type of download. If parallel, then the download occurs in parellel. If parallel is false, then the download occurs in series. ')
+                                       default=5.,
+                                       help='forecast days i.e before run_date')
+    parser_download_hycom.add_argument('--savedir', required=True, 
+                                       help='Directory to save files')
+    parser_download_hycom.add_argument('--workers', required=False,
+                                       default=None,
+                                       help='Number of parallel downloads - usually the number of variables, can be less but not more.')
     def download_hycom_handler(args):
-        download_hycom(args.outDir,args.domain, args.depths, args.variables, args.run_date, args.hdays, args.fdays,  args.cleanDir, args.parallel)
+        download_hycom(args.variables,args.domain, args.depths, args.run_date, args.hdays, args.fdays, args.savedir, args.workers)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
     
     # ------------------
@@ -203,6 +199,8 @@ def main():
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
+    parser_crocplot.add_argument('--skip_time', required=False, type=int, default=1,
+            help='Number of time-steps to skip between frames in the animation')
     parser_crocplot.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
@@ -221,7 +219,7 @@ def main():
                       ref_date = args.ref_date,
                       cbar_label=args.cbar_label,
                       add_vectors = True,
-                      skip_time = 1,
+                      skip_time = args.skip_time,
                       isobaths=args.isobaths,
                       gif_out=args.gif_out,
                       write_gif = True
@@ -249,8 +247,8 @@ def main():
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
-    parser_regrid_tier2.add_argument('--depths', type=int, nargs='+',
-                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999], # Doesn't work if you do not include zero. See how it is done in regriddding for the CF-complient. 
+    parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
+                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],  
                          help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)')
     def regrid_tier2_handler(args):
         regrid_tier2(args.fname, args.fname_out, depths = args.depths)
@@ -283,7 +281,7 @@ def main():
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
-    parser_get_ts_multivar.add_argument('--depths', type=int, nargs='+',  
+    parser_get_ts_multivar.add_argument('--depths',required=False, type=parse_list,
                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
                         help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')

@@ -15,8 +15,12 @@ Compile options
 ---------------
 `C**`
 01 - baseline compile options
-02 - undef CLIMATOLOGY and define FRC_BRY to test impact of boundaries
+02 - as per 01, undef CLIMATOLOGY and define FRC_BRY
 03 - as per 01, define ONLINE
+04 - as per 03, undef CLIMATOLOGY and define FRC_BRY
+05 - as per 04, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
+06 - as per 04, define TIDES
+07 - as per 06, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
 
 Runtime input (\*.in files)
 ---------------------------

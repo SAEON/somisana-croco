@@ -1,0 +1,25 @@
+name: Build the base cli docker image
+
+# this workflow only gets executed when changes are pushed to Dockerfile.cli_base and environment.yml
+# i.e. the files which would impact the environment inside the cli base image
+# you can also optionally execute the image manually (in case you want to update to more recent packages)
+
+on:
+  push:
+    paths:
+      - 'Dockerfile.cli_base'
+      - 'environment.yml'
+  workflow_dispatch:  # Allows the workflow to be triggered manually
+
+jobs:
+  build_cli_base_image:
+    uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
+    with:
+      IMAGE_ID: cli_base
+
+  build_cli_image:
+    # update the cli since the base image has been updated too
+    needs: [build_cli_base_image]
+    uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
+    with:
+      IMAGE_ID: cli

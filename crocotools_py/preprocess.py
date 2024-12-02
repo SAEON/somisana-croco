@@ -7,7 +7,7 @@ import pandas as pd
 import os, sys, glob
 from os import path
 # import fnmatch
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata,interp1d
 import crocotools_py.postprocess as post
 # functions from croco_pytools submodule
 # (I'm sure there's a better way of importing these functions, but this works)
@@ -1212,6 +1212,7 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
         for idx_file in glob.glob(os.path.join(gfs_dir, '*.idx')):
             os.remove(idx_file)
         
+
 def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
     '''
     Make CROCO initial conditions file from an OGCM file
@@ -1222,23 +1223,26 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
     a few others are direct inputs to this function. The direct inputs are for 
     things which we may want to be update as part of an operational/inter-annual workflow
     
+    We extract the OGCM data corresponding to the two nearest time-steps to ini_date
+    and perform linear interpolation in time before writing the ini file
+    
     input_file  - path and filename for the initial file.
     output_dir  - where the output file gets written. This directory must also contain the crocotools_param.py file which contains configurable parameters not already provided as direct inputs.
     ini_date    - the model initialisation time, as a datetime.datetime object. 
     Yorig       - the Yorig value used in setting up the CROCO model
     fname_out   - output ini filename (only the filename, not the full path)
     
-    '''  
-    
+    '''
+
     # imports
     sys.path.append(output_dir)
     import crocotools_param as params
-    
+
     # Load croco_grd
     # (assumes params.croco_grd is a relative path from output_dir)
     croco_grd = os.path.join(output_dir, params.croco_grd)
     crocogrd = Croco.CROCO_grd(croco_grd, params.sigma_params)
-    
+
     #--- Load input (restricted to croco_grd) ----------------------------  
     multi_files=params.multi_files
     print(params.inputdata)
@@ -1246,38 +1250,50 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
     print(crocogrd)
     inpdat=Inp.getdata(params.inputdata,input_file,crocogrd,multi_files,params.tracers)
     print(inpdat)
-    
+
     # --- Create the initial file -----------------------------------------
     fname_out = os.path.join(output_dir,fname_out)
     Croco.CROCO.create_ini_nc(None,fname_out,crocogrd,
                               tracers=params.tracers)
 
     # --- Handle initial time ---------------------------------------------
-    
     # get Yorig-01-01 in days since 1970-01-01
-    ref_datenum = date2num(datetime(Yorig,1, 1)) 
+    ref_datenum = date2num(datetime(Yorig,1, 1))
+    
     # convert ini_date to days since Yorig-01-01
     ini_datenum = date2num(ini_date) - ref_datenum
+    
     # Read the time from the input file, and convert to days since Yorig-01-01
     input_datenums = date2num(inpdat.ncglo['ssh'].time.values) - ref_datenum
-    # find the nearest index corresponding to the requested ini_date
-    tndx = np.argmin(abs(input_datenums-ini_datenum))
+    
+    # find the two nearest indices corresponding to the requested ini_date
+    sorted_indices = np.argsort(abs(input_datenums - ini_datenum))
+    closest_indices = np.sort(sorted_indices[0:2])
     
     # start and end time in days (not sure why we need this in the file?)
-    tstart=input_datenums[tndx]
-    tend=input_datenums[tndx]
+    tstart = ini_datenum
+    tend   = ini_datenum
+    
     # scrumt and oceant, in seconds since Yorig-01-01
     # this is what is used to define the initial time in the model
-    scrumt = input_datenums[tndx] * 86400
-    oceant = input_datenums[tndx] * 86400
-    
-   #  --- Compute and save variables on CROCO grid ---------------
+    scrumt = ini_datenum * 86400
+    oceant = ini_datenum * 86400
+ 
+    #  --- Compute and save variables on CROCO grid ---------------
 
     for vars in ['ssh','tracers','velocity']:
         print('\nProcessing *%s*' %vars)
         nc=netcdf.Dataset(fname_out, 'a')
         if vars == 'ssh' :
-            (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,tndx,tndx)
+            (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,\
+                                                        closest_indices[0],closest_indices[1]
+                                                        )
+            
+            # interpolate in time to ini_datenum    
+            interp_func = interp1d(input_datenums[closest_indices], zeta, axis=0, kind='linear')
+            zeta        = interp_func(ini_datenum)
+            
+            # write to the nc file
             nc.variables['zeta'][0,:,:] = zeta*crocogrd.maskr
             nc.Input_data_type=params.inputdata
             nc.variables['ocean_time'][:] = oceant
@@ -1287,10 +1303,25 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
             nc.variables['tend'][:] = tend
             z_rho = crocogrd.scoord2z_r(zeta=zeta)
             z_w   = crocogrd.scoord2z_w(zeta=zeta)
+            
         elif vars == 'tracers':
             for tra in params.tracers:
                 print(f'\nIn tracers processing {tra}')
-                trac_3d= interp_tools.interp(inpdat,tra,params.Nzgoodmin,z_rho,crocogrd,tndx,tndx)
+                trac_3d=[]
+                # apparently interp_tools.interp can't extract multiple time-steps for 3D 
+                # variables so we have to extract the two nearest time-steps in a loop
+                for i in range(2):
+                    trac_3d_at_i= interp_tools.interp(inpdat,tra,params.Nzgoodmin,z_rho,crocogrd,\
+                                                      closest_indices[i],closest_indices[i]
+                                                      )
+                    trac_3d.append(trac_3d_at_i.squeeze(axis=0)) 
+                trac_3d      = np.stack(trac_3d, axis=0)
+                
+                # interpolate in time to ini_datenum   
+                interp_func = interp1d(input_datenums[closest_indices], trac_3d, axis=0, kind='linear')
+                trac_3d     = interp_func(ini_datenum)
+                
+                # write to the nc file
                 nc.variables[tra][0,:,:,:] = trac_3d*crocogrd.mask3d()
 
         elif vars == 'velocity':
@@ -1298,8 +1329,32 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
             cosa=np.cos(crocogrd.angle)
             sina=np.sin(crocogrd.angle)
 
-            [u,v,ubar,vbar]=interp_tools.interp_uv(inpdat,params.Nzgoodmin,z_rho,cosa,sina,crocogrd,tndx,tndx)
-              
+            # apparently interp_tools.interp can't extract multiple time-steps for 3D 
+            # variables so we have to extract the two nearest time-steps in a loop
+            u,v,ubar,vbar=[],[],[],[]
+            for i in range(2):
+                [u_i,v_i,ubar_i,vbar_i]=interp_tools.interp_uv(inpdat,params.Nzgoodmin,z_rho,cosa,sina,crocogrd,\
+                                                               closest_indices[i],closest_indices[i]
+                                                               )
+                u.append(u_i.squeeze(axis=0)),v.append(v_i.squeeze(axis=0)),ubar.append(ubar_i.squeeze(axis=0)),vbar.append(vbar_i.squeeze(axis=0))
+                
+            # interpolate in time to ini_datenum   
+            u           = np.stack(u, axis=0)
+            interp_func = interp1d(input_datenums[closest_indices], u, axis=0, kind='linear')
+            u           = interp_func(ini_datenum)
+            
+            v      = np.stack(v, axis=0)
+            interp_func = interp1d(input_datenums[closest_indices], v, axis=0, kind='linear')
+            v           = interp_func(ini_datenum)
+            
+            ubar        = np.stack(ubar, axis=0)
+            interp_func = interp1d(input_datenums[closest_indices], ubar, axis=0, kind='linear')
+            ubar        = interp_func(ini_datenum)
+            
+            vbar        = np.stack(vbar, axis=0)
+            interp_func = interp1d(input_datenums[closest_indices], vbar, axis=0, kind='linear')
+            vbar        = interp_func(ini_datenum)
+            
             conserv=1  # Correct the horizontal transport i.e. remove the intergrated tranport and add the OGCM transport          
             if conserv == 1:
                 (ubar_croco,h0)=sig_tools.vintegr(u,grd_tools.rho2u(z_w),grd_tools.rho2u(z_rho),np.nan,np.nan)/grd_tools.rho2u(crocogrd.h)
@@ -1307,15 +1362,15 @@ def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
 
                 u = u - ubar_croco ; u = u + np.tile(ubar,(z_rho.shape[0],1,1))
                 v = v - vbar_croco ; v = v + np.tile(vbar,(z_rho.shape[0],1,1))
-           
+                
+            # write to the nc file
             nc.variables['u'][0,:,:,:] = u *crocogrd.umask3d()
             nc.variables['v'][0,:,:,:] = v * crocogrd.vmask3d()
             nc.variables['ubar'][0,:,:] = ubar *crocogrd.umask
             nc.variables['vbar'][0,:,:] = vbar * crocogrd.vmask
 
-   
         nc.close()
-    
+
     print('')
     print(' Initial file created ')
     print(' Path to file is ', fname_out)

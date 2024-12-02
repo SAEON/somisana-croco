@@ -37,6 +37,7 @@ def plot_land(ax, ocean_color = 'white', land_color = cfeature.COLORS['land'], l
     """
     Plot the landmask or the shapes from GSHHG.
     (from the OpenDrift code)
+    lscale = resolution of land feature ('c', 'l', 'i', 'h', 'f', 'auto')
     """
     land = LandmaskFeature(scale=lscale, facecolor=land_color, globe=globe)
 
@@ -47,6 +48,8 @@ def plot_land(ax, ocean_color = 'white', land_color = cfeature.COLORS['land'], l
 def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h'):
     '''
     generic stuff applicable to all 2D plots
+    
+    lscale = resolution of land feature ('c', 'l', 'i', 'h', 'f', 'auto')
     '''
     # extents = [lon_min, lon_max, lat_min, lat_max]
     #

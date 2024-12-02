@@ -33,6 +33,47 @@ env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
 
 jobs:
+  check_files:
+    # checks to see if files have maybe already been downloaded as part of a previous running of this workflow
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    outputs:
+      MERCATOR_OK: ${{ steps.check_mercator.outputs.value }}
+      HYCOM_OK: ${{ steps.check_hycom.outputs.value }}
+      GFS_OK: ${{ steps.check_gfs.outputs.value }}
+    steps:
+      - name: check mercator
+        id: check_mercator
+        run: |
+          FILE_PATH=${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+      - name: check hycom
+        id: check_hycom
+        run: |
+          FILE_PATH=${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+      - name: check gfs
+        id: check_gfs
+        run: |
+          # just use a single file as the check - assume others will be good too if one is
+          FILE_PATH=${{ env.DATA_DIR }}/GFS/for_croco/U-component_of_wind_Y9999M1.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+
+
   mercator_saeon:
     # we have had an issue with downloading from copernicus specifically on the mims network
     # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli at the time of testing
@@ -42,6 +83,8 @@ jobs:
     # the copernicusmarine tool works better on this network)
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.MERCATOR_OK == '0' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -59,26 +102,22 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: rm -f /home/giles/mercator_download/*nc
+          on_retry_command: sudo rm -f /home/giles/mercator_download/*nc
           command: |
-            if [ ! -f /mnt/somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ]; then
-              docker run \
-                --rm \
-                -v /home/giles/mercator_download:/tmp/download \
-                ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-                download_mercator \
-                  --usrname ${{ secrets.COPERNICUS_USERNAME }} \
-                  --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
-                  --domain 11,36,-39,-25 \
-                  --run_date ${{ steps.format_date.outputs.value }} \
-                  --hdays ${{ inputs.HDAYS }} \
-                  --fdays ${{ inputs.FDAYS }} \
-                  --outputDir '/tmp/download'
-            fi
-      - name: copy to a shared dir
-        run: |
-          # note the shared mount dir is named differently on saeonapps than it is on ocims!
-          cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
+            docker run \
+              --rm \
+              -v /home/giles/mercator_download:/tmp/download \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_mercator \
+                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
+                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --outputDir '/tmp/download'
+            # copy to a shared dir
+            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
       - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
@@ -93,15 +132,10 @@ jobs:
               -c "rm -f /mnt/tmp/*nc"
 
   mercator:
-    needs: [mercator_saeon]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files,mercator_saeon]
+    if: ${{ always() && needs.check_files.outputs.MERCATOR_OK == '0' }}
     steps:
-      - name: Format RUN_DATE
-        id: format_date
-        run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
-          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the MERCATOR directory
         run: |
           if [ ! -d "${{ env.DATA_DIR }}/MERCATOR" ]; then
@@ -109,6 +143,18 @@ jobs:
             chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
             chmod -R 774 ${{ env.DATA_DIR }}/MERCATOR
           fi
+      - name: move downloaded file from the shared mount
+        # we only need this since we have the workaround of downloading on saeonapps
+        # so this essentially replaces the commented download code below
+        run: |
+          # We need to use sudo in the line below because the mounted dir is owned by root
+          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
+#      - name: Format RUN_DATE
+#        id: format_date
+#        run: |
+#          run_date=${{ inputs.RUN_DATE }}
+#          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+#          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
 # see comments in mercator_saeon job as to why this download is commented here
 #      - name: download MERCATOR
 #        uses: nick-fields/retry@master
@@ -120,7 +166,7 @@ jobs:
 #          warning_on_retry: true
 #          shell: bash
 #          continue_on_error: false
-#          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+#          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
 #          command: >-
 #            docker run \
 #              --user $(id -u):$(id -g) \
@@ -135,15 +181,53 @@ jobs:
 #                --hdays ${{ inputs.HDAYS }} \
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
-      - name: move downloaded file from the shared mount
-        # we only need this since we have the workaround of downloading on saeonapps
-        # so this essentially replaces the commented download step above
-        run: |
-          # We need to use sudo in the line below because the mounted dir is owned by root
-          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
 
+  # Download hycom 
+  hycom:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.HYCOM_OK == '0' }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: create the HYCOM directory
+        run: |
+          sudo rm -rf ${{ env.DATA_DIR }}/HYCOM
+          mkdir -p ${{ env.DATA_DIR }}/HYCOM
+          chown -R :runners ${{ env.DATA_DIR }}/HYCOM
+          chmod -R 774 ${{ env.DATA_DIR }}/HYCOM
+      - name: Download HYCOM
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/HYCOM/*.nc
+          command: |
+            docker run \
+              --user $(id -u):$(id -g) \
+              --rm \
+              -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_hycom \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --savedir '/tmp/' 
+                
   gfs:
     runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.GFS_OK == '0' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -153,7 +237,7 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the GFS directory
         run: |
-          rm -rf ${{ env.DATA_DIR }}/GFS # start again if we're re-running
+          sudo rm -rf ${{ env.DATA_DIR }}/GFS # start again if we're re-running
           mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
           chown -R :runners ${{ env.DATA_DIR }}/GFS
           chmod -R 774 ${{ env.DATA_DIR }}/GFS
@@ -167,8 +251,8 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: rm -f ${{ env.DATA_DIR }}/GFS/*grb*
-          command: >-
+          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/GFS/*grb*
+          command: |
             docker run \
               --user $(id -u):$(id -g) \
               --rm \
@@ -180,18 +264,6 @@ jobs:
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp'
-# I'm commenting this job since we are moving to ONLINE surface interpolation
-#      - name: prepare a single netcdf file from the downloaded grb files
-#        run: >-
-#          docker run \
-#            --rm \
-#            --mac-address 02:42:ff:ff:ff:ff \
-#            --entrypoint /bin/bash \
-#            -v /opt/licenses/matlab-r2022a/license.lic:/licenses/license.lic \
-#            -v ${{ env.DATA_DIR }}/GFS:/home/matlab/somisana \
-#            -e MLM_LICENSE_FILE=/licenses/license.lic \
-#            ghcr.io/saeon/somisana-croco_matlab_${{ inputs.BRANCH_REF }}:latest \
-#            -c "cd /home/matlab/somisana && cp /somisana-croco/crocotools_mat/fcst/start_GFS.m . && matlab -nodisplay -nosplash -nodesktop -r \"start_GFS; reformat_GFS(2000); exit;\""
       - name: reformat gfs netcdf files for use with ONLINE cpp key
         run: |
           docker run \
@@ -211,6 +283,7 @@ jobs:
     # the gfs prerequisite is because we are currently using GFS variables interpolated onto the SAWS grid for any variables not provided by SAWS
     # this could easily be changed to another data provider if available and we have good reason to switch
     runs-on: ${{ inputs.RUNNER_NAME }}
+    if: ${{ always() }} # so we always output the SAWS_OK variable
     outputs:
       SAWS_OK: ${{ steps.check_success.outputs.value }}
     steps:
@@ -222,7 +295,7 @@ jobs:
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: create the SAWS directory
         run: |
-          rm -rf ${{ env.DATA_DIR }}/SAWS # start again if we're re-running
+          sudo rm -rf ${{ env.DATA_DIR }}/SAWS # start again if we're re-running
           mkdir -p ${{ env.DATA_DIR }}/SAWS/for_croco
           chown -R :runners ${{ env.DATA_DIR }}/SAWS
           chmod -R 774 ${{ env.DATA_DIR }}/SAWS
@@ -255,8 +328,11 @@ jobs:
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
     # (note we intentionally do not copy saws data as the archive dir will be public facing in future)
-    needs: [mercator_saeon,mercator,gfs]
+    needs: [mercator_saeon,mercator,gfs,saws,hycom]
     runs-on: ${{ inputs.RUNNER_NAME }}
+    # only archive if we are on the main branch
+    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
+    continue-on-error: true
     steps:
       - name: archive forcing files on ocims infrastructure
         id: archive_dir
@@ -268,7 +344,7 @@ jobs:
           archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
           # make the archive directory
           if [ ! -d ${archive_dir} ]; then
-            sudo mkdir -p ${archive_dir}/{MERCATOR,GFS}
+            sudo mkdir -p ${archive_dir}/{MERCATOR,HYCOM,GFS}
           fi
           # only archive one run per day (initialised at 00)
           # the archiving is really for validation purposes, and I think one run per day is sufficient for this
@@ -277,7 +353,6 @@ jobs:
             # Not an issue since we have ensured no password is needed for this command 
             sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${archive_dir}/GFS/
             sudo cp ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR/
-            # add others here as they come on board e.g. HYCOM, ECMWF?
+            sudo cp ${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc ${archive_dir}/HYCOM/
+            # add others here as they come on board e.g. ECMWF?
           fi
-
-

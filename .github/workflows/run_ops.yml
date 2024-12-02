@@ -2,9 +2,11 @@ name: Run SOMISANA forecast models on MIMS
 
 on:
   schedule:
-    # initialise twice a day
-    # (code is however designed to also be run every 6 hours)
-    - cron: '0 0,12 * * *'
+  # the workflow designed to every 6 hours. Optionally it can also be run every 12 or 24 hours
+  # initialise once a day
+    - cron: '0 0 * * *'
+  # initialise twice a day
+  #  - cron: '0 0,12 * * *'
   workflow_dispatch:
     inputs:
       run_date:
@@ -12,28 +14,14 @@ on:
         required: false
         default: ''
         type: string
-      build_images:
-        description: 'Run the image builds?'
-        required: true
-        default: 'true'
-        type: boolean
 
 jobs:
   # note that the jobs aren't executed in the order they are written below
   # they are executed in the order depending on the 'needs' attribute of each job
-
-  # start by building our docker images needed in the workflow
-  build_images:
-    # conditional execution when run manually as a workflow_dispatch 
-    # saves time when testing something and we don't want to build the images every time
-    # but it'll get executed every time when run as a scheduled workflow
-    if: ${{ github.event.schedule || github.event.inputs.build_images == 'true' }}  
-    strategy:
-      matrix: # the 'matrix' strategy allows us to build all three docker images in parallel using the same reusable workflow
-        image_id: ['cli', 'run', 'matlab']
+  build_cli:
     uses: ./.github/workflows/build_images.yml  # Path to your reusable workflow
     with:
-      IMAGE_ID: ${{ matrix.image_id }}
+      IMAGE_ID: cli
 
   # set some environment variables
   envs:
@@ -58,7 +46,7 @@ jobs:
             # Correct hour formatting (ensure leading zero)
             hour=$(printf "%02d" $hour)
             # Assemble the run_date
-            run_date=$(echo ${current_time:0:8}_${hour})            
+            run_date=$(echo ${current_time:0:8}_${hour})
           fi
           echo "value=$run_date" >> $GITHUB_OUTPUT
           
@@ -77,7 +65,7 @@ jobs:
   #
 
   cleanup:
-    needs: [envs,build_images]
+    needs: [envs,build_cli]
     uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
@@ -86,8 +74,7 @@ jobs:
   # download all the data we'll need to force the models
   # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
   get_forcing:
-    needs: [envs, build_images]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is)
+    needs: [envs, build_cli]
     uses: ./.github/workflows/get_forcing.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
@@ -100,11 +87,10 @@ jobs:
   # prepare croco config dirs for each domain
   prep_domains:
     needs: [envs,get_forcing]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_southeast_01','sa_west_02'] 
+        domain: ['sa_southeast_01','sa_west_02']
     uses: ./.github/workflows/prep_domain.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -112,7 +98,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
-      COMP: C03
+      COMP: C04
       # in future we may want to use different compile options for each domain
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
       # and then tease out the domain and compile option inside prep_domain.yml
@@ -120,12 +106,11 @@ jobs:
   # prepare croco boundary forcing for each domain
   make_forcing:
     needs: [envs,get_forcing,prep_domains]
-    if: ${{ always() }}  # Always run even if build_images is not executed (but it'll wait for build_images if it is) (this job needs get_forcing, which needs build_images)
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_southeast_01','sa_west_02'] 
-        ogcm: ['MERCATOR']
+        domain: ['sa_southeast_01','sa_west_02']
+        ogcm: ['MERCATOR','HYCOM']
     uses: ./.github/workflows/make_forcing.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -135,97 +120,38 @@ jobs:
       DOMAIN: ${{ matrix.domain }}
       OGCM: ${{ matrix.ogcm }}
       HDAYS: 5
+      FDAYS: 5
   
   # run the model, do the postprocessing, archive the output
   #
   # we considered using githubs 'matrix' strategy to run different domains in parallel, 
   # but opted against it as if one of the domains fails, then it cancels all others running in parallel... 
   # so separating the jobs makes it more robust... and also easier to follow in the actions log on github
-  # here's an idea...
-  # when we end up with 4 domains, each needing 30-ish processors we'll be able to run all 4 in parallel
-  # we could put those 4 jobs in a calleable workflow, called run_all_domains.yml which takes the atmospheric and boundary forcings as inputs and runs 4 models in parallel
+  # 
+  # we rather run 4 jobs in prallel inside a calleable workflow, called run_all_domains.yml
+  # for now this is 2 domains, each with a single OGCM and both SAWS and GFS forcing
+  # but this could be changed in future, depending on how we develop further
   #
-  # then we line up different calls to run_all_domains.yml in this workflow, each with different combinations of surface and boundary forcings  
-  
-  run_sa_west_gfs:
+  # the point is that run_all_domains.yml must use less than 120 processors in parallel - this is our limit
+  # then we can have sequential calls to run_all_domains.yml in series
+
+  run_mercator_domains:
     needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
-      MODEL: croco_v1.3.1
-      DOMAIN: sa_west_02
-      VERSION: v1.0
-      COMP: C03
-      INP: I99
-      BLK: GFS
-      FRC: ''
       OGCM: MERCATOR
-      HDAYS: 5
-      FDAYS: 5
+      SAWS_OK: ${{ needs.get_forcing.outputs.SAWS_OK }}
 
-  run_sa_southeast_gfs:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+  run_hycom_domains:
+    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains] 
+    if: ${{ always() }} # execute even if there was an error with the mercator runs
+    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
-      MODEL: croco_v1.3.1
-      DOMAIN: sa_southeast_01
-      VERSION: v1.0
-      COMP: C03
-      INP: I99
-      BLK: GFS
-      FRC: ''
-      OGCM: MERCATOR
-      HDAYS: 5
-      FDAYS: 5
-
-  # Now the SAWS forced runs
-  # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
-  # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
-  # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
-  # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
-  # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
-  run_sa_west_saws:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
-    with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
-      MODEL: croco_v1.3.1
-      DOMAIN: sa_west_02
-      VERSION: v1.0
-      COMP: C03
-      INP: I99
-      BLK: SAWS
-      FRC: ''
-      OGCM: MERCATOR
-      HDAYS: 5
-      FDAYS: 2.45
-
-  run_sa_southeast_saws:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
-    if: ${{ always() && needs.get_forcing.outputs.SAWS_OK == 1 }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
-    with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
-      MODEL: croco_v1.3.1
-      DOMAIN: sa_southeast_01
-      VERSION: v1.0
-      COMP: C03
-      INP: I99
-      BLK: SAWS
-      FRC: ''
-      OGCM: MERCATOR
-      HDAYS: 5
-      FDAYS: 2.45
-
+      OGCM: HYCOM
+      SAWS_OK: ${{ needs.get_forcing.outputs.SAWS_OK }}
