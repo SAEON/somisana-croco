@@ -1491,3 +1491,213 @@ def get_ts_uv(fname, lon, lat, ref_date,
         ds.to_netcdf(fname_nc)
         
     return ds
+
+
+def gnomonic(lon,lat,lon0,lat0,R):
+    #Gnomonic projection is distance preserving for
+    #interpolation purposes.
+    lat = lat*np.pi/180
+    lon = lon*np.pi/180
+    lat0= lat0*np.pi/180
+    lon0= lon0*np.pi/180
+    cosc = np.sin(lat0)*np.sin(lat) + np.cos(lat0)*np.cos(lat)*np.cos(lon-lon0)
+    xg = R*np.cos(lat)*np.sin(lon-lon0)/cosc
+    yg = R*(np.cos(lat0)*np.sin(lat) - np.sin(lat0)*np.cos(lat)*np.cos(lon-lon0) )/cosc
+    return xg,yg
+
+def ignomonic(x,y,lon0,lat0,R):
+    #Gnomonic projection is distance preserving for
+    #interpolation purposes.
+    lat0=lat0*np.pi/180
+    lon0=lon0*np.pi/180
+    rho=np.sqrt(x**2+y**2)
+    c=np.arctan2(rho,R)
+    if (rho!=0):
+        lat=np.arcsin(np.cos(c)*np.sin(lat0) + (y*np.sin(c)*np.cos(lat0))/rho)
+        if ((lat!=np.pi/2) & (lat!=-np.pi/2) ):
+            lon=lon0+np.arctan2(x*np.sin(c),(rho*np.cos(lat0)*np.cos(c)-y*np.sin(lat0)*np.sin(c)))
+        elif (lat==np.pi/2):
+            lon=lon0+np.arctan2(x,-y)
+        elif (lat==-np.pi/2):
+            lon=lon0+np.arctan2(x,y)
+    elif (rho==0):
+        lat=lat0
+        lon=lon0
+    lat = lat*180/np.pi
+    lon = lon*180/np.pi
+    return lon,lat
+
+def dist_spheric2(lat1,lon1,lat2,lon2,R):
+    l=np.abs(lon2-lon1)
+    if ((np.size(lat1)>1) | (np.size(lat2)>1)):
+        l[l>=180]=360-l[l>=180]
+    else:
+        if l>180:
+            l=360-l
+    lat1 = np.radians(lat1)
+    lat2 = np.radians(lat2)
+    l=np.radians(l)
+    dist=R*np.arctan2(np.sqrt((np.sin(l)*np.cos(lat2))**2 +(np.sin(lat2)*np.cos(lat1)
+                     -np.cos(lat2)*np.sin(lat1)*np.cos(l))**2 ),
+                          np.sin(lat2)*np.sin(lat1)+ np.cos(lat2)*np.cos(lat1)*np.cos(l)
+                          )
+    return dist
+
+def transect_grid(lon0,lat0,lon1,lat1,dgc,R=6367442.76):
+    ##1. define the most meridional transect (xg_y,yg_y)
+    distsec=dist_spheric2(lat0,lon0,lat1,lon1,R)
+    npsec=int(distsec//dgc)+1
+    #project on tangent plane at lon0_south,lat0_south
+    xg,yg = gnomonic(lon1,lat1,lon0,lat0,R)
+    ag=yg/xg
+    xg=np.zeros((1,npsec))
+    xg[0,0]=0
+    xg[0,1:]=R*np.tan(np.arange(1,npsec)*dgc/R)/(1+np.abs(ag)**2)**0.5
+    yg=ag*xg
+    #go back to the lon,lat coordinates
+    long=np.zeros((1,npsec))
+    latg=np.zeros((1,npsec))
+    for ig in range(0,np.size(xg)):
+        long[0,ig],latg[0,ig] = ignomonic(xg[0,ig],yg[0,ig],lon0,lat0,R)
+
+    #define X grid in meters with origin at lon0,lat0
+    xrot=np.zeros_like(long)
+    xrot[0,1:]=np.cumsum(dist_spheric2(latg[0,:-1],long[0,:-1],
+                                           latg[0,1:],long[0,1:],R=6367442.76))
+    return long,latg,xrot
+
+def get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdname,tstep,res=None,ref_date="2000-01-01"):
+    """
+    This function extracts a snapshot or time evolving vertical section 
+    along a transect from a CROCO model and saves it in a netCDF file. 
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    INPUTS:
+    fname: Path and directory to CROCO file/s to load in (string).
+    sname: Path and directory name of file to save (string).
+    transect_start: Start point of transect (list; eg. transect_start = [15, 20])
+    transect_end: End points of transect (list; eg. transect_end = [-10, -15]).
+    depthnew: Depths to interpolate. Needs to be negative values (1D numpy array; eg. depthnew = np.linspace(-2000,0,100)).
+    grdname: Grid points of variable to interpolate (string; either: 'rho','u','v' or 'psi')
+    var_str: Variable to interpolate (string). Follows the CROCO naming conventions (eg. 'temp', 'salt', 'u' or 'v')
+    tstep: time step indices to extract it can be a single integer (starting at zero) or datetime 
+           or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+           If slice(None), then all time-steps are extracted
+    ref_date: Reference date of when the model was initialised (string, eg. "2000-01-01"). 
+    res: Horizontal resolution of model run in meters (eg. res = 300). Default is None in which case 
+         it takes the smallest grid resolution in the model. 
+    
+    OUTPUTS:
+    Netcdf containing the following:
+    time: Times that was extracted from the model in datetime format
+    lons, lats: Cartisian coordinates along the transect
+    dist: Distance of the transect
+    topo: Topography of the transect
+    mask: Masked values of the transect
+    varnew: Interpolated variable along the transect
+    """
+    print('load system')
+    import sys
+
+    # Load in data (using mfdataset so we can load in multiple files) & subset to speed up loading
+    print('load dateset')
+
+    lon0,lon1 = np.min(np.array([transect_start[0],transect_end[0]])) - 1 , np.max(np.array([transect_start[0],transect_end[0]])) + 1
+    lat0,lat1 = np.min(np.array([transect_start[1],transect_end[1]])) - 1 , np.max(np.array([transect_start[1],transect_end[1]])) + 1
+    subdomain = [lon0,lon1,lat0,lat1]
+    print('subdomain: ', subdomain)
+    var = get_var(fname,var_str,
+                  grdname=None,tstep=slice(None),level=slice(None),
+                  eta_rho=slice(None),eta_v=slice(None),
+                  xi_rho=slice(None),xi_u=slice(None),
+                  subdomain=subdomain,ref_date=ref_date)
+    ds.close()
+    print('var: ',np.shape(var))
+    sys.exit()
+
+    theta_s,theta_b,hc,N = ds.theta_s,ds.theta_b, int(ds.hc.values), ds.s_rho.size
+
+    # Define the start and end points of the transect
+    lonstart,latstart = transect_start[0],transect_start[1]
+    lonend,latend = transect_end[0],transect_end[1]
+
+    # Make the transect on which the interpolation will take place
+    transect_lons,transect_lats,transect_dist = transect_grid(lonstart,latstart,lonend,latend,res,R=6367442.76)
+    
+    # Load in the coordinates and convert mask (rho) and h (rho) to the correct grid positions. 
+    if (grid == 'rho') | (grid == 'u') | (grid == 'v') | (grid == 'psi'):
+        
+        lon,lat = ds[f'lon_{grid}'][:].values,ds[f'lat_{grid}'][:].values
+        
+        if grid == 'u':
+
+            mask = u2rho(ds['mask_rho'][:].values)
+            h    = u2rho(ds['h'][:].values)
+            
+        elif grid == 'v':
+            
+            mask = v2rho(ds['mask_rho'][:].values)
+            h    = u2rho(ds['h'][:].values)
+
+        elif grid == 'psi':
+
+            mask = psi2rho(ds['mask_rho'][:].values)
+            h    = psi2rho(ds['h'][:].values)
+            
+        else:
+            mask = ds['mask_rho'][:].values
+            h    = ds['h'][:].values
+            
+    else:
+        print('Invalid grid. Valid grids are: "rho", "u", "v"')
+        
+    # Make empty array in which we will save the 3D/4D sections into
+    VARNEW_NEWZ = np.zeros((tidx.size,depthnew.size,transect_lons[0,:].size))
+    
+    datetimes_extracted = []
+    i=0
+    for idx in tidx:
+        datetimes_extracted.append(datetime_list[idx])
+            
+        print(f'Extracting {var} along transect at: {datetime_list[idx]}')
+        
+        var0 = ds[var][idx].values
+    
+        zeta0 = ds.zeta[idx].values
+        
+        toponew,masknew,varnew_newz = croco_3d_interp_delaunay_spline_atrho(lon,lat,h,zeta0,mask,
+                                                                            theta_s,theta_b,hc,N,
+                                                                            transect_lons,transect_lats,depthnew,
+                                                                            var0)
+        VARNEW_NEWZ[i] = varnew_newz[0,:,0,:]
+        i+=1
+        
+    # Close the dataset
+    ds.close()
+
+    # Extract the topo and masknew
+    # It is not time evolving so we do not require to save every iteration
+    toponew,masknew = -toponew[0,:],masknew[0,:]
+    transect_lons,transect_lats,transect_dist = transect_lons[0,:],transect_lats[0,:],transect_dist[0,:]
+
+    # Fill the bad_values with nans
+    VARNEW_NEWZ[VARNEW_NEWZ==999]=np.nan
+
+    # Create the netCDF file using xarray
+    
+    # save & close the netCDF
+
+if __name__ == '__main__':
+    fname = '/home/g.rautenbach/tmp/croco_forecast_20241114_00/C04_I99_HYCOM_GFS/output/croco_avg.nc'
+    sname = '/home/g.rautenbach/tmp/croco_forecast_20241114_00/C04_I99_HYCOM_GFS/output/croco_vsection.nc'
+    var_str = 'temp'
+    transect_start = [17,-34]
+    transect_end = [18,-35]
+    depthnew = np.arange(-500,0,50)
+    grdtype = 'rho'
+    tstep=[5,10]
+    ref_date="2000-01-01"
+    res=300
+
+    get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdtype,tstep,res,ref_date)
+    
