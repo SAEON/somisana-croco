@@ -202,8 +202,8 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             if variable.ndim == 4:
                 variable = variable.sel(depth=depth_range)
             
-            #variable = variable.resample(time='1D').mean()
-            variable = variable.resample(time='1D', offset='12h').mean()
+            variable = variable.resample(time='1D').mean()
+            #variable = variable.resample(time='1D', offset='12h').mean()
             save_path = os.path.join(save_dir, f"hycom_{metadata['vars'][0]}.nc")
             variable.to_netcdf(save_path, 'w')
             print(f'File written to {save_path}')
@@ -256,12 +256,18 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
 
     OUTPUT:
     NetCDF file containing the most recent HYCOM forcast run.
-    """    
+    """
+    
+    # We add an additional day to ensure that it exceeds the model run time. 
+    hdays, fdays = hdays+1, fdays+1
+    
     if workers is None:
         workers=len(variables)
     else:
         pass
-
+    
+    # We initialise a loop to retry the download if the file was corrupt. 
+    # The MAX_TRIES is set at 3 to avoid an infinate loop.
     MAX_TRIES=3
     for attempt in range(MAX_TRIES):
         print( '--------------------------------------------')
