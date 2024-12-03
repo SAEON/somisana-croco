@@ -42,6 +42,14 @@ time_plt = ax.text(lon_ts-0.1, lat_ts-0.1, 'Salmiya',
     ha='right', va='top', fontsize=10,
     transform=ccrs.PlateCarree())
 
+# Coords for Majis
+lat_ts = 24.512053
+lon_ts = 56.637126
+ax.scatter(lon_ts,lat_ts,20,color='k',transform=ccrs.PlateCarree())
+time_plt = ax.text(lon_ts-0.1, lat_ts-0.1, 'Majis',
+    ha='right', va='top', fontsize=10,
+    transform=ccrs.PlateCarree())
+
 jpg_out = 'plot_grd.jpg'
 plt.savefig(jpg_out,dpi=500,bbox_inches = 'tight')
 

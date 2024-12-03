@@ -1,2 +1,0 @@
-start
-make_OGCM_somisana
