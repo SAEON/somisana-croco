@@ -70,6 +70,14 @@ def check_time_range(file_path, expected_start, expected_end):
         return False
 
 def check_data_quality(file_path, variables):
+    """
+    Function to check the quality of the data downloaded.
+    """
+    try:
+        with xr.open_dataset(file_path) as ds:
+            if variables in ds:
+                data = ds[variables].values
+                if data.size == 0:
                     print(f"Variable {var} has no data in {file_path}.")
                     return False
                 else:
@@ -123,6 +131,32 @@ def validate_download(file_path, expected_vars, expected_start, expected_end):
     return True
 
 def update_var_list(var_list):
+    var_metadata = {
+        'salinity': {
+            "vars": ["salinity"],
+            "url": "http://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_s3z/FMRC_ESPC-D-V02_s3z_best.ncd",
+        },
+        'water_temp': {
+            "vars": ["water_temp"],
+            "url": "http://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_t3z/FMRC_ESPC-D-V02_t3z_best.ncd",
+        },
+        'surf_el': {
+            "vars": ["surf_el"],
+            "url": "http://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ssh/FMRC_ESPC-D-V02_ssh_best.ncd",
+        },
+        'water_u': {
+            "vars": ["water_u"],
+            "url": "http://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_u3z/FMRC_ESPC-D-V02_u3z_best.ncd",
+        },
+        'water_v': {
+            "vars": ["water_v"],
+            "url": "http://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_v3z/FMRC_ESPC-D-V02_v3z_best.ncd",
+        }
+    }
+
+    return {var: var_metadata[var] for var in var_list if var in var_metadata}
+
+def decode_time_units(time_var):
     try:
         units = time_var.units
         calendar = getattr(time_var, 'calendar', 'standard')
@@ -255,3 +289,13 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         print('')
     else:
         print('HYCOM download failed.')
+
+if __name__ == "__main__":
+    run_date = pd.to_datetime('2024-12-04 00:00:00')
+    hdays = 1
+    fdays = 1
+    variables = ['salinity','water_temp','surf_el','water_u','water_v']
+    domain = [23,24,-37,-36]
+    depths = [0,20]
+    save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
+    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=None)
