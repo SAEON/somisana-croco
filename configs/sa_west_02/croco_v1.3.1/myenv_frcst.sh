@@ -8,6 +8,6 @@
 export SOURCE=/home/$USER/code/croco-v1.3.1/OCEAN/
 
 # MPI partitioning
-export MPI_NUM_X=3
-export MPI_NUM_Y=10
+export MPI_NUM_X=5
+export MPI_NUM_Y=18
 export MPI_NUM_PROCS=$(($MPI_NUM_X * $MPI_NUM_Y))
