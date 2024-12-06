@@ -38,6 +38,7 @@ jobs:
     outputs:
       OGCM_OK: ${{ steps.check_ogcm.outputs.value }}
     steps:
+      - name: Check if OGCM file is already downloaded
         id: check_ogcm
         run: |
           FILE_PATH=${{ env.DATA_DIR }}/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc
