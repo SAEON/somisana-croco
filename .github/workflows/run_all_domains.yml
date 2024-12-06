@@ -31,8 +31,8 @@ jobs:
     uses: ./.github/workflows/download_ogcm.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
@@ -47,8 +47,8 @@ jobs:
         domain: ['sa_southeast_01','sa_west_02']
     uses: ./.github/workflows/make_bry_ini.yml  # Path to your reusable workflow
     with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
