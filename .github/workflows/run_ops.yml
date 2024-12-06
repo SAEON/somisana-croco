@@ -111,7 +111,7 @@ jobs:
 
   run_mercator_domains:
     needs: [envs,download_surface,prep_domains]
-    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_all_domains.yml
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
@@ -123,7 +123,7 @@ jobs:
   run_hycom_domains:
     needs: [envs,download_surface,prep_domains,run_mercator_domains] 
     if: ${{ always() }} # execute even if there was an error with the mercator runs
-    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_all_domains.yml
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}

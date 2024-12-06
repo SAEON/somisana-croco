@@ -28,7 +28,6 @@ jobs:
   
   # download the OGCM data we'll need to force the models
   download_ogcm:
-    needs: [envs, build_cli]
     uses: ./.github/workflows/download_ogcm.yml  # Path to your reusable workflow
     with:
       RUNNER_NAME: mims1
@@ -41,7 +40,7 @@ jobs:
   
   # prepare croco boundary forcing for each domain
   make_bry_ini:
-    needs: [envs,download_surface,prep_domains]
+    needs: [download_ogcm]
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
@@ -59,6 +58,7 @@ jobs:
   
   # Run with GFS forcing 
   run_sa_west_gfs:
+    needs: [make_bry_ini]
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
@@ -76,6 +76,7 @@ jobs:
       FDAYS: 5
 
   run_sa_southeast_gfs:
+    needs: [make_bry_ini]
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
