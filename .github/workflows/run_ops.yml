@@ -118,6 +118,7 @@ jobs:
       RUNNER_NAME: mims1
       OGCM: MERCATOR
       SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
+    secrets: inherit
 
   run_hycom_domains:
     needs: [envs,download_surface,prep_domains,run_mercator_domains] 
@@ -129,3 +130,4 @@ jobs:
       RUNNER_NAME: mims1
       OGCM: HYCOM
       SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
+    secrets: inherit

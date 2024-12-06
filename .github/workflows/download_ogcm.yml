@@ -1,4 +1,4 @@
-name: download regional mercator data to force the models
+name: download regional ogcm data to force the models
 
 on:
   workflow_call:
@@ -13,6 +13,10 @@ on:
         type: string
       BRANCH_REF:
         description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR' 
         required: true
         type: string
       HDAYS:
@@ -32,12 +36,11 @@ jobs:
     # checks to see if files have maybe already been downloaded as part of a previous running of this workflow
     runs-on: ${{ inputs.RUNNER_NAME }}
     outputs:
-      MERCATOR_OK: ${{ steps.check_mercator.outputs.value }}
+      OGCM_OK: ${{ steps.check_ogcm.outputs.value }}
     steps:
-      - name: check mercator
-        id: check_mercator
+        id: check_ogcm
         run: |
-          FILE_PATH=${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc
+          FILE_PATH=${{ env.DATA_DIR }}/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc
           # could have an additional check on file size here?
           if [ -f "$FILE_PATH" ]; then
             echo "value=1" >> $GITHUB_OUTPUT
@@ -55,7 +58,7 @@ jobs:
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.MERCATOR_OK == '0' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'MERCATOR' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -105,7 +108,7 @@ jobs:
   mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files,mercator_saeon]
-    if: ${{ always() && needs.check_files.outputs.MERCATOR_OK == '0' }}
+    if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'MERCATOR' }}
     steps:
       - name: create the MERCATOR directory
         run: |
@@ -153,9 +156,51 @@ jobs:
 #                --fdays ${{ inputs.FDAYS }} \
 #                --outputDir '/tmp'
 
+  # Download hycom 
+  hycom:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'HYCOM' }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: create the HYCOM directory
+        run: |
+          sudo rm -rf ${{ env.DATA_DIR }}/HYCOM
+          mkdir -p ${{ env.DATA_DIR }}/HYCOM
+          chown -R :runners ${{ env.DATA_DIR }}/HYCOM
+          chmod -R 774 ${{ env.DATA_DIR }}/HYCOM
+      - name: Download HYCOM
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/HYCOM/*.nc
+          command: |
+            docker run \
+              --user $(id -u):$(id -g) \
+              --rm \
+              -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_hycom \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --savedir '/tmp/'
+
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    needs: [mercator_saeon,mercator]
+    needs: [hycom]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}
@@ -171,12 +216,12 @@ jobs:
           archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
           # make the archive directory
           if [ ! -d ${archive_dir} ]; then
-            sudo mkdir -p ${archive_dir}/MERCATOR
+            sudo mkdir -p ${archive_dir}/${{ inputs.OGCM }}
           fi
           # only archive one run per day (initialised at 00)
           # the archiving is really for validation purposes, and I think one run per day is sufficient for this
           if [ "${run_date_hh}" == "00" ]; then 
             # We need to use sudo in the lines below because the target dir is owned by root
             # Not an issue since we have ensured no password is needed for this command 
-            sudo cp ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR/
+            sudo cp ${{ env.DATA_DIR }}/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc ${archive_dir}/${{ inputs.OGCM }}/
           fi
