@@ -57,7 +57,7 @@ jobs:
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
   
   # everything below here runs using the `mims1` self-hosted runner
-  # This is a server with 128 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
+  # This is a server with 120 cpu's and 256 G ram, dedictated to running SOMISANA's operational models
   # It is possible that we may want to use an additional modelling server (which will be a separate node on MIMS)
   # In that event, we could put all the code below here in a new reusable workflow called run_ops_mims1.yml
   # And then set up another one called run_ops_mims2.yml set up in the same way but obviously running different models/domains
@@ -66,16 +66,15 @@ jobs:
 
   cleanup:
     needs: [envs,build_cli]
-    uses: ./.github/workflows/cleanup.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/cleanup.yml 
     with:
       RUNNER_NAME: mims1
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
 
-  # download all the data we'll need to force the models
-  # no need to provide any model specific inputs as we hard code the extent to cover the whole EEZ
-  get_forcing:
+  # download the surface data we'll need to force the models
+  download_surface:
     needs: [envs, build_cli]
-    uses: ./.github/workflows/get_forcing.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/download_surface.yml
     with:
       RUNNER_NAME: mims1
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -86,12 +85,12 @@ jobs:
   
   # prepare croco config dirs for each domain
   prep_domains:
-    needs: [envs,get_forcing]
+    needs: [envs,download_surface]
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
         domain: ['sa_southeast_01','sa_west_02']
-    uses: ./.github/workflows/prep_domain.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/prep_domain.yml
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
@@ -103,55 +102,32 @@ jobs:
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
       # and then tease out the domain and compile option inside prep_domain.yml
 
-  # prepare croco boundary forcing for each domain
-  make_forcing:
-    needs: [envs,get_forcing,prep_domains]
-    strategy:
-      matrix:
-        # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
-        domain: ['sa_southeast_01','sa_west_02']
-        ogcm: ['MERCATOR','HYCOM']
-    uses: ./.github/workflows/make_forcing.yml  # Path to your reusable workflow
-    with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
-      MODEL: croco_v1.3.1
-      DOMAIN: ${{ matrix.domain }}
-      OGCM: ${{ matrix.ogcm }}
-      HDAYS: 5
-      FDAYS: 5
-  
   # run the model, do the postprocessing, archive the output
-  #
-  # we considered using githubs 'matrix' strategy to run different domains in parallel, 
-  # but opted against it as if one of the domains fails, then it cancels all others running in parallel... 
-  # so separating the jobs makes it more robust... and also easier to follow in the actions log on github
   # 
-  # we rather run 4 jobs in prallel inside a calleable workflow, called run_all_domains.yml
-  # for now this is 2 domains, each with a single OGCM and both SAWS and GFS forcing
-  # but this could be changed in future, depending on how we develop further
+  # we must ensure that run_all_domains.yml must use less than 120 processors in parallel - this is our limit
   #
-  # the point is that run_all_domains.yml must use less than 120 processors in parallel - this is our limit
-  # then we can have sequential calls to run_all_domains.yml in series
+  # we've also found that you can't run 4 domains in parallel, even if they use less than 120 processors in totoal 
+  # the runs slow down hugely, so it's better to use more processors per domain, and maybe 2 domains max in parallel
 
   run_mercator_domains:
-    needs: [envs,get_forcing,prep_domains,make_forcing]
-    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
+    needs: [envs,download_surface,prep_domains]
+    uses: ./.github/workflows/run_all_domains.yml
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       OGCM: MERCATOR
-      SAWS_OK: ${{ needs.get_forcing.outputs.SAWS_OK }}
+      SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
+    secrets: inherit
 
   run_hycom_domains:
-    needs: [envs,get_forcing,prep_domains,make_forcing,run_mercator_domains] 
+    needs: [envs,download_surface,prep_domains,run_mercator_domains] 
     if: ${{ always() }} # execute even if there was an error with the mercator runs
-    uses: ./.github/workflows/run_all_domains.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_all_domains.yml
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       RUNNER_NAME: mims1
       OGCM: HYCOM
-      SAWS_OK: ${{ needs.get_forcing.outputs.SAWS_OK }}
+      SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
+    secrets: inherit

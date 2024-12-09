@@ -25,7 +25,40 @@ on:
         type: string
 
 jobs:
+  
+  # download the OGCM data we'll need to force the models
+  download_ogcm:
+    uses: ./.github/workflows/download_ogcm.yml  # Path to your reusable workflow
+    with:
+      RUNNER_NAME: mims1
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 5
+    secrets: inherit
+  
+  # prepare croco boundary forcing for each domain
+  make_bry_ini:
+    needs: [download_ogcm]
+    strategy:
+      matrix:
+        # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
+        domain: ['sa_southeast_01','sa_west_02']
+    uses: ./.github/workflows/make_bry_ini.yml  # Path to your reusable workflow
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 5
+  
+  # Run with GFS forcing 
   run_sa_west_gfs:
+    needs: [make_bry_ini]
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
@@ -43,6 +76,7 @@ jobs:
       FDAYS: 5
 
   run_sa_southeast_gfs:
+    needs: [make_bry_ini]
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
@@ -60,12 +94,13 @@ jobs:
       FDAYS: 5
 
   # Now the SAWS forced runs
-  # We only execute the SAWS forced runs if needs.get_forcing.outputs.SAWS_OK == 1 i.e. if we were able to find
+  # We only execute the SAWS forced runs if inputs.SAWS_OK == 1 i.e. if we were able to find
   # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
   # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
   # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
   # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
   run_sa_west_saws:
+    needs: [run_sa_west_gfs,run_sa_southeast_gfs]
     if: ${{ inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
@@ -84,7 +119,7 @@ jobs:
       FDAYS: 2.45
 
   run_sa_southeast_saws:
-    #needs: [envs,get_forcing,prep_domains,make_forcing]
+    needs: [run_sa_west_gfs,run_sa_southeast_gfs]
     if: ${{ inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:

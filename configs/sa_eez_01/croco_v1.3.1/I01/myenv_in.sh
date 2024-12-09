@@ -8,7 +8,7 @@
 #
 # Model time step [seconds]
 #
-DT=60
+DT=180
 DTFAST=60
 #      Number of hours for averages files
 #      24 is 1 days
@@ -35,12 +35,10 @@ NLEVEL=1
 #NY_END=2019
 #NM_START=1
 #NM_END=12
-# but we had to run it in fits and starts due to CHPC max wall time of 48 hrs
-# so these settings get changed as we execute bits at a time
 NY_START=2009
 NY_END=2009
 NM_START=2
-NM_END=2
+NM_END=11
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
 MTH_FORMAT="%02d"

@@ -1,4 +1,4 @@
-name: get regional data to force the models
+name: download regional ogcm data to force the models
 
 on:
   workflow_call:
@@ -15,6 +15,10 @@ on:
         description: 'what branch are we on - defined dynamically in run_ops.yml'
         required: true
         type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR' 
+        required: true
+        type: string
       HDAYS:
         description: 'number of hindcast days (integer) from T0'
         required: true
@@ -23,11 +27,6 @@ on:
         description: 'number of forecast days (integer) from T0'
         required: true
         type: string
-    outputs:
-      SAWS_OK:
-        description: "Indicates whether the SAWS job completed successfully"
-        value: ${{ jobs.saws.outputs.SAWS_OK }}
-      # we could add checks here for other data providers, and carry this through into run_ops.yml?
 
 env:
   DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
@@ -37,42 +36,18 @@ jobs:
     # checks to see if files have maybe already been downloaded as part of a previous running of this workflow
     runs-on: ${{ inputs.RUNNER_NAME }}
     outputs:
-      MERCATOR_OK: ${{ steps.check_mercator.outputs.value }}
-      HYCOM_OK: ${{ steps.check_hycom.outputs.value }}
-      GFS_OK: ${{ steps.check_gfs.outputs.value }}
+      OGCM_OK: ${{ steps.check_ogcm.outputs.value }}
     steps:
-      - name: check mercator
-        id: check_mercator
+      - name: Check if OGCM file is already downloaded
+        id: check_ogcm
         run: |
-          FILE_PATH=${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc
+          FILE_PATH=${{ env.DATA_DIR }}/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc
           # could have an additional check on file size here?
           if [ -f "$FILE_PATH" ]; then
             echo "value=1" >> $GITHUB_OUTPUT
           else
             echo "value=0" >> $GITHUB_OUTPUT
           fi
-      - name: check hycom
-        id: check_hycom
-        run: |
-          FILE_PATH=${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc
-          # could have an additional check on file size here?
-          if [ -f "$FILE_PATH" ]; then
-            echo "value=1" >> $GITHUB_OUTPUT
-          else
-            echo "value=0" >> $GITHUB_OUTPUT
-          fi
-      - name: check gfs
-        id: check_gfs
-        run: |
-          # just use a single file as the check - assume others will be good too if one is
-          FILE_PATH=${{ env.DATA_DIR }}/GFS/for_croco/U-component_of_wind_Y9999M1.nc
-          # could have an additional check on file size here?
-          if [ -f "$FILE_PATH" ]; then
-            echo "value=1" >> $GITHUB_OUTPUT
-          else
-            echo "value=0" >> $GITHUB_OUTPUT
-          fi
-
 
   mercator_saeon:
     # we have had an issue with downloading from copernicus specifically on the mims network
@@ -84,7 +59,7 @@ jobs:
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.MERCATOR_OK == '0' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'MERCATOR' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -134,7 +109,7 @@ jobs:
   mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files,mercator_saeon]
-    if: ${{ always() && needs.check_files.outputs.MERCATOR_OK == '0' }}
+    if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'MERCATOR' }}
     steps:
       - name: create the MERCATOR directory
         run: |
@@ -186,7 +161,7 @@ jobs:
   hycom:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.HYCOM_OK == '0' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'HYCOM' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
@@ -222,113 +197,11 @@ jobs:
                 --run_date ${{ steps.format_date.outputs.value }} \
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
-                --savedir '/tmp/' 
-                
-  gfs:
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    needs: [check_files]
-    if: ${{ needs.check_files.outputs.GFS_OK == '0' }}
-    steps:
-      - name: Format RUN_DATE
-        id: format_date
-        run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
-          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-      - name: create the GFS directory
-        run: |
-          sudo rm -rf ${{ env.DATA_DIR }}/GFS # start again if we're re-running
-          mkdir -p ${{ env.DATA_DIR }}/GFS/for_croco
-          chown -R :runners ${{ env.DATA_DIR }}/GFS
-          chmod -R 774 ${{ env.DATA_DIR }}/GFS
-      - name: Download GFS atmospheric data
-        uses: nick-fields/retry@master
-        with:
-          timeout_minutes: 60 # Script is considered failed if this limit is reached
-          retry_wait_seconds: 300 # Wait 5 minutes and try again
-          max_attempts: 10
-          retry_on: any
-          warning_on_retry: true
-          shell: bash
-          continue_on_error: false
-          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/GFS/*grb*
-          command: |
-            docker run \
-              --user $(id -u):$(id -g) \
-              --rm \
-              -v ${{ env.DATA_DIR }}/GFS:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              download_gfs_atm \
-                --domain 11,36,-39,-25 \
-                --run_date ${{ steps.format_date.outputs.value }} \
-                --hdays ${{ inputs.HDAYS }} \
-                --fdays ${{ inputs.FDAYS }} \
-                --outputDir '/tmp'
-      - name: reformat gfs netcdf files for use with ONLINE cpp key
-        run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-            reformat_gfs_atm \
-              --gfsDir '/tmp/gfsDir' \
-              --outputDir '/tmp/gfsDir/for_croco' \
-              --Yorig 2000 
-          # ensure files have correct permissions to do the copy to the archive dir
-          chmod -R 775 ${{ env.DATA_DIR }}/GFS
-
-  saws:
-    needs: [gfs]
-    # the gfs prerequisite is because we are currently using GFS variables interpolated onto the SAWS grid for any variables not provided by SAWS
-    # this could easily be changed to another data provider if available and we have good reason to switch
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    if: ${{ always() }} # so we always output the SAWS_OK variable
-    outputs:
-      SAWS_OK: ${{ steps.check_success.outputs.value }}
-    steps:
-      - name: Format RUN_DATE
-        id: format_date
-        run: |
-          run_date=${{ inputs.RUN_DATE }}
-          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
-          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-      - name: create the SAWS directory
-        run: |
-          sudo rm -rf ${{ env.DATA_DIR }}/SAWS # start again if we're re-running
-          mkdir -p ${{ env.DATA_DIR }}/SAWS/for_croco
-          chown -R :runners ${{ env.DATA_DIR }}/SAWS
-          chmod -R 774 ${{ env.DATA_DIR }}/SAWS
-      - name: reformat SAWS netcdf files for use with ONLINE cpp key
-        id: reformat_saws
-        run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.DATA_DIR }}:/tmp/dataDir \
-            -v /mnt/saws-um-data:/tmp/sawsDir \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-            reformat_saws_atm \
-              --sawsDir '/tmp/sawsDir' \
-              --backupDir '/tmp/dataDir/GFS/for_croco' \
-              --outputDir '/tmp/dataDir/SAWS/for_croco' \
-              --run_date ${{ steps.format_date.outputs.value }} \
-              --hdays ${{ inputs.HDAYS }} \
-              --Yorig 2000
-        continue-on-error: true
-      - name: Check success of job
-        id: check_success
-        run: |
-          if [ "${{ steps.reformat_saws.outcome }}" == "success" ]; then
-            echo "value=1" >> $GITHUB_OUTPUT
-          else
-            echo "value=0" >> $GITHUB_OUTPUT
-          fi
+                --savedir '/tmp/'
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    # (note we intentionally do not copy saws data as the archive dir will be public facing in future)
-    needs: [mercator_saeon,mercator,gfs,saws,hycom]
+    needs: [hycom]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}
@@ -344,15 +217,12 @@ jobs:
           archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
           # make the archive directory
           if [ ! -d ${archive_dir} ]; then
-            sudo mkdir -p ${archive_dir}/{MERCATOR,HYCOM,GFS}
+            sudo mkdir -p ${archive_dir}/${{ inputs.OGCM }}
           fi
           # only archive one run per day (initialised at 00)
           # the archiving is really for validation purposes, and I think one run per day is sufficient for this
           if [ "${run_date_hh}" == "00" ]; then 
             # We need to use sudo in the lines below because the target dir is owned by root
             # Not an issue since we have ensured no password is needed for this command 
-            sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${archive_dir}/GFS/
-            sudo cp ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc ${archive_dir}/MERCATOR/
-            sudo cp ${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc ${archive_dir}/HYCOM/
-            # add others here as they come on board e.g. ECMWF?
+            sudo cp ${{ env.DATA_DIR }}/${{ inputs.OGCM }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc ${archive_dir}/${{ inputs.OGCM }}/
           fi
