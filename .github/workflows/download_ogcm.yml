@@ -201,7 +201,7 @@ jobs:
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    needs: [hycom]
+    needs: [hycom,mercator]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}
