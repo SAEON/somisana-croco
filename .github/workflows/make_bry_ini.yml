@@ -86,3 +86,11 @@ jobs:
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
               --Yorig 2000
+
+      - name: cleanup 
+        # cleanup.yml is struggling to clean up the __pycache__ dir left by running the above steps 
+        # so we'll just get rid of it here
+        id: cleanup
+        run: |
+          sudo rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/__pycache__
+

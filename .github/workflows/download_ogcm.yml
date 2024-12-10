@@ -216,9 +216,7 @@ jobs:
           run_date_hh=${run_date:9:2}
           archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
           # make the archive directory
-          if [ ! -d ${archive_dir} ]; then
-            sudo mkdir -p ${archive_dir}/${{ inputs.OGCM }}
-          fi
+          sudo mkdir -p ${archive_dir}/${{ inputs.OGCM }}
           # only archive one run per day (initialised at 00)
           # the archiving is really for validation purposes, and I think one run per day is sufficient for this
           if [ "${run_date_hh}" == "00" ]; then 
