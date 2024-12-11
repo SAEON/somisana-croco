@@ -105,24 +105,22 @@ jobs:
   # download the OGCM data we'll need to force the models
   download_mercator:
     needs: [envs, build_cli]
-    uses: ./.github/workflows/download_ogcm.yml
+    uses: ./.github/workflows/download_mercator.yml
     with:
       RUNNER_NAME: mims1
-      RUN_DATE: ${{ inputs.RUN_DATE }}
-      BRANCH_REF: ${{ inputs.BRANCH_REF }}
-      OGCM: MERCATOR
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       HDAYS: 5
       FDAYS: 5
     secrets: inherit
 
   download_hycom:
     needs: [envs, build_cli]
-    uses: ./.github/workflows/download_ogcm.yml
+    uses: ./.github/workflows/download_hycom.yml
     with:
       RUNNER_NAME: mims1
-      RUN_DATE: ${{ inputs.RUN_DATE }}
-      BRANCH_REF: ${{ inputs.BRANCH_REF }}
-      OGCM: HYCOM
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
       HDAYS: 5
       FDAYS: 5
     secrets: inherit
