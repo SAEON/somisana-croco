@@ -26,18 +26,6 @@ on:
 
 jobs:
   
-  # download the OGCM data we'll need to force the models
-  download_ogcm:
-    uses: ./.github/workflows/download_ogcm.yml  # Path to your reusable workflow
-    with:
-      RUNNER_NAME: mims1
-      RUN_DATE: ${{ inputs.RUN_DATE }}
-      BRANCH_REF: ${{ inputs.BRANCH_REF }}
-      OGCM: ${{ inputs.OGCM }}
-      HDAYS: 5
-      FDAYS: 5
-    secrets: inherit
-  
   # prepare croco boundary forcing for each domain
   make_bry_ini:
     needs: [download_ogcm]
