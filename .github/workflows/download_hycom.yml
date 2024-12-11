@@ -49,7 +49,7 @@ jobs:
   download_hycom:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.OGCM == 'HYCOM' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
     steps:
       - name: Format RUN_DATE
         id: format_date
