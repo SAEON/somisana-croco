@@ -1,4 +1,4 @@
-name: make the croco forcing
+name: make the croco bry and ini files
 # make the boundary forcing for a particular domain          
 # we don't need to make surface forcing since we're using the ONLINE cpp key
 # (the blk files are already reformatted in download_surface.yml)

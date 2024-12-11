@@ -104,7 +104,7 @@ jobs:
 
   move_mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
-    needs: [check_files,mercator_saeon]
+    needs: [check_files,download_mercator_saeon]
     if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
     steps:
       - name: create the MERCATOR directory
@@ -155,7 +155,7 @@ jobs:
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    needs: [download_mercator_saeon, move_mercator]
+    needs: [move_mercator]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}
