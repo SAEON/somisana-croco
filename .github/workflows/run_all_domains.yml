@@ -28,7 +28,6 @@ jobs:
   
   # prepare croco boundary forcing for each domain
   make_bry_ini:
-    needs: [download_ogcm]
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
