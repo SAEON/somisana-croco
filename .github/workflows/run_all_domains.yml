@@ -63,7 +63,7 @@ jobs:
       FDAYS: 5
 
   run_sa_southeast_gfs:
-    needs: [make_bry_ini]
+    needs: [make_bry_ini,run_sa_west_gfs]
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
@@ -106,7 +106,7 @@ jobs:
       FDAYS: 2.45
 
   run_sa_southeast_saws:
-    needs: [run_sa_west_gfs,run_sa_southeast_gfs]
+    needs: [run_sa_west_gfs,run_sa_southeast_gfs,run_sa_west_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
     with:
