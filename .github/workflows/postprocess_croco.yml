@@ -60,16 +60,12 @@ env:
   # define the directory names for this configuration
   # unfortunately it looks like you can't use vars defined here to define others i.e. you can't use {{ env.* }} inside this block, you have to use {{ inputs.* }} for each var
   BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
-  DATE_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}
-  DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
-  RUN_NAME: ${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
+  RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
 
 jobs:
   # postprocess the raw croco output files into something more user-friendly
   postprocess:
-    env:
-      RUN_DIR: ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: subset the raw CROCO NetCDF file for archiving
@@ -135,8 +131,6 @@ jobs:
 
   # make plots/animations of the outout
   plotting:
-    env:
-      RUN_DIR: ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: animate surface temperature and currents
@@ -176,8 +170,6 @@ jobs:
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ inputs.BRANCH_REF == 'main' }}
-    env:
-      RUN_DIR: ${{ env.CONFIG_DIR }}/${{ env.RUN_NAME }}
     steps:
       - name: get archive dir
         id: archive_dir
