@@ -6,14 +6,12 @@ from datetime import datetime, timedelta
 import subprocess
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 
 def is_file_valid(file_path):
     """
     Function to check that the file exists and that its not empty.
     """
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        print(f"File {file_path} exists and is non-empty.")
         return True
     else:
         print(f"File {file_path} does not exist or is empty.")
@@ -25,8 +23,7 @@ def is_netcdf_valid(file_path):
     """
     try:
         with xr.open_dataset(file_path) as ds:
-            print(f"File {file_path} opened successfully. Variables available: {list(ds.data_vars.keys())}")
-        return True
+            return True
     except Exception as e:
         print(f"Error opening file {file_path}: {e}")
         return False
@@ -41,9 +38,7 @@ def check_variables(file_path, expected_vars):
                 print(f"Variable {expected_vars} is not in {file_path}.")
                 return False
             else:
-                print(f"Variable {expected_vars} is present in {file_path}.")
                 return True
-                
     except Exception as e:
         print(f"Error checking variable in file {file_path}: {e}")
         return False
@@ -52,15 +47,18 @@ def check_time_range(file_path, expected_start, expected_end):
     """
     Function to check the time range of the file.
     """
+    expected_start = expected_start + timedelta(days=1)
+    expected_end   = expected_end   - timedelta(days=1)
     try:
         with xr.open_dataset(file_path) as ds:
             if 'time' in ds.coords:
                 file_times = pd.DatetimeIndex(ds['time'].values)
                 if (file_times.min() <= expected_start) and (file_times.max() >= expected_end):
-                    print(f"Time range in {file_path} is valid: {file_times.min()} to {file_times.max()}")
                     return True
                 else:
-                    print(f"Time range in {file_path} is invalid: {file_times.min()} to {file_times.max()}")
+                    print(f"Time range in {file_path} is invalid.")
+                    print(f"Expected time range: {expected_start} to {expected_end}")
+                    print(f"File time range: {file_times.min()} to {file_times.max()}")
                     return False
             else:
                 print(f"No 'time' coordinate found in {file_path}.")
@@ -112,7 +110,6 @@ def check_data_quality(file_path, variables):
     except Exception as e:
         print(f"Error checking data quality in file {file_path}: {e}")
 
-
 def validate_download(file_path, expected_vars, expected_start, expected_end):
     """
     Function that calls the validation routines to check the intergrity of the files downloaded.
@@ -127,7 +124,6 @@ def validate_download(file_path, expected_vars, expected_start, expected_end):
         return False
     if not check_data_quality(file_path, expected_vars):
         return False
-    print(f"File {file_path} passed all validation checks.")
     return True
 
 def update_var_list(var_list):
@@ -153,7 +149,6 @@ def update_var_list(var_list):
             "url": "http://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_v3z/FMRC_ESPC-D-V02_v3z_best.ncd",
         }
     }
-
     return {var: var_metadata[var] for var in var_list if var in var_metadata}
 
 def decode_time_units(time_var):
@@ -174,6 +169,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     vars_to_drop = ['salinity_bottom', 'water_temp_bottom', 'water_u_bottom', 'water_v_bottom', 'tau', 'time_offset',
                     'time_run', 'time1_offset', 'sst', 'sss', 'ssu', 'ssv', 'sic', 'sih', 'siu', 'siv', 'surtx',
                     'surty', 'steric_ssh']
+    
     lon_range, lat_range, depth_range = slice(domain[0], domain[1]), slice(domain[2], domain[3]), slice(depths[0], depths[1])
 
     # Calculate time range for subsetting
@@ -185,7 +181,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     variable=None
     for attempt in range(MAX_RETRIES):
         print('')
-        print(f'Attempt {attempt} out of {MAX_RETRIES} tries for {metadata["vars"][0]}.')
+        print(f'Attempt {attempt+1} out of {MAX_RETRIES} tries for {metadata["vars"][0]}.')
         try:
             print(f'Connecting to {metadata["url"]} to subset and download {metadata["vars"][0]}.')
             ds = xr.open_dataset(metadata["url"],
@@ -202,16 +198,13 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
                 variable = variable.sel(depth=depth_range)
 
             variable = variable.resample(time='1D').mean()
-            #variable = variable.resample(time='1D', offset='12h').mean()
             save_path = os.path.join(save_dir, f"hycom_{metadata['vars'][0]}.nc")
             variable.to_netcdf(save_path, 'w')
-            print(f'File written to {save_path}')
             ds.close()
 
             if validate_download(save_path, metadata["vars"][0], start_date, end_date):
                 print('')
-                print(f"File {save_path} and validated successfully!")
-                print('')
+                print(f'File written to {save_path} and validation was successful.')
                 break
 
             else:
@@ -248,7 +241,7 @@ def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, wo
             except Exception as e:
                 print(f"Download failed for {var}: {e}")
                 return False
-
+                
 def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=None):
     """
     Downloads the HYCOM analysis in daily outputs using xarrray opendap.
@@ -268,10 +261,9 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     OUTPUT:
     NetCDF file containing the most recent HYCOM forcast run.
     """
-
-    # We add an additional day to ensure that it exceeds the model run time.
+    # We add an additional day to ensure that it exceeds the model run time. 
     hdays, fdays = hdays+1, fdays+1
-
+    
     if workers is None:
         workers=len(variables)
     else:
@@ -290,12 +282,12 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     else:
         print('HYCOM download failed.')
 
-if __name__ == "__main__":
-    run_date = pd.to_datetime('2024-12-04 00:00:00')
-    hdays = 1
-    fdays = 1
+if __name__ == '__main__':
+    run_date = pd.to_datetime('2024-12-17 00:00:00')
+    hdays = 5
+    fdays = 5
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
     domain = [23,24,-37,-36]
     depths = [0,20]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
-    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=None)
+    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=1)
