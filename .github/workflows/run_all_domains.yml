@@ -58,7 +58,6 @@ jobs:
       INP: I99
       BLK: GFS
       TIDE_FRC: TPXO10
-      FRC: ''
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
