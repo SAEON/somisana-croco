@@ -21,7 +21,7 @@ jobs:
         # anything not archived will be lost!
         id: cleanup_runner
         run: |
-          find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
+          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
       - name: Clean /mnt/ocims-somisana
         # clean certain file types in the public facing archive
         # we only want to keep the forecast portion of the archived forecast runs

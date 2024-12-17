@@ -264,6 +264,8 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     # We add an additional day to ensure that it exceeds the model run time. 
     hdays, fdays = hdays+1, fdays+1
     
+    # I am opting to download in series here. Its been hardcoded and will be changed. Here I am just trying it out eleviate stress on the computre server.
+    # it should be workers=len(params)
     if workers is None:
         workers=1
     else:

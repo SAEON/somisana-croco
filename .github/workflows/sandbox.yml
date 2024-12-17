@@ -1,0 +1,12 @@
+name: A way of testing individual calleable workflows
+# (not used in th eoperational workflow at all)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_cli:
+    uses: ./.github/workflows/build_images.yml
+    with:
+      IMAGE_ID: cli
+

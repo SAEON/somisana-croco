@@ -378,8 +378,10 @@ def plot(fname,
         spd = np.sqrt(u**2+v**2)
         
         # subset spd based on the plot extents before running get_uv_params()
-        eta_rho,_,xi_rho,_=post.domain_to_slice(slice(None),slice(None),slice(None),slice(None),extents,grdname,'temp')
-        spd=spd[eta_rho,xi_rho]
+        # I'm commenting this as it doesn't work for very curvilinear grids
+        # the user always has the option of specifying the size of the ref_vector
+        # eta_rho,_,xi_rho,_=post.domain_to_slice(slice(None),slice(None),slice(None),slice(None),extents,grdname,'temp')
+        # spd=spd[eta_rho,xi_rho]
         
         scale_uv, skip_uv, ref_vector = get_uv_params(spd,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio)
         
