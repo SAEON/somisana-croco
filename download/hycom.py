@@ -265,7 +265,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     hdays, fdays = hdays+1, fdays+1
     
     if workers is None:
-        workers=len(variables)
+        workers=1
     else:
         pass
 
