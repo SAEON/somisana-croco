@@ -85,7 +85,7 @@ jobs:
       RUNNER_NAME: mims1
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
-      COMP: C04
+      COMP: C06
       # in future we may want to use different compile options for each domain
       # one way of handling that may be to add the compile option to each string in the domain variable under the matrix strategy
       # and then tease out the domain and compile option inside prep_domain.yml
@@ -114,17 +114,34 @@ jobs:
       FDAYS: 5
     secrets: inherit
 
-  download_hycom:
-    needs: [envs, build_cli]
-    uses: ./.github/workflows/download_hycom.yml
+#  download_hycom:
+#    needs: [envs, build_cli]
+#    uses: ./.github/workflows/download_hycom.yml
+#    with:
+#      RUNNER_NAME: mims1
+#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+#      HDAYS: 5
+#      FDAYS: 5
+#    secrets: inherit
+
+  # prepare tidal forcing for each domain
+  make_tide_frc:
+    needs: [envs, build_cli, prep_domains]
+    strategy:
+      matrix:
+        # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
+        domain: ['sa_southeast_01','sa_west_02']
+    uses: ./.github/workflows/make_tides.yml  # Path to your reusable workflow
     with:
-      RUNNER_NAME: mims1
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
       BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      MODEL: croco_v1.3.1
+      DOMAIN: ${{ matrix.domain }}
+      TIDE_FRC: TPXO10
       HDAYS: 5
-      FDAYS: 5
-    secrets: inherit
-
+  
   # run the model, do the postprocessing, archive the output
   # 
   # we must ensure that run_all_domains.yml must use less than 120 processors in parallel - this is our limit
@@ -143,14 +160,14 @@ jobs:
       SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
     secrets: inherit
 
-  run_hycom_domains:
-    needs: [envs,prep_domains,download_surface,download_hycom,run_mercator_domains] 
-    if: ${{ always() }} # execute even if there was an error with the mercator runs
-    uses: ./.github/workflows/run_all_domains.yml
-    with:
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
-      OGCM: HYCOM
-      SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
-    secrets: inherit
+#  run_hycom_domains:
+#    needs: [envs,prep_domains,download_surface,download_hycom,run_mercator_domains] 
+#    if: ${{ always() }} # execute even if there was an error with the mercator runs
+#    uses: ./.github/workflows/run_all_domains.yml
+#    with:
+#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+#      RUNNER_NAME: mims1
+#      OGCM: HYCOM
+#      SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
+#    secrets: inherit

@@ -39,8 +39,8 @@ on:
         description: 'name of bulk forcing e.g. GFS' 
         required: true
         type: string
-      FRC:
-        description: 'name of forcing file (placeholder for now - I think we need it when we start including tides)' 
+      TIDE_FRC:
+        description: 'name of tidal forcing e.g. TPXO10' 
         required: true
         type: string
       OGCM:
@@ -61,7 +61,7 @@ env:
   # unfortunately it looks like you can't use vars defined here to define others i.e. you can't use {{ env.* }} inside this block, you have to use {{ inputs.* }} for each var
   BRANCH_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}
   CONFIG_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}
-  RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}
+  RUN_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/${{ inputs.DOMAIN }}/${{ inputs.MODEL }}/${{ inputs.COMP }}_${{ inputs.INP }}_${{ inputs.OGCM }}_${{ inputs.BLK }}_${{ inputs.TIDE_FRC }}
 
 jobs:
   # postprocess the raw croco output files into something more user-friendly
