@@ -114,16 +114,16 @@ jobs:
       FDAYS: 5
     secrets: inherit
 
-#  download_hycom:
-#    needs: [envs, build_cli]
-#    uses: ./.github/workflows/download_hycom.yml
-#    with:
-#      RUNNER_NAME: mims1
-#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-#      HDAYS: 5
-#      FDAYS: 5
-#    secrets: inherit
+  download_hycom:
+    needs: [envs, build_cli]
+    uses: ./.github/workflows/download_hycom.yml
+    with:
+      RUNNER_NAME: mims1
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      HDAYS: 5
+      FDAYS: 5
+    secrets: inherit
 
   # prepare tidal forcing for each domain
   make_tide_frc:
@@ -160,14 +160,14 @@ jobs:
       SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
     secrets: inherit
 
-#  run_hycom_domains:
-#    needs: [envs,prep_domains,download_surface,download_hycom,run_mercator_domains] 
-#    if: ${{ always() }} # execute even if there was an error with the mercator runs
-#    uses: ./.github/workflows/run_all_domains.yml
-#    with:
-#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-#      RUNNER_NAME: mims1
-#      OGCM: HYCOM
-#      SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
-#    secrets: inherit
+  run_hycom_domains:
+    needs: [envs,prep_domains,download_surface,download_hycom,run_mercator_domains] 
+    if: ${{ always() }} # execute even if there was an error with the mercator runs
+    uses: ./.github/workflows/run_all_domains.yml
+    with:
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      RUNNER_NAME: mims1
+      OGCM: HYCOM
+      SAWS_OK: ${{ needs.download_surface.outputs.SAWS_OK }}
+    secrets: inherit
