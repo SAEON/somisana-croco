@@ -54,10 +54,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: GFS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
@@ -72,10 +72,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: GFS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
@@ -90,10 +90,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: GFS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
@@ -108,10 +108,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: GFS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
@@ -133,10 +133,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: SAWS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
@@ -152,10 +152,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: SAWS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
@@ -171,10 +171,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: SAWS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
@@ -190,10 +190,10 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: SAWS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45

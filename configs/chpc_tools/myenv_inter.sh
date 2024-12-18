@@ -32,7 +32,7 @@ export CLIMATOLOGY_FILES=0
 export BOUNDARY_FILES=1
 export OGCM=GLORYS
 #
-TIDE_FILES=1
+export TIDE_FILES=1
 export TIDE_FRC=TPXO10
 
 # runtime input
