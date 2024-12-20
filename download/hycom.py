@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import subprocess
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 def is_file_valid(file_path):
     """
@@ -47,13 +48,11 @@ def check_time_range(file_path, expected_start, expected_end):
     """
     Function to check the time range of the file.
     """
-    expected_start = expected_start + timedelta(days=1)
-    expected_end   = expected_end   - timedelta(days=1)
     try:
         with xr.open_dataset(file_path) as ds:
             if 'time' in ds.coords:
                 file_times = pd.DatetimeIndex(ds['time'].values)
-                if (file_times.min() <= expected_start) and (file_times.max() >= expected_end):
+                if (file_times.min() == expected_start) and (file_times.max() == expected_end):
                     return True
                 else:
                     print(f"Time range in {file_path} is invalid.")
@@ -181,10 +180,10 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     variable=None
     for attempt in range(MAX_RETRIES):
         print('')
-        print(f'Attempt {attempt+1} out of {MAX_RETRIES} tries for {metadata["vars"][0]}.')
+        print(f'Attempt {attempt+1} out of {MAX_RETRIES} tries for {metadata[var]["vars"][0]}.')
         try:
-            print(f'Connecting to {metadata["url"]} to subset and download {metadata["vars"][0]}.')
-            ds = xr.open_dataset(metadata["url"],
+            print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
+            ds = xr.open_dataset(metadata[var]["url"],
                                  drop_variables=vars_to_drop,
                                  decode_times=False,
                                  engine="netcdf4").sel(lat=lat_range,
@@ -192,25 +191,30 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             if 'time' in ds:
                 ds['time'] = decode_time_units(ds['time'])
                 ds = ds.sel(time=time_range)
-
-            variable = ds[metadata["vars"][0]]
+            
+            variable = ds[metadata[var]["vars"][0]]
             if variable.ndim == 4:
                 variable = variable.sel(depth=depth_range)
-
+            
+            #variable = variable.resample(time='1D',offset='12h').mean()
             variable = variable.resample(time='1D').mean()
-            save_path = os.path.join(save_dir, f"hycom_{metadata['vars'][0]}.nc")
+            save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
             variable.to_netcdf(save_path, 'w')
             ds.close()
-
-            if validate_download(save_path, metadata["vars"][0], start_date, end_date):
+            
+            if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
                 print('')
                 print(f'File written to {save_path} and validation was successful.')
                 break
-
+            
             else:
-                print('')
-                print(f"File {save_path} validation failed and retrying the download")
-                print('')
+                if attempt < MAX_RETRIES - 1:
+                    print('')
+                    print(f"File {save_path} validation failed and retrying the download")
+                    print(f"Retrying in {RETRY_WAIT} seconds...")
+                    time.sleep(RETRY_WAIT)
+                else:
+                    print(f"Failed to download after the maximum number of attempts: {MAX_RETRIES}.")
 
         except Exception as e:
             print(f"Error: {e}")
@@ -229,7 +233,7 @@ def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, wo
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_to_var = {
-            executor.submit(download_var, var, metadata, domain, depths, save_dir, run_date, hdays, fdays): var
+            executor.submit(download_var, var, var_metadata, domain, depths, save_dir, run_date, hdays, fdays): var
             for var, metadata in var_metadata.items()
         }
 
@@ -285,11 +289,11 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         print('HYCOM download failed.')
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2024-12-17 00:00:00')
+    run_date = pd.to_datetime('2024-12-20 00:00:00')
     hdays = 5
     fdays = 5
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
     domain = [23,24,-37,-36]
-    depths = [0,20]
+    depths = [0,10]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
     download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=1)
