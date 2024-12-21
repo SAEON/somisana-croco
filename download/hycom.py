@@ -196,8 +196,8 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             if variable.ndim == 4:
                 variable = variable.sel(depth=depth_range)
             
-            variable = variable.resample(time='1D',offset='12h').mean()
-            #variable = variable.resample(time='1D').mean()
+            #variable = variable.resample(time='1D',offset='12h').mean()
+            variable = variable.resample(time='1D').mean()
             save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
             variable.to_netcdf(save_path, 'w')
             ds.close()
