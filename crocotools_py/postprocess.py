@@ -5,6 +5,181 @@ import dask
 from datetime import timedelta, datetime
 from glob import glob
 import sys
+from scipy.spatial import Delaunay
+from scipy import interpolate
+from progressbar import progressbar
+
+def get_tri_coef(X, Y, newX, newY, verbose=0):
+    """
+    INPUTS:
+    X, Y: Old x and y grid points
+    newX, newY: New x and y grid points 
+    
+    OUTPUTS:
+    elem: pointers to 2d gridded data (at lonp,latp locations) from
+            which the interpolation is computed (3 for each child point)
+    coef: linear interpolation coefficients
+    
+    Use:
+    To subsequently interpolate data from Fp to Fc, the following will work:      
+        Fc  = sum(coef.*Fp(elem),3)  
+        This line  should come in place of all griddata calls. It avoids repeated triangulations and tsearches (that are done
+        with every call to griddata) it should be much faster.
+    """
+
+
+    Xp = np.array([X.ravel(), Y.ravel()]).T
+    Xc = np.array([newX.ravel(), newY.ravel()]).T
+
+
+    #Compute Delaunay triangulation
+    if verbose==1: tstart = tm.time()
+    tri = Delaunay(Xp)
+    if verbose==1: print('Delaunay Triangulation', tm.time()-tstart)
+
+    #Compute enclosing simplex and barycentric coordinate (similar to tsearchn in MATLAB)
+    npts = Xc.shape[0]
+    p = np.zeros((npts,3))
+
+    points = tri.points[tri.simplices[tri.find_simplex(Xc)]]
+    if verbose==1: tstart = tm.time()
+    for i in range(npts):
+
+        if verbose==1: print(np.float(i)/npts)
+
+        if tri.find_simplex(Xc[i])==-1:  #Point outside triangulation
+             p[i,:] = p[i,:] * np.nan
+
+        else:
+
+            if verbose==1: tstart = tm.time()
+            A = np.append(np.ones((3,1)),points[i] ,axis=1)
+            if verbose==1: print('append A', tm.time()-tstart)
+
+            if verbose==1: tstart = tm.time()
+            B = np.append(1., Xc[i])
+            if verbose==1: print('append B', tm.time()-tstart)
+
+            if verbose==1: tstart = tm.time()
+            p[i,:] = np.linalg.lstsq(A.T,B.T)[0]
+            if verbose==1: print('solve', tm.time()-tstart)
+
+    if verbose==1: print('Coef. computation 1', tm.time()-tstart)
+
+    if verbose==1: tstart = tm.time()
+    elem = np.reshape(tri.simplices[tri.find_simplex(Xc)],(newX.shape[0],newY.shape[1],3))
+    coef = np.reshape(p,(newX.shape[0],newY.shape[1],3))
+    if verbose==1: print('Coef. computation 2', tm.time()-tstart)
+
+    return(elem,coef)
+
+def horiz_interp_delaunay(lonold,latold,varold,lonnew,latnew,elem=0,coef=0):
+    """
+    Horizontal Interpolation from croco varoables grid to new grid
+    
+    INPUT:
+    lonold: 2D original longitude matrix
+    latold: 2D original longitude matrix
+    varold: 2D original data matrix
+    lonnew: 2D new longitude matrix
+    latnew: 2D new longitude matrix
+    elem,coef: interpolation coefficients. 
+
+    OUTPUT:
+    varnew: variable interpolated onto new grid.
+    
+    NOTE:
+    If elem,coef is == 0, then it computes the coeficients and returns the arrays. 
+    If elem,coef is != 0, and it is an input, then we do not compute it so its faster, but we do not return the arrays. 
+    """
+    if np.all(elem==0):
+        [elem,coef] = get_tri_coef(lonold, latold,lonnew, latnew)
+        coefnorm=np.sum(coef,axis=2)
+        coef=coef/coefnorm[:,:,np.newaxis]
+        varnew = np.sum(coef*varold.ravel()[elem],2)
+        return elem,coef,varnew
+
+    else:
+        varnew = np.sum(coef*varold.ravel()[elem],2)
+        return varnew
+
+
+def croco_3d_interp_delaunay_spline_atrho(lon,lat,h,zeta,mask,grid,\
+                                          theta_s,theta_b,hc,N,\
+                                          lonnew,latnew,depthnew,
+                                          *var):
+    """
+    Vertical interpolation of CROCO variable from sigma grid to z grid.
+    lon: original 2D longitude matrix.
+    lat: original 2D latitude matrix.
+    h,zeta: CROCO topo (h) and free surface (zeta) 2D matrices.
+    grid: string of the grid points at which the variable is poisioned ('rho', 'u', 'v' or 'psi' grid points).
+    theta_s,theta_b,hc,N: parameters of croco vertical grid.
+    lonnew: new 2D longitude matrix.
+    latnew: new 2D latitude matrix.
+    depthnew: new 1D vertical grid.
+    var: 3D original croco data matrix (can be several variables as long as they are on the same grid points).
+    """
+    bad_value=999
+
+    #Build croco z levels at rho points
+    zvarold =  z_levels(h,zeta,theta_s,theta_b,hc,N,grid,2) # 2 should probilly not be hardcoded into the code (vtransform: 1 or 2)
+    
+    #lonnew and latnew 2D horizontal grids
+    nz_new=np.size(depthnew)
+    if np.ndim(lonnew)==1:
+        ny_new=1
+        nx_new=np.shape(lonnew)[0]
+        lonnew=lonnew[np.newaxis,:]
+        latnew=latnew[np.newaxis,:]
+    elif np.ndim(lonnew==2):
+        ny_new=np.shape(lonnew)[0]
+        nx_new=np.shape(lonnew)[1]
+
+    # Horizontal interpolation of the topo
+    elem,coef,toponew=horiz_interp_delaunay(lon,lat,h,lonnew,latnew)
+
+    # Horizontal interpolation of the mask nut it is double check with zlev>0
+    # It masks points that are really close to the coast
+    masknew=horiz_interp_delaunay(lon,lat,mask,lonnew,latnew,elem,coef)
+    masknew[np.round(masknew,5)<1]=0
+    masknew[np.round(masknew,5)>=1]=1
+
+    # Horizontal interpolation of zlevels and variables
+    # add a point at the surface to fall in the range of interpolation
+    varnew_oldz = np.zeros((np.shape(var)[0],N+1,ny_new, nx_new))
+
+    #depth of sigma levels at lonnew,latnew
+    zvarnew_oldz= np.zeros((N+1,ny_new, nx_new))
+
+    #Vertical interpolation on new vertical grid
+    varnew_newz=np.zeros((np.shape(var)[0],np.size(depthnew),ny_new,nx_new))+bad_value
+
+    #multiplying by masknew results in setting to zero values very close to the coasts
+    for nvar in range(np.shape(var)[0]):
+        tmp=var[nvar]
+        for k in range(N):
+            varnew_oldz[nvar,k,:,:]=horiz_interp_delaunay(lon,lat,tmp[k],
+                                                          lonnew,latnew,elem,coef)*masknew
+            zvarnew_oldz[k,:,:] =horiz_interp_delaunay(lon,lat,zvarold[k,:,:],
+                                                            lonnew,latnew,elem,coef)*masknew
+
+        varnew_oldz[nvar,N] = varnew_oldz[nvar,N-1]
+
+        for i in range(ny_new):
+            for j in range(nx_new):
+                nznew_above_zero = np.sum(depthnew>zvarnew_oldz[0,i,j])
+                k_start = nz_new - nznew_above_zero
+                if nznew_above_zero!=0:
+                    f_section = interpolate.interp1d(zvarnew_oldz[:,i,j],varnew_oldz[nvar,:,i,j], kind='cubic')
+                    varnew_newz[nvar,k_start:,i,j] = f_section(depthnew[k_start:])
+
+
+        varnew_newz = np.ma.masked_where((varnew_newz==bad_value),varnew_newz)
+
+    return toponew,masknew,varnew_newz
+
+
 
 def u2rho(u):
     """
@@ -547,7 +722,7 @@ def get_lonlatmask(fname,type='r',
 
 def tstep_to_slice(fname, tstep, ref_date):
     '''
-    Take the input to get_var, and return a slice ofbject to be used to
+    Take the input to get_var, and return a slice of an object to be used to
     subset the dataset using ds.isel()
     see get_var() for how this is used
     '''
@@ -1566,7 +1741,22 @@ def transect_grid(lon0,lat0,lon1,lat1,dgc,R=6367442.76):
                                            latg[0,1:],long[0,1:],R=6367442.76))
     return long,latg,xrot
 
-def get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdname,tstep,res=None,ref_date="2000-01-01"):
+def get_section(fname,
+                sname,
+                var_str,
+                transect_start,
+                transect_end,
+                depthnew,
+                grdname=None,
+                tstep=slice(None),
+                level=slice(None),
+                eta_rho=slice(None),
+                eta_v=slice(None),
+                xi_rho=slice(None),
+                xi_u=slice(None),
+                subdomain=None,
+                ref_date=None,
+                res=None):
     """
     This function extracts a snapshot or time evolving vertical section 
     along a transect from a CROCO model and saves it in a netCDF file. 
@@ -1595,86 +1785,109 @@ def get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdname
     topo: Topography of the transect
     mask: Masked values of the transect
     varnew: Interpolated variable along the transect
+    
+    sname,var_str,transect_start,transect_end,depthnew,grdname,tstep,res=None,ref_date="2000-01-01"):
+
     """
-    print('load system')
-    import sys
-
+    
     # Load in data (using mfdataset so we can load in multiple files) & subset to speed up loading
-    print('load dateset')
-
     lon0,lon1 = np.min(np.array([transect_start[0],transect_end[0]])) - 1 , np.max(np.array([transect_start[0],transect_end[0]])) + 1
     lat0,lat1 = np.min(np.array([transect_start[1],transect_end[1]])) - 1 , np.max(np.array([transect_start[1],transect_end[1]])) + 1
     subdomain = [lon0,lon1,lat0,lat1]
-    print('subdomain: ', subdomain)
-    var = get_var(fname,var_str,
-                  grdname=None,tstep=slice(None),level=slice(None),
-                  eta_rho=slice(None),eta_v=slice(None),
-                  xi_rho=slice(None),xi_u=slice(None),
-                  subdomain=subdomain,ref_date=ref_date)
-    ds.close()
-    print('var: ',np.shape(var))
-    sys.exit()
 
-    theta_s,theta_b,hc,N = ds.theta_s,ds.theta_b, int(ds.hc.values), ds.s_rho.size
+    if grdname is None:
+        grdname = fname
 
+    # ----------------------------------------------
+    # Prepare indices for slicing in ds.isel() below
+    # ----------------------------------------------
+    #
+    # for each of the input dimensions we check the format of the input 
+    # and construct the appropriate slice to extract using ds.isel() below
+    tstep = tstep_to_slice(fname, tstep, ref_date)
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str)
+
+    # -------------------------
+    # Get a subset of the data
+    # -------------------------
+    #
+    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+        ds = fname.copy()
+    else:
+        ds = get_ds(fname,var_str)
+    ds = ds.isel(time=tstep,
+                 eta_rho=eta_rho,
+                 xi_rho=xi_rho,
+                 xi_u=xi_u,
+                 eta_v=eta_v,
+                 missing_dims='ignore'
+                 )
+    
+
+    if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
+        # extract data for the requested variable
+        # da is a dataarray object
+        # all dimensions not related to var_str are dropped in da
+        da = ds[var_str]
+    else:
+        da = ds.copy()
+
+    # replace the time dimension with a list of datetimes
+    if 'time' in da.dims: # handles static variables like 'h', 'angle' etc
+        time_dt = get_time(fname, ref_date, time_lims=tstep)
+        da = da.assign_coords(time=time_dt)
+
+
+    # regrid u/v data onto the rho grid
+    if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
+        if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
+            if var_str in ['u','sustr','bustr','ubar']:
+                data_rho=u2rho(da)
+            if var_str in ['v','svstr','bvstr','vbar']:
+                data_rho=v2rho(da)
+        else:
+            data_rho=da.copy()
+        # Create a new xarray DataArray with correct dimensions
+        # now that u/v data is on the rho grid
+        if len(data_rho.shape)==4:
+            da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
+                                                 's_rho': ds['s_rho'].values,
+                                                 'eta_rho': ds_grd['eta_rho'].values,
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
+                                                 },
+                                          dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
+        else: # the case where a single sigma level is extracted
+            da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
+                                                 'eta_rho': ds_grd['eta_rho'].values,
+                                                 'xi_rho': ds_grd['xi_rho'].values,
+                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
+                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
+                                                 },
+                                          dims=['time', 'eta_rho', 'xi_rho'])
+        # use the same attributes
+        da_rho.attrs = da.attrs
+        # update da to be the data on the rho grid
+        da = da_rho
+    
     # Define the start and end points of the transect
     lonstart,latstart = transect_start[0],transect_start[1]
     lonend,latend = transect_end[0],transect_end[1]
-
+    
     # Make the transect on which the interpolation will take place
     transect_lons,transect_lats,transect_dist = transect_grid(lonstart,latstart,lonend,latend,res,R=6367442.76)
     
-    # Load in the coordinates and convert mask (rho) and h (rho) to the correct grid positions. 
-    if (grid == 'rho') | (grid == 'u') | (grid == 'v') | (grid == 'psi'):
-        
-        lon,lat = ds[f'lon_{grid}'][:].values,ds[f'lat_{grid}'][:].values
-        
-        if grid == 'u':
-
-            mask = u2rho(ds['mask_rho'][:].values)
-            h    = u2rho(ds['h'][:].values)
-            
-        elif grid == 'v':
-            
-            mask = v2rho(ds['mask_rho'][:].values)
-            h    = u2rho(ds['h'][:].values)
-
-        elif grid == 'psi':
-
-            mask = psi2rho(ds['mask_rho'][:].values)
-            h    = psi2rho(ds['h'][:].values)
-            
-        else:
-            mask = ds['mask_rho'][:].values
-            h    = ds['h'][:].values
-            
-    else:
-        print('Invalid grid. Valid grids are: "rho", "u", "v"')
-        
     # Make empty array in which we will save the 3D/4D sections into
-    VARNEW_NEWZ = np.zeros((tidx.size,depthnew.size,transect_lons[0,:].size))
+    VARNEW_NEWZ = np.zeros((da.time.size,depthnew.size,transect_lons[0,:].size))+999
     
-    datetimes_extracted = []
-    i=0
-    for idx in tidx:
-        datetimes_extracted.append(datetime_list[idx])
-            
-        print(f'Extracting {var} along transect at: {datetime_list[idx]}')
-        
-        var0 = ds[var][idx].values
-    
-        zeta0 = ds.zeta[idx].values
-        
-        toponew,masknew,varnew_newz = croco_3d_interp_delaunay_spline_atrho(lon,lat,h,zeta0,mask,
-                                                                            theta_s,theta_b,hc,N,
+    for i in progressbar(range(da.time.size),'Getting sections: ',40):
+        toponew,masknew,varnew_newz = croco_3d_interp_delaunay_spline_atrho(ds['lon_rho'].values,ds['lat_rho'].values,ds['h'].values,ds['zeta'][i].values,ds['mask_rho'].values,
+                                                                            'rho',ds.theta_s, ds.theta_b, ds.hc.values, ds.s_rho.size,
                                                                             transect_lons,transect_lats,depthnew,
-                                                                            var0)
+                                                                            da[i].values)
         VARNEW_NEWZ[i] = varnew_newz[0,:,0,:]
-        i+=1
-        
-    # Close the dataset
-    ds.close()
-
+    
     # Extract the topo and masknew
     # It is not time evolving so we do not require to save every iteration
     toponew,masknew = -toponew[0,:],masknew[0,:]
@@ -1682,22 +1895,57 @@ def get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdname
 
     # Fill the bad_values with nans
     VARNEW_NEWZ[VARNEW_NEWZ==999]=np.nan
+    current_time = datetime.now().strftime("%Y-%m-%d")
+    
+    if ref_date is None:
+        ref_date=datetime(2000,1,1)
 
     # Create the netCDF file using xarray
-    
-    # save & close the netCDF
+    # Create an xarray Dataset
+    ds_new = xr.Dataset(
+        {
+            f"{var_str}": (["time","depth","transect_dist"], VARNEW_NEWZ, {"units": f"{da.units}", "description": f"{var_str}"}),
+            "topo": (["transect_dist"], toponew, {"units": "m", "description": "topography"}),
+            "mask": (["transect_dist"], masknew, {"units": "binary", "description": "mask"}),
+        },
+        coords={
+            "time": (["time"], da['time'][:].values),
+            "depth": (["depth"], depthnew, {"units":"m"}),
+            "transect_dist": (["transect_dist"], transect_dist, {"units": "m"}),
+        },
+        attrs={
+            "title": "Vertical section",
+            "description": f"Vertical section of {var_str} along a transect in a CROCO model.",
+            "history": f"Created on {current_time}",
+        }
+    )
+
+    # Save the Dataset to a NetCDF file
+    ds_new.to_netcdf(sname)
+    ds.close()
+    print('')
+    print(f'File saved to: {sname}')
+    print('')
 
 if __name__ == '__main__':
     fname = '/home/g.rautenbach/tmp/croco_forecast_20241114_00/C04_I99_HYCOM_GFS/output/croco_avg.nc'
     sname = '/home/g.rautenbach/tmp/croco_forecast_20241114_00/C04_I99_HYCOM_GFS/output/croco_vsection.nc'
-    var_str = 'temp'
+    var_str = 'salt'
     transect_start = [17,-34]
     transect_end = [18,-35]
-    depthnew = np.arange(-500,0,50)
+    depthnew = np.linspace(-5000,0,100)
     grdtype = 'rho'
     tstep=[5,10]
-    ref_date="2000-01-01"
+    ref_date=datetime(2000,1,1)
     res=300
 
-    get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdtype,tstep,res,ref_date)
+    #get_section(fname,sname,var_str,transect_start,transect_end,depthnew,grdtype,tstep,res,ref_date)
+    get_section(fname,
+                sname,
+                var_str,
+                transect_start,
+                transect_end,
+                depthnew,
+                tstep=tstep,
+                res=res)
     
