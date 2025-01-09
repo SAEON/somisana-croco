@@ -107,15 +107,22 @@ for iyear in range(year_start,year_end+1):
 #
 
         if vname=='u10':
-            vname='u10m'
+            vname_upper='U10M'
 
-        if vname=='v10':
-            vname='v10m'
+        elif vname=='v10':
+            vname='V10M'
+        
+        # strangely, the source code wants variables to be upper case, except for msl!!
+        elif vname == 'msl':
+            vname_upper = 'msl'
+        else:
+            vname_upper = vname.upper()
+
 #
 # Create and write output netcdf file
 #
 
-        fname_out = era5_dir_processed + '/' + vname.upper() + '_Y' + str(iyear) + 'M' + str(imonth) + '.nc'
+        fname_out = era5_dir_processed + '/' + vname_upper + '_Y' + str(iyear) + 'M' + str(imonth) + '.nc'
 
         nw = netcdf(fname_out,mode='w',format='NETCDF4')
 
@@ -126,7 +133,7 @@ for iyear in range(year_start,year_end+1):
         varlon = nw.createVariable('lon', 'f4',('lon',))
         varlat = nw.createVariable('lat', 'f4',('lat',))
         vartime = nw.createVariable('time', 'f4',('time',))
-        vardata = nw.createVariable(vname.upper(), 'f4',('time','lat','lon'))
+        vardata = nw.createVariable(vname_upper, 'f4',('time','lat','lon'))
         varlon.long_name = 'longitude of RHO-points'
         varlat.long_name = 'latitude of RHO-points'
         vartime.long_name = 'Time'
