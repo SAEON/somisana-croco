@@ -307,55 +307,55 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
 def hlev(var, z, depth):
     """
-    this extracts a horizontal slice
+    This function interpolate a 3D variable on a horizontal level of constant depth
     
-    (TODO: DEFINITELY SCOPE TO IMPROVE EFFICIENCY
-     AT THE MOMENT WE LOOP THROUGH ALL eta,xi INDICES 
-     AND INTERPOLATE ON EACH - YIKES!)
+    INPUT:
+        var     Variable to process (3D matrix).
+        z       Depths (m) of RHO- or W-points (3D matrix).
+        depth   Slice depth (scalar; meters, negative).
 
-    var = 3D extracted variable of interest (assuming mask is already nan - use get_var() method in this file)
-    z = depths (in m) of sigma levels, also 3D array (use get_depths() method in this file)
-    depth = the horizontal depth you want (should be negative)
-
-    Adapted (by J.Veitch and G.Fearon) from vinterp.m in roms_tools (by P.Penven)
+    OUTPUT: 
+        vnew    Horizontal slice (2D matrix). 
+    
     """
-    [N, Mp, Lp] = np.shape(z)
 
-    a = z.copy()
-    a[a >= depth] = 0
-    a[a < depth] = 1
+    # Identify the grid dimensions
+    # N (number of vertical levels), M (number of rows), L (number of columns) 
+    [N,M,L]=np.shape(z)
+    i1=np.arange(0,L)
+    j1=np.arange(0,M)
     
-    # 2D variable containing the sigma level index directly above the constant depth level
-    levs = np.sum(a, axis=0)
-    # values of zero indicate the depth level is below our sigma levels so set to nan
-    levs[levs==0] = np.nan
-    # make levs the sigma level index directly below the constant depth level
-    levs = levs -1
+    # Determine nearest vertical levels
+    # Logic: For each horizontal position (row j and column i), identify which vertical levels (z) bracket the target depth
+    # adjust the levels at the boundaries to avoid indexing errors.
+    a=np.int_(z<depth)
+    levs=np.sum(a,axis=0)
+    levs[np.where(levs==N)] = N-1
+    
+    # Handle Masking
+    # Creates a mask to ignore invalid values (i.e. locations where the target depth is outside the valid range of z).
+    mask=0.*levs + 1.
+    mask[np.where(levs==0)]=np.nan
+    
+    # Locate the bracketing levels
+    # Converts the 3D indices into linear indices for easier slicing of z and var (avoids having to loop over each index point).
+    [i2,j2]=np.meshgrid(i1,j1)
+    pos_up  = L*M*levs + L*j2 + i2
+    pos_down= L*M*(levs-1) + L*j2 + i2
+    
+    # Extract the Bracketing Values
+    # Reshape z and var into 1D arrays for efficient access using pos_up and pos_down indices defined in the previous step
+    # Extract the depth values (z_up and z_down) and variable values (v_up and v_down) at the bracketing levels.
+    za=np.reshape(z,N*M*L)
+    z_up=za[pos_up]
+    z_down=za[pos_down]
 
-    vnew = np.zeros((Mp, Lp))
-    vnew[np.isnan(levs)]=np.nan
+    va=np.reshape(var,N*M*L)
+    v_up=va[pos_up]
+    v_down=va[pos_down]
     
-    # looping through every horizontal grid point makes this slow
-    for m in np.arange(Mp):
-        for l in np.arange(Lp):
-            
-            if not np.isnan(levs[m,l]):
-            
-                ind1 = int(levs[m, l])
-                ind2 = int(levs[m, l]) + 1
-                
-                if ind1 == N-1: # there is no level above to interpolate between
-                    # so I'd rather use the surface layer than extrapolate
-                    vnew[m, l] = var[ind1, m, l]
-                else:
-    
-                    v1 = var[ind1, m, l]
-                    v2 = var[ind2, m, l]
-        
-                    z1 = z[ind1, m, l]
-                    z2 = z[ind2, m, l]
-        
-                    vnew[m, l] = ((v1 - v2) * depth + v2 * z1 - v1 * z2) / (z1 - z2)
+    # Linear Interpolation between two depths
+    vnew=mask * ( (v_up-v_down)*depth + v_down*z_up - v_up*z_down ) / (z_up-z_down)
 
     return vnew
 
