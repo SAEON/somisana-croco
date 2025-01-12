@@ -16,6 +16,7 @@ import json
 from netCDF4 import Dataset as netcdf
 import numpy as np
 import os
+from ERA5_utilities import *
 
 # -------------------------------------------------
 # Import my crocotools_param_python file
@@ -42,8 +43,22 @@ with open('ERA5_variables.json', 'r') as jf:
 # -------------------------------------------------
 # 
 
-for iyear in range(year_start,year_end+1):
-  for imonth in range(month_start,month_end+1):
+# Monthly dates limits
+monthly_date_start = datetime.datetime(year_start,month_start,1)
+monthly_date_end = datetime.datetime(year_end,month_end,1)
+
+# Length of monthly dates loop
+len_monthly_dates = (monthly_date_end.year - monthly_date_start.year) * 12 + \
+                    (monthly_date_end.month - monthly_date_start.month) + 1
+
+# Initial monthly date
+monthly_date = monthly_date_start
+
+for j in range(len_monthly_dates):
+
+    # Year and month
+    iyear = monthly_date.year;
+    imonth = monthly_date.month;      
 
 #
 # -------------------------------------------------
@@ -67,7 +82,7 @@ for iyear in range(year_start,year_end+1):
 
         fname_in = era5_dir_raw + '/ERA5_ecmwf_' + vname.upper() + '_Y' + str(iyear) + 'M' + str(imonth).zfill(2) + '.nc'
         nc = netcdf(fname_in,'r+',format='NETCDF4')
-        time = nc.variables['time'][:]
+        time = nc.variables['valid_time'][:]
         lat = nc.variables['latitude'][:]
         lon = nc.variables['longitude'][:]
         data = nc.variables[vname][:,:,:]
@@ -95,12 +110,12 @@ for iyear in range(year_start,year_end+1):
         data[np.where(data==mvalue)]=9999.
 
 #
-# Convert time from hours since 1900-1-1 0:0:0 into days since Yorig-1-1 0:0:0
+# Convert time from seconds since 1970-1-1 0:0:0 into days since Yorig-1-1 0:0:0
 #
 
-        time = time / 24.
+        time = time / 24. / 3600.
         time = time - date.toordinal(date(Yorig,1,1)) \
-	            + date.toordinal(date(1900,1,1))
+	            + date.toordinal(date(1970,1,1))
 
 #
 # Changes names
@@ -151,7 +166,11 @@ for iyear in range(year_start,year_end+1):
 	
         nw.close()
 
-
+    # ---------------------------------------------------------------------
+    # Next iteration to monthly date: add one month to current monthly date
+    # ---------------------------------------------------------------------
+    monthly_date = addmonths4date(monthly_date,1)
+    
 # Print last message on screen
 print(' ')
 print(' ERA5 files conversion done ')
