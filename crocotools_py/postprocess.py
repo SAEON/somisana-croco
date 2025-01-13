@@ -1746,7 +1746,6 @@ def get_section(fname,
                 var_str,
                 transect_start,
                 transect_end,
-                depthnew=None,
                 grdname=None,
                 tstep=slice(None),
                 level=slice(None),
@@ -1758,33 +1757,49 @@ def get_section(fname,
                 ref_date=None,
                 res=None):
     """
-    This function extracts a snapshot or time evolving vertical section 
-    along a transect from a CROCO model and saves it in a netCDF file. 
+    This function extracts a vertical section along a transect from a CROCO model and saves it in a netCDF file as an xarray variable. 
     The transect can be in any direction. Multiple files can be loaded in.
 
     INPUTS:
-    fname: Path and directory to CROCO file/s to load in (string).
-    sname: Path and directory name of file to save (string).
-    transect_start: Start point of transect (list; eg. transect_start = [15, 20])
-    transect_end: End points of transect (list; eg. transect_end = [-10, -15]).
-    depthnew: Depths to interpolate. Needs to be negative values (1D numpy array; eg. depthnew = np.linspace(-2000,0,100)).
-    grdname: Grid points of variable to interpolate (string; either: 'rho','u','v' or 'psi')
-    var_str: Variable to interpolate (string). Follows the CROCO naming conventions (eg. 'temp', 'salt', 'u' or 'v')
-    tstep: time step indices to extract it can be a single integer (starting at zero) or datetime 
-           or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
-           If slice(None), then all time-steps are extracted
-    ref_date: Reference date of when the model was initialised (string, eg. "2000-01-01"). 
-    res: Horizontal resolution of model run in meters (eg. res = 300). Default is None in which case 
-         it takes the smallest grid resolution in the model. 
+    fname = CROCO output file name (or file pattern to be used with open_mfdataset())
+           fname can also be a previously extracted xarray dataset for enhanced functionality
+    sname =  Name of file to save
+    var_str = variable name (string) in the CROCO output file(s)
+    transect_start = Start point of transect (list; eg. transect_start = [15, 20])
+    transect_end = End points of transect (list; eg. transect_end = [-10, -15])
+    grdname = option name of your croco grid file (only needed if the grid info is not in fname)
+    tstep = time step indices to extract
+            it can be a single integer (starting at zero) or datetime
+            or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+            If slice(None), then all time-steps are extracted
+    level = vertical level to extract
+            If >= 0 then a sigma level is extracted (indices) 
+            If <0 then a z level in meters is extracted (depths in meters)
+            If None, then all sigma levels are extracted (indices of all the sigma levels)
+    eta_rho = index/indices of the eta_rho axis
+              If slice(None), then all indices are extracted
+    eta_v = index/indices of the eta_v axis
+            If slice(None), then all indices are extracted
+            this is only needed for extracting a subset of 'v'
+    xi_rho = index/indices of the eta_rho axis
+             If slice(None), then all indices are extracted
+    xi_u = index/indices of the eta_rho axis
+           If slice(None), then all indices are extracted
+           this is only needed for extracting a subset of 'u'
+    subdomain = extents used to do a spatial subset, as a list in format [lon0,lon1,lat0,lat1]
+                If None, then no subsetting will get done
+    ref_date = reference datetime used in croco runs        
+    res = Horizontal resolution of model run in meters (eg. res = 300). Default is None in which case 
+         it takes the smallest grid size as the resolution. 
     
     OUTPUTS:
     Netcdf containing the following:
-    time: Times that was extracted from the model in datetime format
-    lons, lats: Cartisian coordinates along the transect
-    dist: Distance of the transect
-    topo: Topography of the transect
-    mask: Masked values of the transect
-    varnew: Interpolated variable along the transect
+    time = Times that was extracted from the model in datetime format
+    lons, lats = Cartisian coordinates along the transect
+    dist = Distance of the transect
+    topo = Topography of the transect
+    mask = Masked values of the transect
+    varnew = Interpolated variable along the transect
     """
     
     # if the ref_date is not set, we set it to when we initialise our models, i.e. 2000-01-01.
@@ -1796,6 +1811,7 @@ def get_section(fname,
         grdname = fname
     
     # if the grid resolution is not provided, we use the smallest grid size as the resolution. 
+    # maybe there is a better way of doing this to avoid having to unnessarily open the file.
     if res is None:
         ds = xr.open_dataset(grdname)
         res = np.min(1/ds.pn[:].values)
@@ -1806,11 +1822,6 @@ def get_section(fname,
         lon0,lon1 = np.min(np.array([transect_start[0],transect_end[0]])) - 1 , np.max(np.array([transect_start[0],transect_end[0]])) + 1
         lat0,lat1 = np.min(np.array([transect_start[1],transect_end[1]])) - 1 , np.max(np.array([transect_start[1],transect_end[1]])) + 1
         subdomain = [lon0,lon1,lat0,lat1]
-
-    if depthnew is None:
-        interp_z = False
-    else:
-        interp_z = True
 
     # ----------------------------------------------
     # Prepare indices for slicing in ds.isel() below
@@ -1894,39 +1905,52 @@ def get_section(fname,
     
     # Make empty array in which we will save the 3D/4D sections into
     x=np.max([transect_lons[:,0].size,transect_lons[0,:].size])
-
-    if interp_z:
-        VARNEW = np.zeros((da.time.size,depthnew.size,x))+999
-    else:
+    
+    interp_z = False
+    if level is None:
+        level = np.arange(0,ds.s_rho.size)
         VARNEW = np.zeros((da.time.size,ds.s_rho.size,x))+999
         ZNEW = np.zeros((da.time.size,ds.s_rho.size,x))+999
         elem,coef=0,0
-    
+    else:
+        if all(lev <= 0 for lev in level):
+            VARNEW = np.zeros((da.time.size,np.size(level),x))+999
+            interp_z = True
+        elif all(lev >= 0 for lev in level):
+            VARNEW = np.zeros((da.time.size,np.size(level),x))+999
+            ZNEW = np.zeros((da.time.size,np.size(level),x))+999
+            elem,coef=0,0
+        else:
+            print(f'Error with input level: {level}')
+            print(f'Needs to be either list with positive or negative values for sigma levels or depth levels respectively. If level is None, then by defaul it extracts the sigma levels.')
+        
     for i in progressbar(range(da.time.size),'Getting sections: ',40):
         if interp_z:
             toponew,masknew,varnew_newz = croco_3d_interp_delaunay_spline_atrho(ds['lon_rho'].values,ds['lat_rho'].values,ds['h'].values,ds['zeta'][i].values,ds['mask_rho'].values,
                                                                             'rho',ds.theta_s, ds.theta_b, ds.hc.values, ds.s_rho.size,
-                                                                            transect_lons,transect_lats,depthnew,
+                                                                            transect_lons,transect_lats,level,
                                                                             da[i].values)
             VARNEW[i] = varnew_newz[0,:,0,:]
-
+        
         else:
             z = z_levels(ds['h'].values, ds['zeta'][i].values, ds.theta_s, ds.theta_b, ds.hc.values, ds.s_rho.size, 'rho', 2)
-            for n in range(ds.s_rho.size):
+            n=0
+            for nlev in level:
                 if np.all(elem==0) and np.all(coef==0):
-                    elem,coef,varnew = horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,da[i,n,:,:].values,transect_lons,transect_lats,elem=0,coef=0)
+                    elem,coef,varnew = horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,da[i,nlev,:,:].values,transect_lons,transect_lats,elem=0,coef=0)
                     VARNEW[i,n,:] = np.squeeze(varnew)
-                    ZNEW[i,n,:] = np.squeeze(horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,z[n],transect_lons,transect_lats,elem,coef))
+                    ZNEW[i,n,:] = np.squeeze(horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,z[nlev],transect_lons,transect_lats,elem,coef))
                 else:
-                    VARNEW[i,n,:] = np.squeeze(horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,da[i,n,:,:].values,transect_lons,transect_lats,elem,coef))
-                    ZNEW[i,n,:] = np.squeeze(horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,z[n],transect_lons,transect_lats,elem,coef))
+                    VARNEW[i,n,:] = np.squeeze(horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,da[i,nlev,:,:].values,transect_lons,transect_lats,elem,coef))
+                    ZNEW[i,n,:] = np.squeeze(horiz_interp_delaunay(ds['lon_rho'].values,ds['lat_rho'].values,z[nlev],transect_lons,transect_lats,elem,coef))
+                n+=1
 
     # Fill the bad_values with nans
     VARNEW[VARNEW==999]=np.nan
     if interp_z == False: 
         ZNEW[ZNEW==999]=np.nan
         # making a 2D array of the transect diustances. We write this in the netcdf to make plotting more convenient.
-        TNEW = np.tile(transect_dist[0,:], (ds.s_rho.size,1))
+        TNEW = np.tile(transect_dist[0,:], (np.size(level),1))
     
     # Extract the topo and masknew if interpolated onto z levels
     # It is not time evolving so we do not require to save every iteration
@@ -1947,7 +1971,7 @@ def get_section(fname,
             },
             coords={
                 "time": (["time"], da['time'][:].values),
-                "depth": (["depth"], depthnew, {"units":"m"}),
+                "depth": (["depth"], level, {"units":"m"}),
                 "transect_dist": (["transect_dist"], transect_dist, {"units": "m"}),
             },
             attrs={
@@ -1965,7 +1989,7 @@ def get_section(fname,
             },
             coords={
                 "time": (["time"], da['time'][:].values),
-                "s_rho": (["rho_levels"],ds.s_rho.values, {"units":"indices"}),
+                "s_rho": (["rho_levels"],level, {"units":"indices"}),
                 "x": (["transect_dist"], transect_dist, {"units": "m"}),
             },
             attrs={
@@ -1989,12 +2013,17 @@ if __name__ == '__main__':
     var_str = 'temp'
     transect_start = [17,-34]
     transect_end = [18,-35]
-    depthnew = np.linspace(-2000,0,50)
     tstep=[5,10]
+
+    #level = [-3000,-2000,-1000,-500,-100,-50,-25,0]
+    #level = list(np.linspace(-3000,0,100))
+    #level = [0,1,2,5]
+    level = None
 
     get_section(fname,
                 sname,
                 var_str,
                 transect_start,
                 transect_end,
+                level=level,
                 tstep=tstep)
