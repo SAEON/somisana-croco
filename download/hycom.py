@@ -178,7 +178,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     time_range = slice(start_date, end_date)
     
     # Download section
-    MAX_RETRIES, RETRY_WAIT = 3, 20
+    MAX_RETRIES, RETRY_WAIT = 3, 10
     variable=None
     for attempt in range(MAX_RETRIES):
         print('')
@@ -196,12 +196,12 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             if 'time' in ds:
                 ds['time'] = decode_time_units(ds['time'])
                 tmax=pd.to_datetime(ds.time.max().values)
+                timesteps_to_add=0
                 if tmax<=end_date:
                     # Number of time steps requested
                     requested_num_timesteps = (end_date - start_date).days
                     # Number of timesteps available in the dataset
                     available_timesteps = (tmax - start_date).days
-                    #data.sizes["time"]
                     # Number of timesteps that needs to be added to have a "complete array"
                     timesteps_to_add = requested_num_timesteps - available_timesteps
                     # Subset the dataset temporally based on what is available
@@ -214,7 +214,14 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             if variable.ndim == 4:
                 variable = variable.sel(depth=depth_range)
             
-            variable = variable.resample(time='1D').mean()
+            if run_date.hour == 0:
+                variable = variable.resample(time='1D').mean()
+            elif run_date.hour == 12:
+                timesteps_to_add+=1
+                variable = variable.resample(time='1D',offset='12h').mean()
+            else:
+                print(f'Strange run date: {run_date.hour}')
+                print(f'Must be either 0 or 12.')
             
             # if the dataset has less timesteps than what was requested, the script makes duplicates of the last time step to fill the data array.
             if timesteps_to_add > 0:
@@ -330,10 +337,11 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         print('HYCOM download failed.')
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2025-01-11 00:00:00')
+    run_date = pd.to_datetime('2025-01-14 12:00:00')
     hdays = 5
     fdays = 5
-    variables = ['salinity','water_temp','surf_el','water_u','water_v']
+    #variables = ['salinity','water_temp','surf_el','water_u','water_v']
+    variables = ['salinity']
     domain = [23,24,-37,-36]
     depths = [0,5]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
