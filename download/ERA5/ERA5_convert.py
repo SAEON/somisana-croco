@@ -125,7 +125,7 @@ for j in range(len_monthly_dates):
             vname_upper='U10M'
 
         elif vname=='v10':
-            vname='V10M'
+            vname_upper='V10M'
         
         # strangely, the source code wants variables to be upper case, except for msl!!
         elif vname == 'msl':

@@ -6,25 +6,19 @@
 #                         U S E R  *  O P T I O N S
 # *******************************************************************************
 #
-# General path
-#
-##config_dir = '../croco/Run_TEST/'           # must be the same than crocotools_param
-# config_dir = '../../configs/algoa_01/croco_v1.3.1/'            # must be the same than crocotools_param
-#config_name = 'swcape_02' not needed in our directory structure - config_dir tells us what config_name we're in
-#
 # Original ERA5 directory
 #
-era5_dir_raw = './eez' # this is where the output of ERA5_request.py goes. We're just creating a new directory here - preferring to keep the native era5 data outside of the configuration directory as we may want to use it in other configurations
+era5_dir_raw = './eez' # this is where the output of ERA5_request.py goes
 #
 # Output ERA5 directory
 #
 era5_dir_processed = './eez_for_croco' # this is where the output of ERA5_convert.py goes 
 #
-# extraction wave variables
+# should we extract wave variables?
 #
 wave_extract=False # True to extract wave variables
 #
-# extraction of sea level pressure
+# should we extract sea level pressure?
 #
 pressure_extract=True
 #
