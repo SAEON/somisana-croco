@@ -12,15 +12,16 @@ jobs:
       - name: Download HYCOM
         uses: nick-fields/retry@master
         with:
-          #timeout_minutes: 60
-          #retry_wait_seconds: 300 
-          #max_attempts: 10
-          #retry_on: any
-          #warning_on_retry: true
+          timeout_minutes: 60
+          retry_wait_seconds: 300 
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
           shell: bash
-          #continue_on_error: false
+          continue_on_error: false
           command: |
             docker run \
+              -e PYTHONUNBUFFERED=1 \
               --user $(id -u):$(id -g) \
               --rm \
               -v /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM:/tmp \
@@ -30,4 +31,4 @@ jobs:
               --run_date '2025-01-14 00:00:00' \
               --hdays 1 \
               --fdays 1 \
-              --savedir '/tmp/'
+              --savedir '/tmp/' && echo "Download completed" || echo "Download failed"

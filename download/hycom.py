@@ -327,7 +327,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         workers=np.size(variables)
     else:
         pass
-
+    
     if download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
         ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
         outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
@@ -338,13 +338,15 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         print('')
         print('created: ', outfile)
         print('')
+        sys.exit()
     else:
         print('HYCOM download failed.')
+        sys.exit()
 
 if __name__ == '__main__':
     run_date = pd.to_datetime('2025-01-14 12:00:00')
-    hdays = 2
-    fdays = 7
+    hdays = 1
+    fdays = 1
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
     domain = [23,24,-37,-36]
     depths = [0,5]
