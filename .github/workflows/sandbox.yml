@@ -7,7 +7,7 @@ on:
 jobs:
   # Download hycom 
   download_hycom:
-    runs-on: mims1-runner_croco1
+    runs-on: [self-hosted, mims1-runner_croco1]
     steps:
       - name: Download HYCOM
         uses: nick-fields/retry@master
