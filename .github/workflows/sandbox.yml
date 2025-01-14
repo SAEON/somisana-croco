@@ -19,8 +19,9 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-            #on_retry_command: sudo rm -f /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM/*.nc
-          command: docker run \
+          #on_retry_command: sudo rm -f /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM/*.nc
+          command: |
+            docker run \
             --user $(id -u):$(id -g) \
             --rm \
             -v /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM:/tmp \
