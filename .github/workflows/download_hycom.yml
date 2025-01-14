@@ -69,7 +69,7 @@ jobs:
           timeout_minutes: 60 # Script is considered failed if this limit is reached
           retry_wait_seconds: 300 # Wait 5 minutes and try again
           max_attempts: 10
-          retry_on: any
+          retry_on: network_failures #any
           warning_on_retry: true
           shell: bash
           continue_on_error: false
@@ -86,6 +86,8 @@ jobs:
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
                 --savedir '/tmp/'
+
+            echo $?
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server

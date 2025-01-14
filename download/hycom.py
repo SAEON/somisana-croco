@@ -217,7 +217,6 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             if run_date.hour == 0:
                 variable = variable.resample(time='1D').mean()
             elif run_date.hour == 12:
-                timesteps_to_add+=1
                 variable = variable.resample(time='1D',offset='12h').mean()
             else:
                 print(f'Strange run date: {run_date.hour}')
@@ -225,6 +224,10 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             
             # if the dataset has less timesteps than what was requested, the script makes duplicates of the last time step to fill the data array.
             if timesteps_to_add > 0:
+                if run_date.hour == 12:
+                    timesteps_to_add+=1
+                else:
+                    pass
                 # Create additional time values
                 last_time = variable.coords["time"][-1]
                 time_diff = variable.coords["time"][-1] - variable.coords["time"][-2]
@@ -338,10 +341,10 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
 
 if __name__ == '__main__':
     run_date = pd.to_datetime('2025-01-14 12:00:00')
-    hdays = 5
-    fdays = 5
-    #variables = ['salinity','water_temp','surf_el','water_u','water_v']
-    variables = ['salinity']
+    hdays = 2
+    fdays = 7
+    variables = ['salinity','water_temp','surf_el','water_u','water_v']
+    #variables = ['salinity']
     domain = [23,24,-37,-36]
     depths = [0,5]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
