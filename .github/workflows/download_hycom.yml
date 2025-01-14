@@ -87,8 +87,6 @@ jobs:
                 --fdays ${{ inputs.FDAYS }} \
                 --savedir '/tmp/'
 
-            echo $?
-
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
     needs: [download_hycom]
