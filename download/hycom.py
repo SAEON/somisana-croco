@@ -322,7 +322,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     # I am opting to download in series here. Its been hardcoded and will be changed. Here I am just trying it out eleviate stress on the computre server.
     # it should be workers=len(params)
     if workers is None:
-        workers=1
+        workers=np.size(variables)
     else:
         pass
 
@@ -344,8 +344,7 @@ if __name__ == '__main__':
     hdays = 2
     fdays = 7
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
-    #variables = ['salinity']
     domain = [23,24,-37,-36]
     depths = [0,5]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
-    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=1)
+    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir)
