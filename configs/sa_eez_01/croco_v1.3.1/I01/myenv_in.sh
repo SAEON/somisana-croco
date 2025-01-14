@@ -35,10 +35,10 @@ NLEVEL=1
 #NY_END=2019
 #NM_START=1
 #NM_END=12
-NY_START=2009
-NY_END=2009
-NM_START=2
-NM_END=11
+NY_START=2008
+NY_END=2011
+NM_START=1
+NM_END=6
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
 MTH_FORMAT="%02d"

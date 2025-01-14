@@ -185,7 +185,7 @@
 # elif defined  SA_WEST_02
       parameter (LLm0=128,  MMm0=446,  N=30)   ! BENGUELA_VHR
 # elif defined  SA_EEZ_01
-      parameter (LLm0=815,  MMm0=109,  N=30)   ! BENGUELA_VHR
+      parameter (LLm0=815,  MMm0=109,  N=40)   ! BENGUELA_VHR
 # else
       parameter (LLm0=xx,   MMm0=xx,   N=xx)   ! YOUR REGIONAL CONFIG
 # endif
