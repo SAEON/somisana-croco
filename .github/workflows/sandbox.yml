@@ -12,24 +12,22 @@ jobs:
       - name: Download HYCOM
         uses: nick-fields/retry@master
         with:
-          timeout_minutes: 60 # Script is considered failed if this limit is reached
-          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          timeout_minutes: 60
+          retry_wait_seconds: 300 
           max_attempts: 10
-          retry_on: network_failures #any
+          retry_on: any
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          #on_retry_command: sudo rm -f /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM/*.nc
           command: |
             docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_somisana_py:latest \
-            download_hycom \
-            --domain 23,24,-37,-36 \
-            # --domain 11,36,-39,-25 \
-            --run_date '2025-01-14 00:00:00' \
-            --hdays 5 \
-            --fdays 5 \
-            --savedir '/tmp/'
+              --user $(id -u):$(id -g) \
+              --rm \
+              -v /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_somisana_py:latest \
+              download_hycom \
+              --domain 11,36,-39,-25 \
+              --run_date '2025-01-14 00:00:00' \
+              --hdays 5 \
+              --fdays 5 \
+              --savedir '/tmp/'
