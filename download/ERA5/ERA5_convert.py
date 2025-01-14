@@ -85,7 +85,7 @@ for j in range(len_monthly_dates):
         time = nc.variables['valid_time'][:]
         lat = nc.variables['latitude'][:]
         lon = nc.variables['longitude'][:]
-        data = nc.variables[vname][:,:,:]
+        data = nc.variables[vname][:].squeeze()
         nc.close()
 
 #
@@ -127,7 +127,7 @@ for j in range(len_monthly_dates):
         elif vname=='v10':
             vname_upper='V10M'
         
-        # strangely, the source code wants variables to be upper case, except for msl!!
+        # strangely, the CROCO source code expects variables in the file names to be upper case, except for msl!!
         elif vname == 'msl':
             vname_upper = 'msl'
         else:
