@@ -281,7 +281,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
 
 def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
     var_metadata = update_var_list(variables)
-
+    success = True
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_to_var = {
             executor.submit(download_var, var, var_metadata, domain, depths, save_dir, run_date, hdays, fdays): var
@@ -292,11 +292,13 @@ def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, wo
             var = future_to_var[future]
             try:
                 future.result()
-                return True
+                print(f"Download succeeded for {var}")
             except Exception as e:
                 print(f"Download failed for {var}: {e}")
-                return False
-                
+                success = False
+
+    return success
+
 def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=None):
     """
     Downloads the HYCOM analysis in daily outputs using xarrray opendap.
