@@ -66,6 +66,7 @@ def check_time_range(file_path, expected_start, expected_end):
         print(f"Error checking time range in file {file_path}: {e}")
         return False
 
+
 def check_data_quality(file_path, variables):
     """
     Function to check the quality of the data downloaded.
@@ -175,8 +176,9 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
     time_range = slice(start_date, end_date)
-
-    MAX_RETRIES, RETRY_WAIT = 3, 20
+    
+    # Download section
+    MAX_RETRIES, RETRY_WAIT = 3, 10
     variable=None
     for attempt in range(MAX_RETRIES):
         print('')
@@ -188,16 +190,65 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
                                  decode_times=False,
                                  engine="netcdf4").sel(lat=lat_range,
                                                        lon=lon_range)
+
+
+            
             if 'time' in ds:
                 ds['time'] = decode_time_units(ds['time'])
-                ds = ds.sel(time=time_range)
-            
+                tmax=pd.to_datetime(ds.time.max().values)
+                timesteps_to_add=0
+                if tmax<=end_date:
+                    # Number of time steps requested
+                    requested_num_timesteps = (end_date - start_date).days
+                    # Number of timesteps available in the dataset
+                    available_timesteps = (tmax - start_date).days
+                    # Number of timesteps that needs to be added to have a "complete array"
+                    timesteps_to_add = requested_num_timesteps - available_timesteps
+                    # Subset the dataset temporally based on what is available
+                    ds = ds.sel(time=slice(start_date, tmax.replace(hour=0, minute=0, second=0, microsecond=0)))
+                else:
+                    ds = ds.sel(time=time_range)
+
             variable = ds[metadata[var]["vars"][0]]
+            
             if variable.ndim == 4:
                 variable = variable.sel(depth=depth_range)
             
-            #variable = variable.resample(time='1D',offset='12h').mean()
-            variable = variable.resample(time='1D').mean()
+            if run_date.hour == 0:
+                variable = variable.resample(time='1D').mean()
+            elif run_date.hour == 12:
+                variable = variable.resample(time='1D',offset='12h').mean()
+            else:
+                print(f'Strange run date: {run_date.hour}')
+                print(f'Must be either 0 or 12.')
+            
+            # if the dataset has less timesteps than what was requested, the script makes duplicates of the last time step to fill the data array.
+            if timesteps_to_add > 0:
+                if run_date.hour == 12:
+                    timesteps_to_add+=1
+                else:
+                    pass
+                # Create additional time values
+                last_time = variable.coords["time"][-1]
+                time_diff = variable.coords["time"][-1] - variable.coords["time"][-2]
+                new_times = [last_time + (i + 1) * time_diff for i in range(timesteps_to_add)]
+
+                # Duplicate the last timestep data for each new time
+                last_timestep = variable.isel(time=-1)
+                new_data = xr.concat([last_timestep.expand_dims("time") for _ in range(timesteps_to_add)], dim="time")
+
+                # Assign new time coordinates to the duplicated data
+                timestamps = np.array([da.values for da in new_times]) 
+                new_data = new_data.assign_coords(time=timestamps)
+
+                # Combine the original data with the new data
+                extended_data = xr.concat([variable, new_data], dim="time")
+
+                # Clean up the extra arrays
+                variable = extended_data
+                
+                del extended_data, last_time, time_diff, new_times, last_timestep, new_data, timestamps
+
             save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
             variable.to_netcdf(save_path, 'w')
             ds.close()
@@ -230,7 +281,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
 
 def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
     var_metadata = update_var_list(variables)
-
+    success = True
     with ThreadPoolExecutor(max_workers=workers) as executor:
         future_to_var = {
             executor.submit(download_var, var, var_metadata, domain, depths, save_dir, run_date, hdays, fdays): var
@@ -241,11 +292,13 @@ def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, wo
             var = future_to_var[future]
             try:
                 future.result()
-                return True
+                print(f"Download succeeded for {var}")
             except Exception as e:
                 print(f"Download failed for {var}: {e}")
-                return False
-                
+                success = False
+
+    return success
+
 def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=None):
     """
     Downloads the HYCOM analysis in daily outputs using xarrray opendap.
@@ -271,10 +324,10 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     # I am opting to download in series here. Its been hardcoded and will be changed. Here I am just trying it out eleviate stress on the computre server.
     # it should be workers=len(params)
     if workers is None:
-        workers=1
+        workers=np.size(variables)
     else:
         pass
-
+    
     if download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
         ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
         outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
@@ -285,15 +338,17 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         print('')
         print('created: ', outfile)
         print('')
+        sys.exit()
     else:
         print('HYCOM download failed.')
+        sys.exit()
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2024-12-20 00:00:00')
-    hdays = 5
-    fdays = 5
+    run_date = pd.to_datetime('2025-01-14 12:00:00')
+    hdays = 1
+    fdays = 1
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
     domain = [23,24,-37,-36]
-    depths = [0,10]
+    depths = [0,5]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
-    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=1)
+    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir)

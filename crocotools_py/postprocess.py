@@ -305,7 +305,8 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
     return z
 
-def hlev(var, z, depth):
+
+def hlev(var,z,depth):
     """
     This function interpolate a 3D variable on a horizontal level of constant depth
     
