@@ -69,7 +69,7 @@ jobs:
           timeout_minutes: 60 # Script is considered failed if this limit is reached
           retry_wait_seconds: 300 # Wait 5 minutes and try again
           max_attempts: 10
-          retry_on: network_failures #any
+          retry_on: any
           warning_on_retry: true
           shell: bash
           continue_on_error: false
