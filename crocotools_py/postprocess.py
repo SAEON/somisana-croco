@@ -305,6 +305,45 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
     return z
 
+def hlev_xarray(var, z, depth):
+    """
+    This function interpolates a 4D xarray DataArray on a horizontal level of constant depth.
+
+    INPUT:
+        var     Variable to process (xarray DataArray: time, vertical levels, rows, columns).
+        z       Depths (m) of RHO- or W-points (xarray DataArray: time, vertical levels, rows, columns).
+        depth   Slice depth (scalar; meters, negative).
+
+    OUTPUT:
+        vnew    Horizontal slice (xarray DataArray: time, rows, columns).
+    """
+    # Ensure depth is a scalar and compatible with xarray
+    depth = xr.DataArray(depth, dims=())
+    
+    # ensure z and var have the same time dimension details
+    # this was needed for xarray to handle all the operations on dataarrays below
+    z = z.assign_coords(time=var.coords["time"])
+
+    # Determine the nearest vertical levels where z brackets the target depth
+    below_depth = z < depth
+    levs = below_depth.sum(dim="s_rho")
+    levs = levs.clip(1, z.sizes["s_rho"] - 1)  # Ensure valid indices
+    
+    # Create masks for invalid points
+    mask = xr.where(levs == 0, np.nan, 1)
+
+    # Extract the bracketing levels
+    z_up = z.isel(s_rho=levs)
+    z_down = z.isel(s_rho=levs - 1)
+    v_up = var.isel(s_rho=levs)
+    v_down = var.isel(s_rho=levs - 1)
+
+    # Linear interpolation
+    vnew = mask * (
+        ((v_up - v_down) * depth + v_down * z_up - v_up * z_down) / (z_up - z_down)
+    )
+
+    return vnew
 
 def hlev(var,z,depth):
     """
@@ -432,7 +471,20 @@ def get_depths(ds):
             h, ssh[x, :, :], theta_s, theta_b, hc, N, type_coordinate, vtransform
         )
     
-    return depth_rho
+    # depth_rho = np.squeeze(depth_rho)
+    
+    # we need to create a new dataarray for the depths of the sigma levels
+    depth_da = xr.DataArray(depth_rho, coords={'time': ds['time'].values,
+                                         's_rho': ds['s_rho'].values,
+                                         'eta_rho': ds['eta_rho'].values, 
+                                         'xi_rho': ds['xi_rho'].values
+                                         },
+                                  dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
+    depth_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
+    depth_da.attrs['units'] = 'meter'
+    depth_da.attrs['positive'] = 'up'
+    
+    return depth_da
 
 def find_nearest_time_indx(dt,dts):
     '''
@@ -785,29 +837,13 @@ def get_var(fname,var_str,
     #
     if len(da.shape)==4 and not isinstance(level,slice): # the len(da.shape)==4 check is to exclude 2D variables
         if level < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
-            print('getting numpy array of data for doing vertical interpolations - ' + var_str)
-            # unavoidable here unfortunately...
-            # this step can be a bit slow, but if we don't do this the vertical interpolation becomes snail pace
-            # TODO: we need a more efficient way of doing the vertical interpolation
-            data = da.values
+            
             print('doing vertical interpolations - ' + var_str)
             # given the above checks in the code, here we should be dealing with a 3D variable 
             # and we want a hz slice at a constant depth level
             z=get_depths(ds) # have to use ds as we need zeta and h for this
-            # z is on the rho grid, but u and v are already regridded to the rho grid above so no need to catch anything here
-            T,D,M,L=da.shape
-            data_out=np.zeros((T,M,L))
-            for t in np.arange(T):
-                data_out[t,:,:]=hlev(data[t,::], z[t,::], level)
-            # create a new dataarray for the data for this level
-            da_out = xr.DataArray(data_out, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds_grd['eta_rho'].values, 
-                                                 'xi_rho': ds_grd['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
-                                                 },
-                                          dims=['time', 'eta_rho', 'xi_rho'])
-            # use the same attributes
+            da_out=hlev_xarray(da, z, level)
+            # use the same attributes as the original da
             da_out.attrs = da.attrs
             # update da to be the data for the specified level
             da=da_out.copy()
@@ -1227,20 +1263,8 @@ def get_ts(fname, var, lon, lat, ref_date,
                                 s_rho=depths,
                                 eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
                                 xi_rho=slice(i,i+1))
-            depths_out = np.squeeze(get_depths(ds))
             
-            # we need to create a new dataarray for the depths of the sigma levels
-            depths_da = xr.DataArray(depths_out, coords={'time': ts_da['time'].values,
-                                                 'eta_rho': ts_da['eta_rho'].values, 
-                                                 'xi_rho': ts_da['xi_rho'].values,
-                                                 's_rho': ts_da['s_rho'].values,
-                                                 'lon_rho': ts_da['lon_rho'].values,
-                                                 'lat_rho': ts_da['lat_rho'].values
-                                                 },
-                                          dims=['time', 's_rho'])
-            depths_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
-            depths_da.attrs['units'] = 'meter'
-            depths_da.attrs['positive'] = 'up'
+            depths_da = get_depths(ds)
         
             # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
             ds = xr.Dataset({var: ts_da, 'depth': depths_da, 'h': h})
@@ -1387,20 +1411,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
                             s_rho=depths,
                             eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
                             xi_rho=slice(i,i+1))
-        depths_out = np.squeeze(get_depths(ds))
         
-        # we need to create a new dataarray for the depths of the sigma levels
-        depths_da = xr.DataArray(depths_out, coords={'time': u_ts_da['time'].values,
-                                             'eta_rho': u_ts_da['eta_rho'].values, 
-                                             'xi_rho': u_ts_da['xi_rho'].values,
-                                             's_rho': u_ts_da['s_rho'].values,
-                                            'lon_rho': u_ts_da['lon_rho'].values,
-                                            'lat_rho': u_ts_da['lat_rho'].values
-                                             },
-                                      dims=['time', 's_rho'])
-        depths_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
-        depths_da.attrs['units'] = 'meter'
-        depths_da.attrs['positive'] = 'up'
+        depths_da = get_depths(ds)
         
         # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
         ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'depth': depths_da, 'h': h})
