@@ -137,8 +137,8 @@ def extract_lat_lon(ds):
             - long_obs, lat_obs
         """
     try:
-        long_obs = ds.longitude.values
-        lat_obs = ds.latitude.values
+        long_obs = ds.lon.values
+        lat_obs = ds.lat.values
 
         if long_obs.size > 0 and (long_obs == [0]).any():
             raise ValueError(
@@ -409,7 +409,7 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
             long_obs = ds_obs.lon.values
             lat_obs = ds_obs.lat.values
         else:
-            long_obs,lat_obs =extract_lat_lon(ds_obs)
+            long_obs,lat_obs = extract_lat_lon(ds_obs)
             
         model_data = post.get_ts(fname, var, long_obs, lat_obs, ref_date,
                              i_shift=0, j_shift=0,
