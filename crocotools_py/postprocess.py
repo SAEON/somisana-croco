@@ -330,8 +330,11 @@ def hlev_xarray(var, z, depth):
     depth.attrs["positive"] = "up"
     depth.attrs["bottom"] = "-99999 denotes the bottom layer of the model"
     
-    # Ensure z and var have the same time coordinate details
-    z = z.assign_coords(time=var.coords["time"])
+    # Ensure z and var have the same coordinate details
+    # (we need to ensure this so that xarray can map the two dataarrays properly)
+    z = z.assign_coords(time=var.coords["time"],
+                        eta_rho=var.coords["eta_rho"],
+                        xi_rho=var.coords["xi_rho"])
 
     # Determine the nearest vertical levels where z brackets each depth
     below_depth = z < depth
@@ -1238,10 +1241,6 @@ def get_ts(fname, var, lon, lat, ref_date,
     if var=='u' or var=='v':
         print('rather use get_ts_uv() for extracting a time-series/ profile of u/v data')
         sys.exit()
-        
-    # get the model time
-    time_model = get_time(fname, ref_date, time_lims=time_lims)
-    time_lims = tstep_to_slice(fname, time_lims, ref_date)
     
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
@@ -1319,10 +1318,6 @@ def get_ts_uv(fname, lon, lat, ref_date,
               
     """
     
-    # get the model time
-    time_model = get_time(fname, ref_date, time_lims=time_lims)
-    time_lims = tstep_to_slice(fname, time_lims, ref_date)
-    
     # finds the rho grid indices nearest to the input lon, lat
     if grdname is None:
         grdname = fname
@@ -1345,136 +1340,63 @@ def get_ts_uv(fname, lon, lat, ref_date,
     # get the model depth at this location
     h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
     
-    if isinstance(depths,slice):
-        # so we're extracting some or all of the sigma levels
-        # (note the case of extracting a single sigma level is actually handled in the else: below)
-        u_ts_da,v_ts_da = get_uv(fname,
-                              grdname=grdname,
-                              tstep=time_lims,
-                              level=depths,
-                              eta_rho=j_rho,
-                              xi_rho=i_rho,
-                              eta_v=j_v,
-                              xi_u=i_u,
-                              ref_date=ref_date)
+    #-------
+    if not isinstance(depths,slice):
+        # we're extracting data at specified z level(s) or a single sigma level
+        depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
+        depths=preprocess_profile_depths(depths,default_to_bottom,h)
         
-        # pull out the middle data point from our 3x3 block of rho grid points
-        # this is by definition the grid cell we are interested in
-        u_ts_da = u_ts_da[:,:,1,1]
-        v_ts_da = v_ts_da[:,:,1,1]
-        
-        # note here we don't check to see if 's_rho' exists like we did in get_ts(), 
-        # as we are dealing with u,v which by definition have the 's_rho' coordinate
-        
-        # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
+    u_ts_da,v_ts_da = get_uv(fname,
+                          grdname=grdname,
+                          tstep=time_lims,
+                          level=depths,
+                          eta_rho=j_rho,
+                          xi_rho=i_rho,
+                          eta_v=j_v,
+                          xi_u=i_u,
+                          ref_date=ref_date)
+    
+    # pull out the middle data point from our 3x3 block of rho grid points
+    # this is by definition the grid cell we are interested in
+    u_ts_da = u_ts_da[:,:,1,1]
+    v_ts_da = v_ts_da[:,:,1,1]
+    
+    if 's_rho' in u_ts_da.coords:
+        # in this case we want to include the depths of the sigma levels in the output
+        # we use the get_depths() function, which takes the dataset as input        
+        # so we need to extract the dataset again here unfortunately
         if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
             ds = fname.copy()
         else:
             ds = get_ds(fname)
-        
         ds = ds.isel(time=time_lims,
                             s_rho=depths,
-                            eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
+                            eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
                             xi_rho=slice(i,i+1))
         
         depths_da = get_depths(ds)
-        
+    
         # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
         ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'depth': depths_da, 'h': h})
-    
     else:
-        # we're extracting data at specified z level(s) or a single sigma level
-        depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
-        depths_in=depths.copy() # keep a record of the user input for writing to the dataarray
-        depths=preprocess_profile_depths(depths,default_to_bottom,h)
-        # set up empty arrays of the correct size, which we populate in a loop through depths
-        u_ts = np.zeros((len(time_model),len(depths)))
-        v_ts = np.zeros((len(time_model),len(depths)))
-        for index, depth in enumerate(depths):
-            # extract a time-series for this z level (or sigma level)
-            if depth>=0: 
-                depth=int(depth) # must be an integer for a sigma level
-            u_ts_i,v_ts_i = get_uv(fname,
-                                 grdname=grdname,
-                                 tstep=time_lims,
-                                 level=depth,
-                                 eta_rho=j_rho,
-                                 xi_rho=i_rho,
-                                 eta_v=j_v,
-                                 xi_u=i_u,
-                                 ref_date=ref_date)
-            
-            # pull out the middle data point from our 3x3 block of rho grid points
-            # this is by definition the grid cell we are interested in
-            u_ts_i = u_ts_i[:, 1, 1] 
-            v_ts_i = v_ts_i[:, 1, 1]
-            # populate our output arrays
-            u_ts[:, index] = u_ts_i.values
-            v_ts[:, index] = v_ts_i.values
-            
-        # create xarray dataarrays for u_ts and v_ts
-        if len(depths) > 1:
-            # this is a profile extraction so we need a 'depth' dimension
-            u_ts_da = xr.DataArray(u_ts, coords={'time': u_ts_i['time'].values,
-                                                 'eta_rho': u_ts_i['eta_rho'].values, 
-                                                 'xi_rho': u_ts_i['xi_rho'].values,
-                                                 'depth': depths_in,
-                                                 'lon_rho': u_ts_i['lon_rho'].values,
-                                                 'lat_rho': u_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time', 'depth'])
-            u_ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
-            u_ts_da.coords['depth'].attrs['units'] = 'meters'
-            u_ts_da.coords['depth'].attrs['postive'] = 'up'
-            u_ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
-            
-            v_ts_da = xr.DataArray(v_ts, coords={'time': v_ts_i['time'].values,
-                                                 'eta_rho': v_ts_i['eta_rho'].values, 
-                                                 'xi_rho': v_ts_i['xi_rho'].values,
-                                                 'depth': depths_in,
-                                                 'lon_rho': v_ts_i['lon_rho'].values,
-                                                 'lat_rho': v_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time', 'depth'])
-            v_ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
-            v_ts_da.coords['depth'].attrs['units'] = 'meters'
-            v_ts_da.coords['depth'].attrs['postive'] = 'up'
-            u_ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
-        else:
-            # we're extracting a time-series (either a sigma level or a z level), so drop the depth dimension
-            u_ts_da = xr.DataArray(u_ts.squeeze(), coords={'time': u_ts_i['time'].values,
-                                                 'eta_rho': u_ts_i['eta_rho'].values, 
-                                                 'xi_rho': u_ts_i['xi_rho'].values,
-                                                 'lon_rho': u_ts_i['lon_rho'].values,
-                                                 'lat_rho': u_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time'])
-            
-            v_ts_da = xr.DataArray(v_ts.squeeze(), coords={'time': v_ts_i['time'].values,
-                                                 'eta_rho': v_ts_i['eta_rho'].values, 
-                                                 'xi_rho': v_ts_i['xi_rho'].values,
-                                                 'lon_rho': v_ts_i['lon_rho'].values,
-                                                 'lat_rho': v_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time'])
-        # add the attributes for u,v (note these are set in get_var())
-        u_ts_da.attrs = u_ts_i.attrs 
-        v_ts_da.attrs = v_ts_i.attrs
-        
-        # create a new dataset with the extracted time-series at this grid cell 
         ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'h': h})
     
     # write a netcdf file if specified
     if write_nc:
         ds.to_netcdf(fname_nc)
-        
+    
     return ds
 
 
 '''
-OK I think this is a brilliant idea
-get_tsdoes the hz interpolation by mapping the lon, lat inputs to eta_rho,xi_rho
-this is maybe a small deal for get_ts()
-but extending that to arrays of points will make get_section very easy
+An idea for get_section, which I think will be super fast
+get_section can do the hz interpolation at every point by mapping the lon, lat inputs to 
+eta_rho, xi_rho indices (or rather decimal indices)
+then you can simply use xarrays interp. function to extract the section
+quick chatgpt search suggests from scipy.interpolate import RegularGridInterpolator
+We essentially use the regular grid of eta_rho, xi_rho, with lat_rho,lon_rho defined on that grid
+Then the inputs lons/lats get corresponding eta_rho,xi_rho decimal indices
+which get input to xarrays .interp functionality, after we've extracted our data 
+over a subdomain with get_var
 
 '''
