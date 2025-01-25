@@ -316,7 +316,7 @@ def hlev_xarray(var, z, depth):
         depth   Slice depth(s) (scalar or list of scalars; meters, negative).
 
     OUTPUT:
-        vnew    Horizontal slice(s) (xarray DataArray: time, depth, rows, columns if depth is a list, otherwise time, rows, columns).
+        vnew    Horizontal slice(s) (xarray DataArray: time, depth, eta_rho, xi_rho. if depth is a list, otherwise time, eta_rho, xi_rho).
     """
     # Convert depth to xarray DataArray if it's a scalar or a list
     if np.isscalar(depth):
@@ -332,6 +332,8 @@ def hlev_xarray(var, z, depth):
     
     # Ensure z and var have the same coordinate details
     # (we need to ensure this so that xarray can map the two dataarrays properly)
+    # TODO: this should in theory already be handled in get_depths - the z
+    # input to this function should already have identical coordinates to var
     z = z.assign_coords(time=var.coords["time"],
                         eta_rho=var.coords["eta_rho"],
                         xi_rho=var.coords["xi_rho"])
