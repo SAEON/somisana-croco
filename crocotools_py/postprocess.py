@@ -707,7 +707,8 @@ def level_to_slice(level):
     # so we start by getting a variable 'level_for_isel' which is as it sounds
     if not isinstance(level,slice):
         # so level is a single number or a list of numbers
-        if np.mean(np.atleast_1d(level)) >= 0: 
+        level=np.atleast_1d(level)
+        if np.mean(level) >= 0: 
             # so we're extracting a single sigma layer
             level_for_isel = slice(level[0], level[-1]+1) 
         else:
