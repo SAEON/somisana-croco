@@ -362,6 +362,9 @@ def hlev_xarray(var, z, depth):
     # Assign the depth coordinate and reorder dimensions
     vnew = vnew.assign_coords(depth=depth)
     vnew = vnew.transpose("time", "depth", "eta_rho", "xi_rho")
+    
+    # Drop the s_rho coordinate if it exists
+    vnew = vnew.drop_vars("s_rho", errors="ignore")
 
     return vnew.squeeze("depth") if len(depth) == 1 else vnew
 
@@ -710,7 +713,7 @@ def level_to_slice(level):
         level=np.atleast_1d(level)
         if np.mean(level) >= 0: 
             # so we're extracting a single sigma layer
-            level_for_isel = slice(level[0], level[-1]+1) 
+            level_for_isel = slice(int(level[0]), int(level[-1]+1)) 
         else:
             # sp we'll need to do vertical interpolations later 
             # for this we'll need to initially extract all the sigma levels
@@ -818,6 +821,7 @@ def get_var(fname,var_str,
     if 'time' in da.dims: # handles static variables like 'h', 'angle' etc
         time_dt = get_time(fname, ref_date, time_lims=tstep)
         da = da.assign_coords(time=time_dt)
+        ds = ds.assign_coords(time=time_dt)
     
     # regrid u/v data onto the rho grid
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
@@ -1247,6 +1251,8 @@ def get_ts(fname, var, lon, lat, ref_date,
         print('rather use get_ts_uv() for extracting a time-series/ profile of u/v data')
         sys.exit()
     
+    time_lims = tstep_to_slice(fname, time_lims, ref_date)
+    
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
         grdname = fname
@@ -1272,7 +1278,7 @@ def get_ts(fname, var, lon, lat, ref_date,
                           xi_rho=i,
                           ref_date=ref_date)
     
-    if 's_rho' in ts_da.coords:
+    if 's_rho' in ts_da.coords and isinstance(depths,slice): # we need the slice check since a single sigma layer currently retains the s_rho coordinate
         # in this case we want to include the depths of the sigma levels in the output
         # we use the get_depths() function, which takes the dataset as input        
         # so we need to extract the dataset again here unfortunately
@@ -1285,12 +1291,17 @@ def get_ts(fname, var, lon, lat, ref_date,
                             eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
                             xi_rho=slice(i,i+1))
         
-        depths_da = get_depths(ds)
-    
+        depths_da = get_depths(ds).squeeze()
+        
+        # ensure the coords are consistent with ts_da so they can be merged into a dataset
+        depths_da = depths_da.assign_coords(ts_da.coords)
+        
         # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
         ds = xr.Dataset({var: ts_da, 'depth': depths_da, 'h': h})
     else:
         ds = xr.Dataset({var: ts_da, 'h': h})
+    
+    ds = ds.drop_vars(['eta_rho', 'xi_rho'])
     
     # write a netcdf file if specified
     if write_nc:
@@ -1322,6 +1333,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
             - ds, an xarray dataset containing the time-series or profile data
               
     """
+    
+    time_lims = tstep_to_slice(fname, time_lims, ref_date)
     
     # finds the rho grid indices nearest to the input lon, lat
     if grdname is None:
@@ -1363,10 +1376,10 @@ def get_ts_uv(fname, lon, lat, ref_date,
     
     # pull out the middle data point from our 3x3 block of rho grid points
     # this is by definition the grid cell we are interested in
-    u_ts_da = u_ts_da[:,:,1,1]
-    v_ts_da = v_ts_da[:,:,1,1]
+    u_ts_da = u_ts_da.isel(eta_rho=1,xi_rho=1)
+    v_ts_da = v_ts_da.isel(eta_rho=1,xi_rho=1)
     
-    if 's_rho' in u_ts_da.coords:
+    if 's_rho' in u_ts_da.coords and isinstance(depths,slice): # we need the slice check since a single sigma layer currently retains the s_rho coordinate
         # in this case we want to include the depths of the sigma levels in the output
         # we use the get_depths() function, which takes the dataset as input        
         # so we need to extract the dataset again here unfortunately
@@ -1379,12 +1392,17 @@ def get_ts_uv(fname, lon, lat, ref_date,
                             eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
                             xi_rho=slice(i,i+1))
         
-        depths_da = get_depths(ds)
+        depths_da = get_depths(ds).squeeze()
+        
+        # ensure the coords are consistent with u_ts_da and v_ts_da so they can be merged into a dataset
+        depths_da = depths_da.assign_coords(u_ts_da.coords)
     
         # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
         ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'depth': depths_da, 'h': h})
     else:
         ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'h': h})
+    
+    ds = ds.drop_vars(['eta_rho', 'xi_rho'])
     
     # write a netcdf file if specified
     if write_nc:

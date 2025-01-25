@@ -90,12 +90,7 @@ def regrid_tier1(fname_in, fname_out, ref_date):
             ),
             "depth": xr.Variable(
                 ["time", "s_rho", "eta_rho", "xi_rho"],
-                depth,
-                {
-                    "long_name": "Depth of sigma levels of the rho grid (centred in grid cells)",
-                    "units": "meter",
-                    "positive": "up",
-                },
+                depth.values, depth.attrs
             ),
             "h": xr.Variable(["eta_rho", "xi_rho"], h.values, h.attrs),
         },
