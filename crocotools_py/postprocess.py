@@ -1255,25 +1255,22 @@ def get_ts(fname, var, lon, lat, ref_date,
     # get the model depth and grid
     h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
     
-    # get the dataset
-    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-        ds = fname.copy()
-    else:
-        ds = get_ds(fname,var)
-    
     if not isinstance(depths,slice):
         # we're extracting data at specified z level(s) or a single sigma level
         depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
         depths=preprocess_profile_depths(depths,default_to_bottom,h)
         
-    ts_da = get_var(ds, var,
+    ts_da = get_var(fname, var,
                           grdname=grdname,
                           tstep=time_lims,
                           level=depths,
+                          eta_rho=j,
+                          xi_rho=i,
                           ref_date=ref_date)
     
     if 's_rho' in ts_da.coords:
-        # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input        
+        # in this case we want to include the depths of the sigma levels in the output
+        # we use the get_depths() function, which takes the dataset as input        
         # so we need to extract the dataset again here unfortunately
         if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
             ds = fname.copy()
