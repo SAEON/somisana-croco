@@ -1253,23 +1253,13 @@ def get_ts(fname, var, lon, lat, ref_date,
     j = j+j_shift
     
     # get the model depth and grid
-    # h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
-    h = get_grd_var(grdname,"h")
-    lon_rho = get_grd_var(grdname,"lon_rho")
-    lat_rho = get_grd_var(grdname,"lat_rho")
-    
+    h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
     
     # get the dataset
     if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
         ds = get_ds(fname,var)
-    
-    ds = ds.interp(
-        eta_rho=target_eta, # WRONG - CAN'T DO THIS AND THEN USE get_depths
-        xi_rho=target_xi,
-        method="linear"
-    )
     
     if not isinstance(depths,slice):
         # we're extracting data at specified z level(s) or a single sigma level
@@ -1283,15 +1273,22 @@ def get_ts(fname, var, lon, lat, ref_date,
                           ref_date=ref_date)
     
     if 's_rho' in ts_da.coords:
-        # we explicitly check for existance of 's_rho' so we can handle 2D variables
-        
         # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input        
+        # so we need to extract the dataset again here unfortunately
+        if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+            ds = fname.copy()
+        else:
+            ds = get_ds(fname,var)
+        ds = ds.isel(time=time_lims,
+                            s_rho=depths,
+                            eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
+                            xi_rho=slice(i,i+1))
+        
         depths_da = get_depths(ds)
     
         # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
         ds = xr.Dataset({var: ts_da, 'depth': depths_da, 'h': h})
     else:
-        # handle the case of a 2D variable like 'zeta', where 'depths' won't be (or shouldn't be) a specified input
         ds = xr.Dataset({var: ts_da, 'h': h})
     
     # write a netcdf file if specified
