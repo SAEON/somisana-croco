@@ -5,6 +5,7 @@ import dask
 from datetime import timedelta, datetime
 from glob import glob
 import sys
+from scipy.interpolate import RegularGridInterpolator
 
 def u2rho(u):
     """
@@ -307,28 +308,36 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
 def hlev_xarray(var, z, depth):
     """
-    This function interpolates a 4D xarray DataArray on a horizontal level of constant depth.
+    This function interpolates a 4D xarray DataArray on horizontal levels of constant depth(s).
 
     INPUT:
-        var     Variable to process (xarray DataArray: time, vertical levels, rows, columns).
-        z       Depths (m) of RHO- or W-points (xarray DataArray: time, vertical levels, rows, columns).
-        depth   Slice depth (scalar; meters, negative).
+        var     Variable to process (xarray DataArray: time, s_rho, eta_rho, xi_rho).
+        z       Depths (m) of RHO- or W-points (xarray DataArray: time, s_rho, eta_rho, xi_rho).
+        depth   Slice depth(s) (scalar or list of scalars; meters, negative).
 
     OUTPUT:
-        vnew    Horizontal slice (xarray DataArray: time, rows, columns).
+        vnew    Horizontal slice(s) (xarray DataArray: time, depth, rows, columns if depth is a list, otherwise time, rows, columns).
     """
-    # Ensure depth is a scalar and compatible with xarray
-    depth = xr.DataArray(depth, dims=())
+    # Convert depth to xarray DataArray if it's a scalar or a list
+    if np.isscalar(depth):
+        depth = xr.DataArray([depth], dims="depth")
+    else:
+        depth = xr.DataArray(depth, dims="depth")
+        
+    # Add attributes to the depth coordinate
+    depth.attrs["long_name"] = "water depth from free surface"
+    depth.attrs["units"] = "meters"
+    depth.attrs["positive"] = "up"
+    depth.attrs["bottom"] = "-99999 denotes the bottom layer of the model"
     
-    # ensure z and var have the same time dimension details
-    # this was needed for xarray to handle all the operations on dataarrays below
+    # Ensure z and var have the same time coordinate details
     z = z.assign_coords(time=var.coords["time"])
 
-    # Determine the nearest vertical levels where z brackets the target depth
+    # Determine the nearest vertical levels where z brackets each depth
     below_depth = z < depth
-    levs = below_depth.sum(dim="s_rho")
+    levs = below_depth.sum(dim="s_rho")  # Find levels below depth for each case
     levs = levs.clip(1, z.sizes["s_rho"] - 1)  # Ensure valid indices
-    
+
     # Create masks for invalid points
     mask = xr.where(levs == 0, np.nan, 1)
 
@@ -338,12 +347,16 @@ def hlev_xarray(var, z, depth):
     v_up = var.isel(s_rho=levs)
     v_down = var.isel(s_rho=levs - 1)
 
-    # Linear interpolation
+    # Linear interpolation along the depth dimension
     vnew = mask * (
         ((v_up - v_down) * depth + v_down * z_up - v_up * z_down) / (z_up - z_down)
     )
 
-    return vnew
+    # Assign the depth coordinate and reorder dimensions
+    vnew = vnew.assign_coords(depth=depth)
+    vnew = vnew.transpose("time", "depth", "eta_rho", "xi_rho")
+
+    return vnew.squeeze("depth") if len(depth) == 1 else vnew
 
 def hlev(var,z,depth):
     """
@@ -686,10 +699,10 @@ def level_to_slice(level):
     # as we have the option of a constant z level which needs interpolation...
     # so we start by getting a variable 'level_for_isel' which is as it sounds
     if not isinstance(level,slice):
-        # so level is a single number
-        if level >= 0: 
+        # so level is a single number or a list of numbers
+        if np.mean(np.atleast_1d(level)) >= 0: 
             # so we're extracting a single sigma layer
-            level_for_isel = slice(level, level+1) # this gets a single level 
+            level_for_isel = slice(level[0], level[-1]+1) 
         else:
             # sp we'll need to do vertical interpolations later 
             # for this we'll need to initially extract all the sigma levels
@@ -836,7 +849,7 @@ def get_var(fname,var_str,
     # ------------------------------------
     #
     if len(da.shape)==4 and not isinstance(level,slice): # the len(da.shape)==4 check is to exclude 2D variables
-        if level < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
+        if np.mean(np.atleast_1d(level)) < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
             
             print('doing vertical interpolations - ' + var_str)
             # given the above checks in the code, here we should be dealing with a 3D variable 
@@ -1174,6 +1187,8 @@ def preprocess_profile_depths(depths,default_to_bottom,h):
         depths[depths==-99999]=0
         if default_to_bottom:
             # option to set depths deeper than the model depth to the bottom sigma layer
+            # this won't actually work for an array as we now extract all z levels at once!!
+            # So would need to change this
             depths[depths<-h.values] = 0
     return depths
 
@@ -1237,90 +1252,46 @@ def get_ts(fname, var, lon, lat, ref_date,
     i = i+i_shift
     j = j+j_shift
     
-    # get the model depth at this location
-    h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
+    # get the model depth and grid
+    # h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
+    h = get_grd_var(grdname,"h")
+    lon_rho = get_grd_var(grdname,"lon_rho")
+    lat_rho = get_grd_var(grdname,"lat_rho")
     
-    if isinstance(depths,slice):
-        # so we're extracting some or all of the sigma levels
-        # (note the case of extracting a single sigma level is handled in the else: below)
-        ts_da = get_var(fname, var,
-                              grdname=grdname,
-                              tstep=time_lims,
-                              level=depths,
-                              eta_rho=j,
-                              xi_rho=i,
-                              ref_date=ref_date)
-        
-        if 's_rho' in ts_da.coords:
-            # we explicitly check for existance of 's_rho' so we can handle 2D variables
-            
-            # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-            if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-                ds = fname.copy()
-            else:
-                ds = get_ds(fname,var)
-            ds = ds.isel(time=time_lims,
-                                s_rho=depths,
-                                eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
-                                xi_rho=slice(i,i+1))
-            
-            depths_da = get_depths(ds)
-        
-            # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
-            ds = xr.Dataset({var: ts_da, 'depth': depths_da, 'h': h})
-        else:
-            # handle the case of a 2D variable like 'zeta', where 'depths' won't be (or shouldn't be) a specified input
-            ds = xr.Dataset({var: ts_da, 'h': h})
-            
+    
+    # get the dataset
+    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+        ds = fname.copy()
     else:
+        ds = get_ds(fname,var)
+    
+    ds = ds.interp(
+        eta_rho=target_eta, # WRONG - CAN'T DO THIS AND THEN USE get_depths
+        xi_rho=target_xi,
+        method="linear"
+    )
+    
+    if not isinstance(depths,slice):
         # we're extracting data at specified z level(s) or a single sigma level
         depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
-        depths_in=depths.copy() # keep a record of the user input for writing to the dataarray
         depths=preprocess_profile_depths(depths,default_to_bottom,h)
-        # set up an empty array of the correct size, which we populate in a loop through depths
-        ts = np.zeros((len(time_model),len(depths)))
-        for index, depth in enumerate(depths):
-            # extract a time-series for this z level (or sigma level)
-            if depth>=0:
-                depth=int(depth) # must be an integer for a sigma level
-            ts_i = get_var(fname, var,
-                              grdname=grdname,
-                              tstep=time_lims,
-                              level=depth,
-                              eta_rho=j,
-                              xi_rho=i,
-                              ref_date=ref_date)
-            # and populate the ts array
-            ts[:,index]=ts_i.values
         
-        # create an xarray dataarray for ts
-        # We can use the last 'ts_i' dataarray to extract some of the coordinate information
-        if len(depths) > 1:
-            # this is a profile extraction so we need a 'depth' dimension
-            ts_da = xr.DataArray(ts, coords={'time': ts_i['time'].values,
-                                                 'eta_rho': ts_i['eta_rho'].values, 
-                                                 'xi_rho': ts_i['xi_rho'].values,
-                                                 'depth': depths_in,
-                                                 'lon_rho': ts_i['lon_rho'].values,
-                                                 'lat_rho': ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time', 'depth'])
-            ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
-            ts_da.coords['depth'].attrs['units'] = 'meters'
-            ts_da.coords['depth'].attrs['postive'] = 'up'
-            ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
-        else: 
-            # we're extracting a time-series (either a sigma level or a z level), so drop the 'depth' dimension
-            ts_da = xr.DataArray(ts.squeeze(), coords={'time': ts_i['time'].values,
-                                                 'eta_rho': ts_i['eta_rho'].values, 
-                                                 'xi_rho': ts_i['xi_rho'].values,
-                                                 'lon_rho': ts_i['lon_rho'].values,
-                                                 'lat_rho': ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time'])
-        ts_da.attrs = ts_i.attrs # add the attributes for this variable
+    ts_da = get_var(ds, var,
+                          grdname=grdname,
+                          tstep=time_lims,
+                          level=depths,
+                          ref_date=ref_date)
+    
+    if 's_rho' in ts_da.coords:
+        # we explicitly check for existance of 's_rho' so we can handle 2D variables
         
-        # create a new dataset with the extracted time-series at this grid cell 
+        # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input        
+        depths_da = get_depths(ds)
+    
+        # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
+        ds = xr.Dataset({var: ts_da, 'depth': depths_da, 'h': h})
+    else:
+        # handle the case of a 2D variable like 'zeta', where 'depths' won't be (or shouldn't be) a specified input
         ds = xr.Dataset({var: ts_da, 'h': h})
     
     # write a netcdf file if specified
@@ -1504,3 +1475,12 @@ def get_ts_uv(fname, lon, lat, ref_date,
         ds.to_netcdf(fname_nc)
         
     return ds
+
+
+'''
+OK I think this is a brilliant idea
+get_tsdoes the hz interpolation by mapping the lon, lat inputs to eta_rho,xi_rho
+this is maybe a small deal for get_ts()
+but extending that to arrays of points will make get_section very easy
+
+'''
