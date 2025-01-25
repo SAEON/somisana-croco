@@ -343,8 +343,10 @@ def hlev_xarray(var, z, depth):
     levs = below_depth.sum(dim="s_rho")  # Find levels below depth for each case
     levs = levs.clip(1, z.sizes["s_rho"] - 1)  # Ensure valid indices
 
-    # Create masks for invalid points
-    mask = xr.where(levs == 0, np.nan, 1)
+    # Mask where the depth is outside the range of z
+    # Outside range: depth < z_bottom or depth > z_top
+    z_bottom = z.isel(s_rho=0)
+    mask = xr.where((depth < z_bottom), np.nan, 1)
 
     # Extract the bracketing levels
     z_up = z.isel(s_rho=levs)
