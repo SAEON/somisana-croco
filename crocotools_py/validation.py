@@ -53,71 +53,58 @@ def statistics(model_data,data_obs_model_timeaxis):
     return (insitu_correlation, insitu_rmse, insitu_mean_diff, insitu_min_value, insitu_max_value,
             model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias)
 
-
-
-# %% Interpolate to model time step and average across depth levels
-
 def obs_2_model_timeaxis(da_obs, ds_mod):
     """
-            This Function is for matching time axis of both the insitu and model datasets:
-            obs_2_model_timeaxis function is designed to put the observation array on the model time axis.
-            This is achieved by reading the obs dataset using 
-            Parameters:
-            - fname_obs:        filename of observations
-            - time_model:       numpy array or list, corresponding time values
-            - var:              variable input by the user. should be the same in both the modeland obs netCDFs.
-
-            Returns:
-            - data_obs_model_timeaxis
+    get an observations timeseries onto the model time axis
+    One could of course use xarray's built-in interp function, which includes time averaging
+    but there is always the risk of not getting the observation axis identical to the model, even if you get the same number of time-steps out
+    This (admittedly slow) function at least ensures the times line-up perfectly    
+    
+    inputs:
+        da_obs: dataarray of the observations for some varibale
+        ds_mod: dataset/dataarray of the model (it's only used to get the time axis)
+    
+    returns an xarray dataarray of the observations on the model time axis, including time averaging over each time-step                                            
     """
-    # print("Coordinates of ds_obs:", da_obs.coords)
-            
-    ds_mod = np.squeeze(ds_mod)
-    ds_mod['time'] = ds_mod['time'].astype('datetime64[ns]')
-
-    # Interpolate onto the time axis of ds_model
-    data_obs_model_timeaxis = da_obs.interp(time=ds_mod['time'])
-        
-    # Create a new dataset by interpolating based on both time and depth
-    data_obs_model_timeaxis = np.squeeze(data_obs_model_timeaxis)
+    
     model_time = ds_mod['time']
     
-    data_obs_model_timeaxis[0].values #view the first dat in the array
+    # Interpolate onto the time axis of ds_model
+    data_obs_model_timeaxis = da_obs.interp(time=model_time)
     
-    # Here we check if the datasets (model and insitu) are the same shapes and correct them if they are not  
-    if data_obs_model_timeaxis.dims != ds_mod.dims:
-        data_obs_model_timeaxis.transpose(*(data_obs_model_timeaxis.dims))
-    
-    # Here we calculate the half time step window to make the insitu data averaged at 00:00 to be averaged at 12:00 noon like the croco model
-    window_half_tstep = (model_time[1] - model_time[0]) / 2
-
-    obs_out = np.zeros_like(data_obs_model_timeaxis)
-    
-    # The if statement applies to multilayered insitu data like Wirewalker data, 
-    # the else part applies to single layer or single depth station data like ATAP 
+    # Ensure consistent dimension order (time, depth if depth exists)
     if "depth" in data_obs_model_timeaxis.dims:
-        for t_indx, t in enumerate(model_time):
-            model_depth = ds_mod['depth']
-            data_avg_list = []
-            for d_indx, d in enumerate(model_depth):
-                start_time = t - window_half_tstep
-                end_time = t + window_half_tstep
-                data_avg = data_obs_model_timeaxis[:,d_indx].sel(time=slice(start_time, end_time))
-                data_avg_list.append(np.nanmean(data_avg.values))
-            obs_out[t_indx] = data_avg_list
-
-    else:
-        for t_indx, t in enumerate(model_time):
-            start_time = t - window_half_tstep
-            end_time = t + window_half_tstep
-            data_avg = da_obs.sel(time=slice(start_time, end_time))
-            obs_out[t_indx] = np.nanmean(data_avg.values)
- 
-    # return data_obs_model_timeaxis
+        data_obs_model_timeaxis = data_obs_model_timeaxis.transpose("time", "depth")
+    
+    # Calculate the half time step window to shift insitu data from 00:00 to 12:00 like the CROCO model
+    window_half_tstep = (model_time[1] - model_time[0]) / 2
+    
+    # Prepare the output array with the same shape as data_obs_model_timeaxis
+    obs_out = np.full_like(data_obs_model_timeaxis, np.nan)
+    
+    # Loop over model_time and calculate time-averaged data for each time step
+    for t_indx, t in enumerate(model_time):
+        
+        start_time = t - window_half_tstep
+        end_time = t + window_half_tstep
+        
+        # Select the time slice within the specified window
+        data_avg = data_obs_model_timeaxis.sel(time=slice(start_time, end_time))
+        
+        # Compute the mean along the time dimension
+        mean_values = data_avg.mean(dim="time", skipna=True)
+    
+        # Assign the mean values correctly based on the dimensions
+        if "depth" in mean_values.dims:
+            obs_out[t_indx, :] = mean_values  # For multilayered data
+        else:
+            obs_out[t_indx] = mean_values  # For single-layered data
+    
+    # Convert the output back to an xarray DataArray and drop single-dimensional axes
     obs_out_xr = xr.DataArray(obs_out, dims=data_obs_model_timeaxis.dims, coords=data_obs_model_timeaxis.coords)
-    obs_out_xr = obs_out_xr.squeeze(drop=True)  # Drop extra dimensions that are not changing 
-    # h=ds_mod.h
-    return obs_out_xr#,h  #ONly bring h on ATAP
+    obs_out_xr = obs_out_xr.squeeze(drop=True)
+    
+    return obs_out_xr
 
 
 
