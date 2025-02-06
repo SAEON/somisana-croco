@@ -10,8 +10,6 @@ from datetime import datetime
 # import cftime
 from colorama import Fore, Style
 
-# %% rho & uv statistics
-
 def statistics(model_data,data_obs_model_timeaxis):
     """
             This Function calculates all model validation statistics
@@ -53,62 +51,35 @@ def statistics(model_data,data_obs_model_timeaxis):
     return (insitu_correlation, insitu_rmse, insitu_mean_diff, insitu_min_value, insitu_max_value,
             model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias)
 
-def obs_2_model_timeaxis(da_obs, ds_mod):
+def obs_2_model_timeaxis(ds_obs, ds_mod):
     """
-    get an observations timeseries onto the model time axis
-    One could of course use xarray's built-in interp function, which includes time averaging
-    but there is always the risk of not getting the observation axis identical to the model, even if you get the same number of time-steps out
-    This (admittedly slow) function at least ensures the times line-up perfectly    
+    get observations (or other) time onto the model time axis
+    One could of course use xarray's built-in interp function, which includes time averaging over predefined windows
+    but there is always the risk of not getting the observation time axis identical to the model, even if you get the same number of time-steps out
+    This function at least ensures the times line-up perfectly    
     
     inputs:
-        da_obs: dataarray of the observations for some varibale
-        ds_mod: dataset/dataarray of the model (it's only used to get the time axis)
+        ds_obs: dataset/dataarray of the observations
+        ds_mod: dataset/dataarray of the model
     
-    returns an xarray dataarray of the observations on the model time axis, including time averaging over each time-step                                            
+    returns an xarray dataset/dataarray of the observations on the model time axis, including time averaging over each model time-step                                            
     """
     
     model_time = ds_mod['time']
     
-    # Interpolate onto the time axis of ds_model
-    data_obs_model_timeaxis = da_obs.interp(time=model_time)
+    # Compute bin edges of the model times
+    midpoints = model_time + (model_time.diff(dim="time") / 2)  # Compute midpoints
+    bin_edges = xr.concat(
+        [midpoints[0] - (model_time[1] - model_time[0]), midpoints, midpoints[-1] + (model_time[-1] - model_time[-2])],
+        dim="time"
+    )
     
-    # Ensure consistent dimension order (time, depth if depth exists)
-    if "depth" in data_obs_model_timeaxis.dims:
-        data_obs_model_timeaxis = data_obs_model_timeaxis.transpose("time", "depth")
+    # Use groupby_bins to average ds_obs values over each bin
+    ds_obs_model_timeaxis = ds_obs.groupby_bins("time", bin_edges, labels=model_time.values).mean(skipna=True)
     
-    # Calculate the half time step window to shift insitu data from 00:00 to 12:00 like the CROCO model
-    window_half_tstep = (model_time[1] - model_time[0]) / 2
+    ds_obs_model_timeaxis = ds_obs_model_timeaxis.rename({"time_bins": "time"})
     
-    # Prepare the output array with the same shape as data_obs_model_timeaxis
-    obs_out = np.full_like(data_obs_model_timeaxis, np.nan)
-    
-    # Loop over model_time and calculate time-averaged data for each time step
-    for t_indx, t in enumerate(model_time):
-        
-        start_time = t - window_half_tstep
-        end_time = t + window_half_tstep
-        
-        # Select the time slice within the specified window
-        data_avg = data_obs_model_timeaxis.sel(time=slice(start_time, end_time))
-        
-        # Compute the mean along the time dimension
-        mean_values = data_avg.mean(dim="time", skipna=True)
-    
-        # Assign the mean values correctly based on the dimensions
-        if "depth" in mean_values.dims:
-            obs_out[t_indx, :] = mean_values  # For multilayered data
-        else:
-            obs_out[t_indx] = mean_values  # For single-layered data
-    
-    # Convert the output back to an xarray DataArray and drop single-dimensional axes
-    obs_out_xr = xr.DataArray(obs_out, dims=data_obs_model_timeaxis.dims, coords=data_obs_model_timeaxis.coords)
-    obs_out_xr = obs_out_xr.squeeze(drop=True)
-    
-    return obs_out_xr
-
-
-
-# %%
+    return ds_obs_model_timeaxis
 
 def extract_lat_lon(ds):
     """
@@ -160,8 +131,6 @@ def extract_lat_lon(ds):
     else:
         print("Longitude and latitude successfully retrieved.")
     return long_obs, lat_obs
-
-# %%
 
 def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, j_shifted=0, ref_date=None, lon_extract=None):
     """
