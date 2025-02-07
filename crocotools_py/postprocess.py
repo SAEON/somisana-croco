@@ -318,6 +318,11 @@ def hlev_xarray(var, z, depth):
     OUTPUT:
         vnew    Horizontal slice(s) (xarray DataArray: time, depth, eta_rho, xi_rho. if depth is a list, otherwise time, eta_rho, xi_rho).
     """
+    # this function can be slow if the variable was read using dask (i.e. using open_mfdataset)
+    # so we load the data into memory first
+    var=var.compute()
+    z=z.compute()
+    
     # Convert depth to xarray DataArray if it's a scalar or a list
     if np.isscalar(depth):
         depth = xr.DataArray([depth], dims="depth")
