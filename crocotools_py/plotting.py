@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplc
@@ -75,38 +76,18 @@ def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h'):
     
     return extents
 
-def plot_var(ax,fname,var,
-             grdname=None,
-             tstep=0, # index or a datetime (in which case specify ref_date)
-             level=0,
-             ref_date = None, 
+def plot_var(ax,var_data,lon,lat,
              ticks = [], # the ticks to plot
-             cmap = 'Spectral_r',
-             extents = None
+             cmap = 'Spectral_r'
              ):
     '''
     Add a variable to a 2D plot
-    
-    see post.get_var() for how inputs must be defined
     '''
-    
-    # get the data
-    if var=='spd':
-        u, v = post.get_uv(fname,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
-        var_data = np.sqrt(u**2+v**2)
-    else:
-        var_data = post.get_var(fname,var,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
-    lon = post.get_grd_var(grdname,'lon_rho').values
-    lat = post.get_grd_var(grdname,'lat_rho').values
-    var_data=var_data.values   
-    
-    # set up the plot
-    extents = setup_plot(ax,grdname,extents = extents)
     
     # set up the cmap to handle non-uniform input ticks
     if len(ticks)==0:
         ticks = np.linspace(min(np.ravel(var_data)),max(np.ravel(var_data)),num=20)
-    n_levels = len(ticks)
+    # n_levels = len(ticks)
     #vmin = min(ticks) 
     #vmax = max(ticks)
     levs = np.array(ticks)
@@ -151,7 +132,7 @@ def plot_cbar(ax,var_plt,
     
     return cbar_plt
 
-def plot_time(ax,fname,
+def plot_time(ax,time,
              loc=[0.5,1.01],
              tstep=0,
              ref_date = datetime(2000, 1, 1, 0, 0, 0),
@@ -161,18 +142,13 @@ def plot_time(ax,fname,
     Add time text to a 2D plot
     '''
     
-    time = post.get_time(fname, ref_date=ref_date,time_lims=tstep)[0]
-    time_plt = ax.text(loc[0], loc[1],  datetime.strftime(time, time_fmt),
+    time_plt = ax.text(loc[0], loc[1],  pd.Timestamp(time).strftime(time_fmt),#datetime.strftime(time, time_fmt),
         ha='center', fontsize=time_font,
         transform=ax.transAxes)
     
     return time_plt
 
-def plot_uv(ax,fname,
-              grdname=None,
-              tstep=0,
-              level=0,
-              ref_date=None,
+def plot_uv(ax,u,v,lon,lat,
               extents = None,
               skip_uv = 5,
               scale = 10,
@@ -182,16 +158,6 @@ def plot_uv(ax,fname,
     '''
     Add vectors to a 2D plot
     '''
-    
-    # get the data
-    u, v = post.get_uv(fname,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
-    lon = post.get_grd_var(grdname,'lon_rho').values
-    lat = post.get_grd_var(grdname,'lat_rho').values
-    u=u.values
-    v=v.values
-     
-    # set up the plot
-    extents = setup_plot(ax, grdname, extents = extents)
         
     # plot the data
     width=0.0035  # Explicitly set the vector width for consistency between data and reference vector
@@ -245,7 +211,7 @@ def get_uv_params(spd,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio):
         [Ny,Nx]=np.shape(spd)
         skip_uv=int(Ny/num_vectors*aspect_ratio)
     
-    max_spd=np.nanmax(spd.values.ravel())
+    max_spd=np.nanmax(spd.ravel())
     # Define thresholds for scaling and reference vector size
     # based on the maximum speed being plotted
     if max_spd < 0.25:
@@ -276,9 +242,9 @@ def plot(fname,
         ax=None, # allowing for adding to an existing axis
         var='temp', # croco variable to plot
         grdname=None, # option croco grid file (if grid variables arem't in the croco output file)
-        tstep=0, # the step to plot, or the first step to animate. Can be an integer or a datetime object
-        level=None, # this gets set to surface level if not provided
-        ticks = np.linspace(12,22,num=11), # the ticks to plot
+        time=None, # see post.get_var() for 'time' format. If a single value, then a plot is made, if two values, then an animation between those times is made
+        level=None, # see post.get_var() for 'level' format. Has to be a single value for this function to do a plot
+        ticks = np.linspace(12,22,num=11), # the ticks to plot (should default to None and determine automatically)
         cmap = 'Spectral_r',
         extents = None, # [lon0,lon1,lat0,lat1] whole domain plotted if None
         ref_date = None, # datetime, from CROCO model setup
@@ -293,10 +259,7 @@ def plot(fname,
         skip_time = 1, # every nth time-step will be animated (if provided)
         isobaths = None, # optional list of isobaths to overlay over plot
         jpg_out=None, # full path to jpg output
-        write_jpg=False, # write a jpg?
         gif_out=None, # full path to gif output
-        write_gif=False, # write a gif?
-        tstep_end=None, # The last timestep to animate. Only used if write_gif = True.
         ):
     '''
     this is a convenience function for doing a quick 2D plot with minimal coding.
@@ -307,10 +270,32 @@ def plot(fname,
     if grdname is None:
         grdname = fname
     
+    # if no level provided then default to the surface level for the plot/animation
+    if level is None:
+        print('no vertical level provided - defaulting to surface layer')
+        if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+            ds = fname.copy()
+        else:
+            ds = post.get_ds(fname,var)
+        level = len(ds.s_rho) - 1
+        ds.close()
+        
+    # get the data we want to 
+    print('extracting the data to plot')
+    ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,ref_date=ref_date)
+    lon = ds['lon_rho'].values
+    lat = ds['lat_rho'].values
+    da_var=ds[var]
+    time_var=np.atleast_1d(ds.time.values)
+    
+    if len(time_var)==1:
+        data_plt=da_var.values
+    else:
+        # this will be an animation, starting with the first time-step
+        data_plt=da_var.isel(time=0).values
+        
     # compute the extents from the grid if not explicitly defined
     if extents is None:
-        lon = post.get_grd_var(grdname,'lon_rho')
-        lat = post.get_grd_var(grdname,'lat_rho')
         lon_min = min(np.ravel(lon))
         lon_max = max(np.ravel(lon))
         lat_min = min(np.ravel(lat))
@@ -348,34 +333,40 @@ def plot(fname,
         width=0.7 if add_cbar else 0.8
         ax = fig.add_axes([0.1, 0.1, width, 0.8], projection=proj)
     
-    # if no level provided then default to the surface level
-    if level is None:
-        print('no vertical level provided - defaulting to surface layer')
-        if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-            ds = fname.copy()
-        else:
-            ds = post.get_ds(fname,var)
-        level = len(ds.s_rho) - 1
-        ds.close()
+    # set up the plot
+    extents = setup_plot(ax, grdname, extents = extents)
     
-    var_plt = plot_var(ax,fname,var,
-             grdname=grdname,
-             tstep=tstep,
-             level=level,
-             ref_date=ref_date, 
+    # plot the data
+    var_plt = plot_var(ax,data_plt,lon,lat, 
              ticks=ticks,
-             extents=extents)
+             cmap=cmap
+             )
     
-    time_plt = plot_time(ax,fname,tstep=tstep,ref_date=ref_date)
+    # add a time label
+    time_plt = plot_time(ax,time_var[0])
     
     if add_cbar:
         plot_cbar(ax,var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc,aspect_ratio=aspect_ratio)
     
     if add_vectors:
         
-        # dynamically update the vector scaling paramseters based on the actual veclocity data for this time-step
-        u, v = post.get_uv(fname,grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
-        spd = np.sqrt(u**2+v**2)
+        print('getting the u/v vectors')
+        
+        # dynamically update the vector scaling paramseters based on the actual veclocity data
+        ds_uv = post.get_uv(fname,grdname=grdname,time=time,level=level,ref_date=ref_date)
+        
+        da_u=ds_uv.u
+        da_v=ds_uv.v
+        
+        if len(time_var)==1:
+            u_plt=da_u.values
+            v_plt=da_v.values
+        else:
+            # this will be an animation, starting with the first time-step
+            u_plt=da_u.isel(time=0).values
+            v_plt=da_v.isel(time=0).values
+        
+        spd_plt = np.sqrt(u_plt**2+v_plt**2)
         
         # subset spd based on the plot extents before running get_uv_params()
         # I'm commenting this as it doesn't work for very curvilinear grids
@@ -383,13 +374,9 @@ def plot(fname,
         # eta_rho,_,xi_rho,_=post.domain_to_slice(slice(None),slice(None),slice(None),slice(None),extents,grdname,'temp')
         # spd=spd[eta_rho,xi_rho]
         
-        scale_uv, skip_uv, ref_vector = get_uv_params(spd,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio)
+        scale_uv, skip_uv, ref_vector = get_uv_params(spd_plt,scale_uv,ref_vector,skip_uv,num_vectors,aspect_ratio)
         
-        uv_plt = plot_uv(ax,fname,
-                      grdname=grdname,
-                      tstep=tstep,
-                      level=level,
-                      ref_date=ref_date,
+        uv_plt = plot_uv(ax,u_plt,v_plt,lon,lat,
                       scale = scale_uv,
                       skip_uv = skip_uv,
                       ref_vector = ref_vector,
@@ -400,39 +387,36 @@ def plot(fname,
         plot_isobaths(ax,grdname,isobaths)
     
     # write a jpg if specified
-    if write_jpg:
-        if jpg_out is None:
-            jpg_out = fname.split('.nc')[0]+'_'+var+'_'+datetime.strftime(post.get_time(fname, ref_date)[tstep], '%Y%m%d_%H')+'.jpg'
-        plt.savefig(jpg_out,dpi=500,bbox_inches = 'tight')
+    if len(time_var)==1: # single time-step specified, so a plot, not an animation
+        if jpg_out is not None:
+            print('writing '+jpg_out)
+            plt.savefig(jpg_out,dpi=500,bbox_inches = 'tight')
     
-    # and/or write a gif if specified
-    if write_gif: # do the animation
-        # this only works if you specify tstep as an integer, not a datetime
+    else: # do the animation
         def plot_tstep(i):
             # get the data for this time-step
-            time_i = post.get_time(fname, ref_date)[i]
-            var_i = post.get_var(fname,var,grdname=grdname,tstep=i,level=level,ref_date=ref_date)
-            var_i = var_i.values
-            u_i, v_i = post.get_uv(fname,grdname=grdname,tstep=i,level=level,ref_date=ref_date)
-            u_i = u_i.values
-            v_i = v_i.values
+            var_i=da_var.isel(time=i).values
             
             # update the figure for this time-step
-            time_plt.set_text(datetime.strftime(time_i, '%Y-%m-%d %H:%M'))    
+            time_plt.set_text(pd.Timestamp(time_var[i]).strftime('%Y-%m-%d %H:%M'))
             var_plt.set_array(var_i.ravel())
-            uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv],
+            
+            if add_vectors:
+                u_i=da_u.isel(time=i).values
+                v_i=da_v.isel(time=i).values
+                uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv],
                                         v_i[::skip_uv, ::skip_uv])
         
         # animate
-        if tstep_end is None: # if not defined then animate to end of file
-            tstep_end=len(post.get_time(fname))
+        print('making animation')
+        tstep_end=len(time_var)
         
         anim = FuncAnimation(
-            fig, plot_tstep, frames=range(tstep,tstep_end,skip_time)) 
+            fig, plot_tstep, frames=range(0,tstep_end,skip_time)) 
         
-        if gif_out is None:
-            gif_out = fname.split('.nc')[0]+'_'+var+'.gif'
-        anim.save(gif_out, writer='imagemagick')
+        if gif_out is not None:
+            print('writing '+gif_out)
+            anim.save(gif_out, writer='imagemagick')
 
 def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk file
         croco_blk_file, # the croco blk file
@@ -565,12 +549,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         
 if __name__ == "__main__":
     
-    fname='../output/avg_Y2011M2.nc'
-    plot(fname,
-          write_gif=True,
-          level = -100,
-          ticks = np.linspace(10,24,num=15),
-          tstep_end=20,
-          cbar_loc = [0.85, 0.2, 0.02, 0.6])
+    fname='../output/avg_Y2010M12.nc'
+    plot(fname)
     
         
