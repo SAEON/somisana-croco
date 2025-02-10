@@ -146,6 +146,20 @@ jobs:
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+      - name: animate bottom temperature and currents
+        continue-on-error: true
+        run: |
+          docker run \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg.nc \
+                --level 0 \
+                --gif_out /tmp/postprocess/croco_avg_temp_bot.gif \
+                --skip_time 6 \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif
       - name: animate 100m temperature and currents
         continue-on-error: true
         run: |

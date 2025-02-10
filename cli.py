@@ -190,10 +190,11 @@ def main():
             help='do a plot/animation of a croco output file(s)')
     parser_crocplot.add_argument('--fname', required=True, type=str, help='input native CROCO filename (can handle wildcards to animate over multiple files)')
     parser_crocplot.add_argument('--var', required=False, default='temp', type=str, help='the variable name to plot')
-    parser_crocplot.add_argument('--gif_out', required=True, type=str, help='the output gif filename')
+    parser_crocplot.add_argument('--gif_out', required=False, type=str, help='the output gif filename')
+    parser_crocplot.add_argument('--mp4_out', required=False, type=str, help='the output mp4 filename')
     parser_crocplot.add_argument('--level', required=False, default=None, type=parse_int, help='level to plot. If >=0, then a sigma level is plotted. If <0 then a z level (in m) is plotted. Default behaviour will plot the surface layer')
     parser_crocplot.add_argument('--ticks', required=False, type=parse_list,
-                         default=[12,13,14,15,16,17,18,19,20,21,22], 
+                         default=None, 
                          help='contour ticks to use in plotting the variable')
     parser_crocplot.add_argument('--cbar_label', required=False, default='temperature ($\degree$C)', type=str, help='the label used for the colorbar')
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
@@ -220,7 +221,8 @@ def main():
                       add_vectors = True,
                       skip_time = args.skip_time,
                       isobaths=args.isobaths,
-                      gif_out=args.gif_out
+                      gif_out=args.gif_out,
+                      mp4_out=args.mp4_out
                       )
     parser_crocplot.set_defaults(func=crocplot_handler)
     

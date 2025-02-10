@@ -242,15 +242,15 @@ def plot(fname,
         ax=None, # allowing for adding to an existing axis
         var='temp', # croco variable to plot
         grdname=None, # option croco grid file (if grid variables arem't in the croco output file)
-        time=None, # see post.get_var() for 'time' format. If a single value, then a plot is made, if two values, then an animation between those times is made
+        time=slice(None), # see post.get_var() for 'time' format. If a single value, then a plot is made, if two values, then an animation between those times is made
         level=None, # see post.get_var() for 'level' format. Has to be a single value for this function to do a plot
-        ticks = np.linspace(12,22,num=11), # the ticks to plot (should default to None and determine automatically)
+        ticks = None, #np.linspace(12,22,num=11), (gets set automatically if None)
         cmap = 'Spectral_r',
         extents = None, # [lon0,lon1,lat0,lat1] whole domain plotted if None
         ref_date = None, # datetime, from CROCO model setup
         add_cbar = True, # add a colorbar?
         cbar_loc = None, # [left, bottom, width, height] (gets set automatically if None)
-        cbar_label = 'temperature ($\degree$C)',
+        cbar_label = None, # 'temperature ($\degree$C)', we just use 'var' is None
         add_vectors = True, # add vectors?
         scale_uv = None, # define the vector scaling (gets set automatically if None)
         ref_vector = None, # value of reference vector
@@ -260,6 +260,7 @@ def plot(fname,
         isobaths = None, # optional list of isobaths to overlay over plot
         jpg_out=None, # full path to jpg output
         gif_out=None, # full path to gif output
+        mp4_out=None, # option to rather write an mp4
         ):
     '''
     this is a convenience function for doing a quick 2D plot with minimal coding.
@@ -293,7 +294,22 @@ def plot(fname,
     else:
         # this will be an animation, starting with the first time-step
         data_plt=da_var.isel(time=0).values
-        
+    
+    if ticks is None:
+        # get the range of the data to plot (using 5th and 95th percentiles)
+        vmin=np.nanpercentile(da_var, 1)
+        vmax=np.nanpercentile(da_var, 99)
+        # round these to two significant figures
+        vmin=round(vmin, 2 - int(np.floor(np.log10(abs(vmin)))) - 1)
+        vmax=round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)
+        num_ticks = 10
+        step = (vmax - vmin) / num_ticks
+        step = round(step, 2 - int(np.floor(np.log10(abs(step)))) - 1)
+        # update vmax based on the rounded step
+        vmax = vmin + num_ticks * step
+        # Generate the ticks using the rounded step size
+        ticks = np.arange(vmin, vmax + step/10, step) # Add a small value to ensure new_vmax is included
+    
     # compute the extents from the grid if not explicitly defined
     if extents is None:
         lon_min = min(np.ravel(lon))
@@ -346,6 +362,8 @@ def plot(fname,
     time_plt = plot_time(ax,time_var[0])
     
     if add_cbar:
+        if cbar_label is None:
+            cbar_label = var
         plot_cbar(ax,var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc,aspect_ratio=aspect_ratio)
     
     if add_vectors:
@@ -417,6 +435,9 @@ def plot(fname,
         if gif_out is not None:
             print('writing '+gif_out)
             anim.save(gif_out, writer='imagemagick')
+        if mp4_out is not None:
+            print('writing '+mp4_out)
+            anim.save(mp4_out, writer="ffmpeg")
 
 def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk file
         croco_blk_file, # the croco blk file
