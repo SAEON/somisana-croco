@@ -243,13 +243,16 @@ def main():
     # --------------
     parser_regrid_tier2 = subparsers.add_parser('regrid_tier2', 
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
-    parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
+    parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input native CROCO filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
+    parser_regrid_tier2.add_argument('--ref_date', type=parse_datetime, 
+                        default=datetime(2000,1,1,0,0,0), 
+                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
                          default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],  
                          help='list of depths to extract (in metres, negative down)')
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.fname_out, depths = args.depths)
+        regrid_tier2(args.fname, args.fname_out, args.ref_date, depths = args.depths)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------
