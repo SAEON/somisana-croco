@@ -37,8 +37,6 @@ def regrid_tier1(fname_in, fname_out, ref_date):
     # Ensure the directory for the specified output exists
     os.makedirs(os.path.dirname(fname_out), exist_ok=True)
 
-    # time_steps = post.get_time(fname_in, ref_date)
-
     print("Extracting the model output variables we need")
     
     ds_temp = post.get_var(fname_in, "temp", ref_date=ref_date)

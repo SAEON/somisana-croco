@@ -418,7 +418,7 @@ def hlev(var,z,depth):
 
     return vnew
 
-def get_ds(fname,var_str=''):
+def get_ds(fname,var_str='h'):
     '''
     flexible method to get the xarray dataset for either a
     single or multiple CROCO files 
@@ -524,15 +524,14 @@ def find_nearest_time_indx(dt,dts):
 
     return indx_out.astype(int)
 
-def get_time(fname,ref_date=None,time=slice(None)):
+def get_time(fname,ref_date=None):
     ''' 
         fname = CROCO output file (or file pattern to use when opening with open_mfdataset())
                 fname can also be an xarray dataset for enhanced functionality
         ref_date = reference date for the croco run as a datetime object
-        time = optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
-                    If slice(None), then all time-steps are extracted
+        
     '''
-    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+    if isinstance(fname, xr.Dataset):
         ds = fname.copy()
     else:
         ds = get_ds(fname)
@@ -552,13 +551,7 @@ def get_time(fname,ref_date=None,time=slice(None)):
             date_now = ref_date + timedelta(seconds=np.float64(t))
             time_dt.append(date_now)
     else:
-        time_dt = time.astype('datetime64[s]').astype(datetime)
-    
-    # subset based in time input
-    if not isinstance(time,slice):
-        time = time_to_slice(fname, time, ref_date)
-        
-    time_dt = time_dt[time]
+        time_dt = time_ds.astype('datetime64[s]').astype(datetime)
     
     ds.close()
     return time_dt
@@ -617,19 +610,15 @@ def get_lonlatmask(fname,type='r',
         
     return lon,lat,mask
 
-def time_to_slice(fname, time, ref_date):
+def time_to_slice(time_croco, time):
     '''
-    Take the input to get_var, and return a slice ofbject to be used to
+    Take the input to get_var, and return a slice object to be used to
     subset the dataset using ds.isel()
     see get_var() for how this is used
     '''
-    # check if time input is instance of datetime, 
+    # check if time input is(are) datetime object(s), 
     # in which case convert it/them into the correct time index/indices
     if isinstance(np.atleast_1d(time)[0],datetime):
-        if ref_date is None:
-            print('ref_date is not defined - using default of 2000-01-01')
-            ref_date=datetime(2000,1,1)
-        time_croco = get_time(fname,ref_date) # get_time actually calls time_to_slice (CIRCULAR!), but only inside an if statement which won't be entered with this input. MESSY. Should do better
         time = find_nearest_time_indx(time_croco,time)
         
     # get the time indices for input to ds.isel()
@@ -729,14 +718,15 @@ def get_var(fname,var_str,
         var_str = variable name (string) in the CROCO output file(s)
         grdname = optional name of your croco grid file (only needed if the grid info is not in fname)
         time = time step indices to extract 
-                it can be a single integer (starting at zero) or datetime
-                or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
-                If slice(None), then all time-steps are extracted
+               If slice(None), then all time-steps are extracted
+               time can be a single integer (starting at zero) or a datetime object, in which case the nearest time index is extracted
+               time can betwo integers/datetimes in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+                
         level = vertical level to extract
                 if slice(None), then all sigma levels are extracted, and the depths of the levels are provided as an additional variable
                 if a positve integer or a list of positive integers, then those sigma levels are extracted (zero denotes the bottom layer, going upward to the surface)
                 if a negative number, or a list of negative numers then data are interpolated to those z levels
-                if zero is contained in a list of negative numbers, then it will be treated as the surface
+                (if zero is contained in a list of negative numbers, then it will be treated as the surface)
         eta_rho = index/indices of the eta_rho axis
               If slice(None), then all indices are extracted
         eta_v = index/indices of the eta_v axis
@@ -755,31 +745,30 @@ def get_var(fname,var_str,
         Retruns an xarray dataset object of the requested data
     '''
     
-    # ---------------------------
-    # Get a dataset for the grid
-    # ---------------------------
+    print('extracting the data from croco file(s) - ' + var_str)
+
+    # Get an xarray dataset for the grid
     if grdname is None:
         grdname = fname
-    # using 'lon_rho' as var_str input to get_ds, as a hack to ensure that
-    # get_ds uses open_dataset, not open_mfdataset 
-    # since get_ds only uses var_str for this purpose
-    ds_grd = get_ds(grdname,var_str='lon_rho') 
-        
-    print('extracting the data from croco file(s) - ' + var_str)
+    ds_grd = get_ds(grdname) 
     
-    # Start by preparing indices for slicing in ds.isel() below
-    #
-    # for each of the input dimensions we check the format of the input 
-    # and construct the appropriate slice to extract
-    time = time_to_slice(fname, time, ref_date)
-    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str)
-    level_for_isel,level = level_to_slice(level)
-
-    # Get a subset of the data
+    # Get an xarray dataset of the croco file(s)
     if isinstance(fname, xr.Dataset): # handles the case of using an already extracted dataset as input
         ds = fname.copy()
     else:
         ds = get_ds(fname,var_str)
+    
+    # get the time as a list of datetimes
+    time_dt = get_time(fname, ref_date)
+    ds = ds.assign_coords(time=time_dt)
+    
+    # for each of the input dimensions we check the format of the input 
+    # and construct the appropriate slice to extract
+    time = time_to_slice(time_dt, time)
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str)
+    level_for_isel,level = level_to_slice(level)
+    
+    # subset the dataset
     ds = ds.isel(time=time,
                        s_rho=level_for_isel,
                        s_w=level_for_isel,
@@ -796,10 +785,6 @@ def get_var(fname,var_str,
                        missing_dims='ignore' # handle case where input is a previously extracted dataset
                        )
     
-    # replace the time dimension with a list of datetimes
-    time_dt = get_time(fname, ref_date, time=time)
-    ds = ds.assign_coords(time=time_dt)
-    
     # get dataarrays of the data we want
     da = ds[var_str]
     if len(da.shape)==4:
@@ -809,7 +794,7 @@ def get_var(fname,var_str,
     h = ds_grd['h']
     zeta = ds['zeta']
     
-    # regrid u/v vector components onto the rho grid
+    # regrid u/v vector components onto the rho grid if needed
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
         print('regridding '+var_str+' onto rho grid')
         if var_str in ['u','sustr','bustr','ubar']:
@@ -833,7 +818,7 @@ def get_var(fname,var_str,
                                                  'xi_rho': ds['xi_rho'].values},
                                   dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
             
-        # use the same attributes
+        # add back the original variable attributes
         da_rho.attrs = da.attrs
         # update da to be the data on the rho grid
         da = da_rho.copy()
@@ -845,7 +830,7 @@ def get_var(fname,var_str,
             print('doing vertical interpolations - ' + var_str)
             # given the above checks in the code, here we should be dealing with a 3D variable 
             # and we want a hz slice at a constant depth level
-            z=get_depths(ds) # have to use ds as we need zeta and h for this
+            z=get_depths(ds) # have to use ds, not da, as we need zeta and h for this
             da_out=hlev_xarray(da, z, level)
             # use the same attributes as the original da
             da_out.attrs = da.attrs
@@ -866,7 +851,7 @@ def get_var(fname,var_str,
     da = da_masked.copy()
     
     # include the depths of the sigma levels in the output
-    if 's_rho' in da.coords: # this includes 1 sigma layer - do we care?       
+    if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels')
         depths_da = get_depths(ds).squeeze()
         ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
@@ -1205,8 +1190,6 @@ def get_ts(fname, var_str, lon, lat, ref_date,
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
         print('WARNING: '+var_str+' will be the grid aligned vector component')
         print('rather use get_ts_uv() for extracting a time-series of u/v data which represents east/north components')
-    
-    # time = time_to_slice(fname, time, ref_date)
     
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
