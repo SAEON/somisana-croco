@@ -109,9 +109,9 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier2 \
-                --fname /tmp/postprocess/croco_avg_t1.nc \
+                --fname /tmp/output/croco_avg.nc \
                 --fname_out /tmp/postprocess/croco_avg_t2.nc \
-                --depths 0,-5,-10,-50,-100,-500,-1000,-99999
+                --depths 0,-5,-10,-50,-100,-500,-1000
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
         continue-on-error: true
