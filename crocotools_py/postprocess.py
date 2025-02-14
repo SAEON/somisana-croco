@@ -1,11 +1,8 @@
 import numpy as np
 from datetime import timedelta
 import xarray as xr
-import dask
 from datetime import timedelta, datetime
 from glob import glob
-import sys
-from scipy.interpolate import RegularGridInterpolator
 
 def u2rho(u):
     """
@@ -662,10 +659,10 @@ def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
         j_tr,i_tr = find_nearest_point(grdname, subdomain[1], subdomain[3])
         j_tl,i_tl = find_nearest_point(grdname, subdomain[0], subdomain[3])
         # get extreme indices for slicing (using all to be safe in the case of a curvilinear grid)
-        j_min = min(j_bl,j_br,j_tr,j_tl)
-        j_max = max(j_bl,j_br,j_tr,j_tl)
-        i_min = min(i_bl,i_br,i_tr,i_tl)
-        i_max = max(i_bl,i_br,i_tr,i_tl)
+        j_min = min(j_bl,j_br,j_tr,j_tl)-1
+        j_max = max(j_bl,j_br,j_tr,j_tl)+1
+        i_min = min(i_bl,i_br,i_tr,i_tl)-1
+        i_max = max(i_bl,i_br,i_tr,i_tl)+1
         # create the slice objects
         eta_rho = slice(j_min,j_max+1) # adding one as slice is non-inclusive of the end index
         xi_rho = slice(i_min,i_max+1) # adding one as slice is non-inclusive of the end index
@@ -839,7 +836,7 @@ def get_var(fname,var_str,
         
     # Masking
     print('applying the mask - ' + var_str)
-    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.DataArray):
+    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.Dataset):
             _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
                                     eta_rho=eta_rho,
                                     xi_rho=xi_rho)
@@ -1067,41 +1064,44 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
-def find_nearest_point(fname, Longi, Latit, Bottom=None):
+def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     """
-            Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
+    Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
             
-            Parameters:
-            - fname :filename of the model, or the grid file
-            - Longi :longitude
-            - Latit :latitude
-            - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
-              lat and lon in water that is as deep as reference. If == None then
-              this looks for only the closest horizontal point.
+    Parameters:
+    - fname :filename of the model, or the grid file
+    - Longi :longitude
+    - Latit :latitude
+    - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+      lat and lon in water that is as deep as reference. If == None then
+      this looks for only the closest horizontal point.
 
-            Returns:
-            - j :the nearest eta index
-            - i :the nearest xi index
+    Returns:
+    - j :the nearest eta index
+    - i :the nearest xi index
+    
+    j,i can be used in xarrays built-in xr.isel() function to extract data at this grid point
+    
+    (Note j,i aren't the eta_rho,xi_rho values! 
+     The j,i indices are one less than the eta_rho,xi_rho values
+     because eta_rho,xi_rho are 1 based)
+
+    
     """
     
-    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-        ds = fname.copy()
-    else:
-        # for effeciency we shouldn't use open_mfdataset for this function 
-        # only use the first file
-        if ('*' in fname) or ('?' in fname) or ('[' in fname):
-            fname=glob(fname)[0]
-        ds = get_ds(fname)
+    lon_rho = get_grd_var(grdname, 'lon_rho').values
+    lat_rho = get_grd_var(grdname, 'lat_rho').values
+    h = get_grd_var(grdname, 'h').values
 
     # Calculate the distance between (Longi, Latit) and all grid points
-    distance = ((ds['lon_rho'].values - Longi) ** 2 +
-                (ds['lat_rho'].values - Latit) ** 2) ** 0.5
+    distance = ((lon_rho - Longi) ** 2 +
+                (lat_rho - Latit) ** 2) ** 0.5
     
     if Bottom is None:
-        mask=ds['h'].values/ds['h'].values
+        mask=h/h
 
     else:
-        mask=ds['h'].values
+        mask=h
         mask[mask<Bottom]=10000
         mask[mask<10000]=1
     
@@ -1114,9 +1114,83 @@ def find_nearest_point(fname, Longi, Latit, Bottom=None):
 
     j, i = min_index
 
-    ds.close()
-
     return j, i
+
+def dist_spheric(lat1,lon1,lat2,lon2,R=6367442.76):
+    l=np.abs(lon2-lon1)
+    if ((np.size(lat1)>1) | (np.size(lat2)>1)):
+        l[l>=180]=360-l[l>=180]
+    else:
+        if l>180:
+            l=360-l
+    lat1 = np.radians(lat1)
+    lat2 = np.radians(lat2)
+    l=np.radians(l)
+    dist=R*np.arctan2(np.sqrt((np.sin(l)*np.cos(lat2))**2 +(np.sin(lat2)*np.cos(lat1)
+                     -np.cos(lat2)*np.sin(lat1)*np.cos(l))**2 ),
+                          np.sin(lat2)*np.sin(lat1)+ np.cos(lat2)*np.cos(lat1)*np.cos(l)
+                          )
+    return dist
+
+def find_fractional_eta_xi(grdname,lons,lats):
+    '''
+    extract the fractional eta_rho,xi_rho indices corresponding to 
+    the provided lon,lat coordinates
+    
+    inputs:
+        grdname - croco grid file
+        lons  - input longitudes
+        lats  - input latitudes
+    
+    Unlike find_nearest_point(), here we return the eta_rho, xi_rho values, not the indices
+    This is useful as we can use these as input to xarrays built-in xr.interp() function
+    
+    '''
+    
+    lons, lats = np.atleast_1d(lons), np.atleast_1d(lats)  # Ensure inputs are arrays
+    
+    lon_rho = get_grd_var(grdname, 'lon_rho').values
+    lat_rho = get_grd_var(grdname, 'lat_rho').values
+    eta_rho = get_grd_var(grdname, 'eta_rho').values
+    xi_rho = get_grd_var(grdname, 'xi_rho').values
+    angle = get_grd_var(grdname, 'angle').values
+    dx = 1/get_grd_var(grdname, 'pm').values
+    dy = 1/get_grd_var(grdname, 'pn').values
+    eta_fracs = []
+    xi_fracs = []
+    for lon, lat in zip(lons, lats):
+        # Compute distance to find the nearest grid cell
+        lonlat_diff = np.sqrt((lon_rho - lon) ** 2 + (lat_rho - lat) ** 2)
+        j, i = np.unravel_index(np.argmin(lonlat_diff), lonlat_diff.shape)  # Closest grid point
+        
+        eta_nearest=eta_rho[j]
+        xi_nearest=xi_rho[i]
+        
+        # find the residual lon,lat around this point
+        dlon = lon - lon_rho[j,i]
+        dlat = lat - lat_rho[j,i]
+        
+        # convert dlon,dlat to a distance in m and an angle relative to TN
+        distance = dist_spheric(lat_rho[j,i],lon_rho[j,i],lat,lon)
+        angle_TN = (270 - np.rad2deg(np.arctan2(-dlat, -dlon))) % 360  # Angle in radians measured clockwise from true north, toward which the vector is pointing
+            
+        # change the angle so it is now relative to the rotated model axis (the input angle needs to be added to the TN angle)
+        angle_grid = np.rad2deg(angle[j,i]) + angle_TN # this is now the angle clockwise from the eta_rho axis
+        
+        # use the distance and the angle relative to the grid to compute the grid aligned distance vector components
+        distance_eta = distance * np.cos(np.deg2rad(angle_grid))
+        distance_xi = distance * np.sin(np.deg2rad(angle_grid))
+        
+        # compute the fractional eta, xi offsets, based on the grid size dx, dy
+        deta = distance_eta / dy[j,i]
+        dxi = distance_xi / dx[j,i]
+        
+        # compute the fractional eta and xi to return
+        eta_fracs.append(eta_nearest + deta)
+        xi_fracs.append(xi_nearest + dxi)
+
+    return eta_fracs, xi_fracs
+
 
 def get_ts_multivar(fname, lon, lat, ref_date, 
                 grdname=None,
@@ -1127,14 +1201,14 @@ def get_ts_multivar(fname, lon, lat, ref_date,
                 nc_out=None
                 ):
     """
-           Convenience function to get multiple variables of interest into a single xarray dataset/ nc file.
-           By default zeta, temp, salt, u and v are extracted, but you can add 'rho' variables to the 'vars' input if you like
+    Convenience function to get multiple variables of interest into a single xarray dataset/ nc file.
+    By default zeta, temp, salt, u and v are extracted, but you can add 'rho' variables to the 'vars' input if you like
                    
-            Parameters:
-            - see get_ts() for a description of the inputs - they're the same
+    Parameters:
+    - see get_ts() for a description of the inputs - they're the same
             
-            Returns:
-            - ds, an xarray dataset containing the time-series or profile data
+    Returns:
+    - ds, an xarray dataset containing the time-series or profile data
     """
     
     # Initialize an empty list to store datasets
@@ -1279,15 +1353,131 @@ def get_ts_uv(fname, lon, lat, ref_date,
     
     return ds
 
+def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
+    """Computes points along a great-circle path with approximately equal distances.
 
-'''
-An idea for get_section, which I think will be super fast:
-get_section can do the hz interpolation at every point by first mapping the lon, lat inputs to 
-eta_rho, xi_rho indices (or rather decimal indices)
-then you can simply use xarrays interp. function to extract the section
-We essentially use the regular grid of eta_rho, xi_rho, with lat_rho,lon_rho defined on that grid
-Then the inputs lons/lats get corresponding eta_rho,xi_rho decimal indices
-which get input to xarrays .interp functionality, after we've extracted our data 
-over a subdomain with get_var
+    Args:
+        lon0, lat0: Start point in degrees.
+        lon1, lat1: End point in degrees.
+        dgc: Distance between points in meters.
+        R: Earth radius in meters.
 
-'''
+    Returns:
+        lons, lats, distances: Arrays of longitudes, latitudes, and cumulative distances.
+    """
+    # Convert inputs to radians
+    lat0, lon0, lat1, lon1 = map(np.radians, [lat0, lon0, lat1, lon1])
+
+    # Compute total great-circle distance using the Haversine formula
+    delta_lat = lat1 - lat0
+    delta_lon = lon1 - lon0
+    a = np.sin(delta_lat / 2)**2 + np.cos(lat0) * np.cos(lat1) * np.sin(delta_lon / 2)**2
+    sigma_total = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))  # Central angle
+    dist_total = R * sigma_total  # Convert to meters
+
+    # Determine the number of segments
+    npsec = int(dist_total // dgc) + 1  # Number of points
+
+    # Compute the initial bearing
+    X = np.cos(lat1) * np.sin(delta_lon)
+    Y = np.cos(lat0) * np.sin(lat1) - np.sin(lat0) * np.cos(lat1) * np.cos(delta_lon)
+    initial_bearing = np.arctan2(X, Y)
+
+    # Generate points along the great-circle path
+    lons, lats, distances = [lon0], [lat0], [0]
+    
+    for i in range(1, npsec):
+        sigma = i * dgc / R  # Angular distance along the sphere
+
+        lat_new = np.arcsin(np.sin(lat0) * np.cos(sigma) +
+                            np.cos(lat0) * np.sin(sigma) * np.cos(initial_bearing))
+        lon_new = lon0 + np.arctan2(np.sin(initial_bearing) * np.sin(sigma) * np.cos(lat0),
+                                    np.cos(sigma) - np.sin(lat0) * np.sin(lat_new))
+
+        lats.append(lat_new)
+        lons.append(lon_new)
+        distances.append(i * dgc)  # Keep cumulative distance
+
+    # Convert back to degrees
+    lons, lats = np.degrees(lons), np.degrees(lats)
+
+    return np.array(lons), np.array(lats), np.array(distances)
+
+def get_section(fname,
+                var_str,
+                section_start,
+                section_end,
+                grdname=None,
+                time=slice(None),
+                level=slice(None),
+                ref_date=None,
+                res=None,
+                nc_out=None,
+                ):
+    """
+    Extract a vertical section from a CROCO output file(s) 
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    INPUTS:
+    fname = CROCO output file name (or file pattern to be used with open_mfdataset())
+           fname can also be a previously extracted xarray dataset for enhanced functionality
+    var_str = variable name (string) in the CROCO output file(s)
+    section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
+    section_end = End points of transect (list; eg. section_end = [lon1, lat1])
+    res = Horizontal resolution of model run in meters (eg. res = 300). Default is None in which case 
+         it takes the smallest grid size as the resolution. 
+    ...see get_var() for a description of the other inputs
+           
+    
+    Returns:
+    - ds, an xarray dataset containing the section data for the variable
+    """
+    
+    # if the gridname is not provided, we use the fname for the gridname 
+    if grdname is None:
+        grdname = fname
+    
+    # Define the start and end points of the transect
+    lon0,lat0 = section_start[0],section_start[1]
+    lon1,lat1 = section_end[0],section_end[1]
+    
+    # extract the data for the defined subdomain which covers the section extents
+    subdomain = [lon0,lon1,lat0,lat1]
+    ds = get_var(fname,var_str,
+                 grdname=grdname,
+                 time=time,
+                 level=level,
+                 subdomain=subdomain,
+                 ref_date=ref_date)
+    
+    # if the grid resolution is not provided, we use the smallest grid size as the resolution. 
+    if res is None:
+        dy_min=np.min(1/get_grd_var(grdname, 'pn').values[:])
+        dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
+        res = min(dy_min,dx_min)
+    
+    # Make the transect on which the interpolation will take place    
+    section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
+    
+    # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
+    
+    # Interpolate the variable along the line
+    print('interpolating along the section...')
+    ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
+    #
+    # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
+    # section_lons, section_lats, while theoretically they should be identical
+    # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
+    # The error is however much less than the model grid size, so I am not too bothered by this
+    
+    # we should make section_dist into a dataarray and add to ds here 
+    
+    if nc_out is not None:
+        print('')
+        print(f'File saved to: {nc_out}')
+        print('')
+        ds.to_netcdf(nc_out)
+    
+    return ds
