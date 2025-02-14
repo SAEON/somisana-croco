@@ -105,9 +105,9 @@ def plot_var(ax,var_data,lon,lat,
 
 def plot_cbar(ax,var_plt,
              ticks=[],
-             tick_font = 12,
+             tick_font = 13,
              label='values',
-             label_font=14,
+             label_font=15,
              loc=None, # [left, bottom, width, height]
              aspect_ratio=1,
              orientation='vertical'):
@@ -137,7 +137,7 @@ def plot_time(ax,time,
              tstep=0,
              ref_date = datetime(2000, 1, 1, 0, 0, 0),
              time_fmt = '%Y-%m-%d %H:%M',
-             time_font=12):
+             time_font=15):
     '''
     Add time text to a 2D plot
     '''
@@ -251,9 +251,9 @@ def plot(fname,
         add_cbar = True, # add a colorbar?
         cbar_loc = None, # [left, bottom, width, height] (gets set automatically if None)
         cbar_label = None, # 'temperature ($\degree$C)', we just use 'var' is None
-        add_vectors = True, # add vectors?
-        scale_uv = None, # define the vector scaling (gets set automatically if None)
-        ref_vector = None, # value of reference vector
+        add_vectors = True, # add horizontal vectors?
+        scale_uv = None, # define the horizontal vector scaling (gets set automatically if None)
+        ref_vector = None, # value of reference vector (gets set automatically if None)
         skip_uv = None, # only every nth vector will get plotted (automatically defined in None)
         num_vectors=25, # baseline number of vectors in each direction, given an aspect ratio of 1
         skip_time = 1, # every nth time-step will be animated (if provided)
