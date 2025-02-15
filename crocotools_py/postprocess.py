@@ -1418,15 +1418,13 @@ def get_section(fname,
     Extract a vertical section from a CROCO output file(s) 
     The transect can be in any direction. Multiple files can be loaded in.
 
-    INPUTS:
-    fname = CROCO output file name (or file pattern to be used with open_mfdataset())
-           fname can also be a previously extracted xarray dataset for enhanced functionality
-    var_str = variable name (string) in the CROCO output file(s)
+    Inputs:
+    see get_var() for a description of some of the inputs. In addition to the get_var inputs there is:
     section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
     section_end = End points of transect (list; eg. section_end = [lon1, lat1])
-    res = Horizontal resolution of model run in meters (eg. res = 300). Default is None in which case 
+    res = Horizontal resolution of the section in meters (eg. res = 300). Default is None in which case 
          it takes the smallest grid size as the resolution. 
-    ...see get_var() for a description of the other inputs
+    ...
            
     
     Returns:
@@ -1466,13 +1464,21 @@ def get_section(fname,
     # Interpolate the variable along the line
     print('interpolating along the section...')
     ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
-    #
     # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
     # section_lons, section_lats, while theoretically they should be identical
     # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
+    # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
     # The error is however much less than the model grid size, so I am not too bothered by this
     
-    # we should make section_dist into a dataarray and add to ds here 
+    # add the section distance to the ds
+    ds["distance"] = xr.DataArray(
+        section_dist, dims=("points",),
+        coords={"points": ds.coords["points"]},
+        name="distance_along_section",
+        attrs={
+            "units": "meter",
+            "standard_name": "distance",
+        })
     
     if nc_out is not None:
         print('')
