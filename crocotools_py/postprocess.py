@@ -918,8 +918,8 @@ def get_uv(fname,
               subdomain=subdomain,
               ref_date=ref_date)
     # get the dataarrays from the datasets
-    u_da=u.u
-    v_da=v.v
+    u_da=u[var_u]
+    v_da=v[var_v]
     
     # regridding from the u and v grids to the rho grid is now handled inside 
     # get_var() which allows us to more easily do the vertical interpolation 
@@ -995,7 +995,8 @@ def get_uv(fname,
     
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
-    ds_out = ds_out.assign(u=u_out, v=v_out)
+    # then overwrite var_u and add var_v
+    ds_out = ds_out.assign({var_u: u_out, var_v: v_out})
     
     if nc_out is not None:
         print('writing the netcdf file')
@@ -1217,6 +1218,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
                 time=slice(None),
                 level=slice(None),
                 default_to_bottom=False,
+                var_u='u', # could also be sustr, bustr, ubar
+                var_v='v', # could also be svstr, bvstr, vbar
                 nc_out=None,
                 Bottom=None
                 ):
@@ -1262,16 +1265,14 @@ def get_ts_uv(fname, lon, lat, ref_date,
                 xi_rho=i_rho,
                 eta_v=j_v,
                 xi_u=i_u,
+                var_u=var_u,
+                var_v=var_v,
                 ref_date=ref_date
                 )
     
     # pull out the middle data point from our 3x3 block of rho grid points
     # this is by definition the grid cell we are interested in
     ds = ds.isel(eta_rho=1,xi_rho=1).squeeze()
-    
-    # clean up the lon_rho, lat_rho coords, otherwise they come out as dask arrays of a single value which is a little messy
-    # this way the output from get_ts_uv looks the same as get_ts
-    ds = ds.assign_coords(lon_rho=ds.coords['lon_rho'].values.item(),lat_rho=ds.coords['lat_rho'].values.item())
     
     if nc_out is not None:
         print('writing the netcdf file')
