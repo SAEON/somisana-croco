@@ -190,10 +190,11 @@ def main():
             help='do a plot/animation of a croco output file(s)')
     parser_crocplot.add_argument('--fname', required=True, type=str, help='input native CROCO filename (can handle wildcards to animate over multiple files)')
     parser_crocplot.add_argument('--var', required=False, default='temp', type=str, help='the variable name to plot')
-    parser_crocplot.add_argument('--gif_out', required=True, type=str, help='the output gif filename')
+    parser_crocplot.add_argument('--gif_out', required=False, type=str, help='the output gif filename')
+    parser_crocplot.add_argument('--mp4_out', required=False, type=str, help='the output mp4 filename')
     parser_crocplot.add_argument('--level', required=False, default=None, type=parse_int, help='level to plot. If >=0, then a sigma level is plotted. If <0 then a z level (in m) is plotted. Default behaviour will plot the surface layer')
     parser_crocplot.add_argument('--ticks', required=False, type=parse_list,
-                         default=[12,13,14,15,16,17,18,19,20,21,22], 
+                         default=None, 
                          help='contour ticks to use in plotting the variable')
     parser_crocplot.add_argument('--cbar_label', required=False, default='temperature ($\degree$C)', type=str, help='the label used for the colorbar')
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
@@ -210,8 +211,7 @@ def main():
         # so this is a work in progress...
         crocplot(args.fname, var=args.var,
                       grdname=None, # could make this configurable in the cli args
-                      tstep=0,
-                      tstep_end=None,
+                      time=slice(None),
                       level=args.level,
                       ticks = args.ticks,
                       cmap = 'Spectral_r',
@@ -222,7 +222,7 @@ def main():
                       skip_time = args.skip_time,
                       isobaths=args.isobaths,
                       gif_out=args.gif_out,
-                      write_gif = True
+                      mp4_out=args.mp4_out
                       )
     parser_crocplot.set_defaults(func=crocplot_handler)
     
@@ -245,13 +245,16 @@ def main():
     # --------------
     parser_regrid_tier2 = subparsers.add_parser('regrid_tier2', 
             help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
-    parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input regridded tier1 filename')
+    parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input native CROCO filename')
     parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
+    parser_regrid_tier2.add_argument('--ref_date', type=parse_datetime, 
+                        default=datetime(2000,1,1,0,0,0), 
+                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
-                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],  
-                         help='list of depths to extract (in metres, negative down). A value of 0 denotes the surface and a value of -99999 denotes the bottom layer)')
+                         default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],  
+                         help='list of depths to extract (in metres, negative down)')
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.fname_out, depths = args.depths)
+        regrid_tier2(args.fname, args.fname_out, args.ref_date, depths = args.depths)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------

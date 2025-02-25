@@ -1,16 +1,14 @@
 import numpy as np
 from datetime import timedelta
 import xarray as xr
-import dask
 from datetime import timedelta, datetime
 from glob import glob
-import sys
 
 def u2rho(u):
     """
     regrid the croco u-velocity from it's native u grid to the rho grid
     u can be 2D, 3D or 4D numpy array or an xarray dataarray
-    returns a numpy array of the data on the rho grid
+    returns a numpy array (or xarray dataarray, depending on the input) of the data on the rho grid
     """
     Num_dims=len(u.shape)
     if Num_dims==4:
@@ -64,7 +62,7 @@ def v2rho(v):
     """
     regrid the croco v-velocity from it's native v grid to the rho grid
     v can be 2D, 3D or 4D numpy array or an xarray dataarray
-    returns a numpy array of the data on the rho grid
+    returns a numpy array (or xarray dataarray, depending on the input) of the data on the rho grid
     """
     Num_dims=len(v.shape)
     if Num_dims==4:
@@ -305,7 +303,65 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
     return z
 
-def hlev(var, z, depth):
+def hlev_xarray(var, z, depth):
+    """
+    This function interpolates a 4D xarray DataArray on horizontal levels of constant depth(s).
+
+    INPUT:
+        var     Variable to process (xarray DataArray: time, s_rho, eta_rho, xi_rho).
+        z       Depths (m) of RHO- or W-points (xarray DataArray: time, s_rho, eta_rho, xi_rho).
+        depth   Slice depth(s) (scalar or list of scalars; meters, negative).
+
+    OUTPUT:
+        vnew    Horizontal slice(s) (xarray DataArray: time, depth, eta_rho, xi_rho. if depth is a list, otherwise time, eta_rho, xi_rho).
+    """
+    # this function can be slow if the variable was read using dask (i.e. using open_mfdataset)
+    # so we load the data into memory first
+    var=var.compute()
+    z=z.compute()
+    
+    # Convert depth to xarray DataArray if it's a scalar or a list
+    if np.isscalar(depth):
+        depth = xr.DataArray([depth], dims="depth")
+    else:
+        depth = xr.DataArray(depth, dims="depth")
+        
+    # Add attributes to the depth coordinate
+    depth.attrs["long_name"] = "water depth from free surface"
+    depth.attrs["units"] = "meters"
+    depth.attrs["positive"] = "up"
+    
+    # Determine the nearest vertical levels where z brackets each depth
+    below_depth = z < depth
+    levs = below_depth.sum(dim="s_rho")  # Find levels below depth for each case
+    levs = levs.clip(1, z.sizes["s_rho"] - 1)  # Ensure valid indices
+
+    # Mask where the depth is outside the range of z
+    # Outside range: depth < z_bottom or depth > z_top
+    z_bottom = z.isel(s_rho=0)
+    mask = xr.where((depth < z_bottom), np.nan, 1)
+
+    # Extract the bracketing levels
+    z_up = z.isel(s_rho=levs)
+    z_down = z.isel(s_rho=levs - 1)
+    v_up = var.isel(s_rho=levs)
+    v_down = var.isel(s_rho=levs - 1)
+
+    # Linear interpolation along the depth dimension
+    vnew = mask * (
+        ((v_up - v_down) * depth + v_down * z_up - v_up * z_down) / (z_up - z_down)
+    )
+
+    # Assign the depth coordinate and reorder dimensions
+    vnew = vnew.assign_coords(depth=depth)
+    vnew = vnew.transpose("time", "depth", "eta_rho", "xi_rho")
+    
+    # Drop the s_rho coordinate if it exists
+    vnew = vnew.drop_vars("s_rho", errors="ignore")
+
+    return vnew.squeeze("depth") if len(depth) == 1 else vnew
+
+def hlev(var,z,depth):
     """
     This function interpolate a 3D variable on a horizontal level of constant depth
     
@@ -359,7 +415,7 @@ def hlev(var, z, depth):
 
     return vnew
 
-def get_ds(fname,var_str=''):
+def get_ds(fname,var_str='h'):
     '''
     flexible method to get the xarray dataset for either a
     single or multiple CROCO files 
@@ -431,7 +487,20 @@ def get_depths(ds):
             h, ssh[x, :, :], theta_s, theta_b, hc, N, type_coordinate, vtransform
         )
     
-    return depth_rho
+    # depth_rho = np.squeeze(depth_rho)
+    
+    # we need to create a new dataarray for the depths of the sigma levels
+    depth_da = xr.DataArray(depth_rho, coords={'time': ds['time'].values,
+                                         's_rho': ds['s_rho'].values,
+                                         'eta_rho': ds['eta_rho'].values, 
+                                         'xi_rho': ds['xi_rho'].values
+                                         },
+                                  dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
+    depth_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
+    depth_da.attrs['units'] = 'meter'
+    depth_da.attrs['positive'] = 'up'
+    
+    return depth_da
 
 def find_nearest_time_indx(dt,dts):
     '''
@@ -452,41 +521,34 @@ def find_nearest_time_indx(dt,dts):
 
     return indx_out.astype(int)
 
-def get_time(fname,ref_date=None,time_lims=slice(None)):
+def get_time(fname,ref_date=None):
     ''' 
         fname = CROCO output file (or file pattern to use when opening with open_mfdataset())
                 fname can also be an xarray dataset for enhanced functionality
         ref_date = reference date for the croco run as a datetime object
-        time_lims = optional list of two datetimes i.e. [dt1,dt2], which define the range of times to extract
-                    If slice(None), then all time-steps are extracted
+        
     '''
-    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+    if isinstance(fname, xr.Dataset):
         ds = fname.copy()
     else:
         ds = get_ds(fname)
 
-    time = ds.time.values
+    time_ds = ds.time.values
     
     # convert time from floats to datetimes, if not already converted in the input ds object
-    if all(isinstance(item, float) for item in np.atleast_1d(time)):
+    if all(isinstance(item, float) for item in np.atleast_1d(time_ds)):
         
         if ref_date is None:
             print('ref_date is not defined - using default of 2000-01-01')
             ref_date=datetime(2000,1,1)
     
-        # convert 'time' (in seconds since ref_date) to a list of datetimes
+        # convert 'time_ds' (in seconds since ref_date) to a list of datetimes
         time_dt = []
-        for t in time:
+        for t in time_ds:
             date_now = ref_date + timedelta(seconds=np.float64(t))
             time_dt.append(date_now)
     else:
-        time_dt = time.astype('datetime64[s]').astype(datetime)
-    
-    # subset based in time_lims input
-    if not isinstance(time_lims,slice):
-        time_lims = tstep_to_slice(fname, time_lims, ref_date)
-        
-    time_dt = time_dt[time_lims]
+        time_dt = time_ds.astype('datetime64[s]').astype(datetime)
     
     ds.close()
     return time_dt
@@ -545,38 +607,34 @@ def get_lonlatmask(fname,type='r',
         
     return lon,lat,mask
 
-def tstep_to_slice(fname, tstep, ref_date):
+def time_to_slice(time_croco, time):
     '''
-    Take the input to get_var, and return a slice ofbject to be used to
+    Take the input to get_var, and return a slice object to be used to
     subset the dataset using ds.isel()
     see get_var() for how this is used
     '''
-    # check if tstep input is instance of datetime, 
+    # check if time input is(are) datetime object(s), 
     # in which case convert it/them into the correct time index/indices
-    if isinstance(np.atleast_1d(tstep)[0],datetime):
-        if ref_date is None:
-            print('ref_date is not defined - using default of 2000-01-01')
-            ref_date=datetime(2000,1,1)
-        time_croco = get_time(fname,ref_date) # get_time actually calls tstep_to_slice (CIRCULAR!), but only inside an if statement which won't be entered with this input. MESSY. Should do better
-        tstep = find_nearest_time_indx(time_croco,tstep)
+    if isinstance(np.atleast_1d(time)[0],datetime):
+        time = find_nearest_time_indx(time_croco,time)
         
     # get the time indices for input to ds.isel()
-    if not isinstance(tstep,slice):
-        if isinstance(tstep,int):
-            # make sure tstep is a slice, even if it's a single integer
+    if not isinstance(time,slice):
+        if isinstance(time,int):
+            # make sure time is a slice, even if it's a single integer
             # this is a hack to make sure we keep the time dimension 
             # after the ds.isel() step below, even though it's a single index
             # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
-            tstep = slice(tstep,tstep+1) 
-        elif len(tstep)==1:
-            # so tstep is a list with length 1
-            tstep = slice(tstep[0],tstep[0]+1) # this will be a slice with a singe number
+            time = slice(time,time+1) 
+        elif len(time)==1:
+            # so time is a list with length 1
+            time = slice(time[0],time[0]+1) # this will be a slice with a singe number
     
-        elif len(tstep)==2:
+        elif len(time)==2:
             # convert the start and end limits into a slice
-            tstep = slice(tstep[0],tstep[1]+1) # +1 to make indices inclusive 
+            time = slice(time[0],time[1]+1) # +1 to make indices inclusive 
     
-    return tstep
+    return time
 
 def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
     '''
@@ -584,10 +642,15 @@ def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
     subset the dataset using ds.isel()
     '''
     if subdomain is None:
-        eta_rho = eta_or_xi_to_slice(eta_rho,var_str)
-        xi_rho = eta_or_xi_to_slice(xi_rho,var_str)
-        eta_v = eta_or_xi_to_slice(eta_v,var_str)
-        xi_u = eta_or_xi_to_slice(xi_u,var_str)
+        # as per time, make sure we keep the eta_rho/xi dimensions after the ds.isel() step, even if we specify a single value
+        # this greatly simplifies further functions for depth interpolation 
+        # as we know the number of dimensions, even if some of them are single length
+        # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
+        eta_rho = [eta_rho] if not isinstance(eta_rho, slice) else eta_rho
+        xi_rho = [xi_rho] if not isinstance(xi_rho, slice) else xi_rho
+        eta_v = [eta_v] if not isinstance(eta_v, slice) else eta_v
+        xi_u = [xi_u] if not isinstance(xi_u, slice) else xi_u
+
     else:
         # using subdomain input to do the spatial subset - [lon0,lon1,lat0,lat1]
         # get the indices corresponding to the four corners of the requested subdomain
@@ -596,10 +659,10 @@ def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
         j_tr,i_tr = find_nearest_point(grdname, subdomain[1], subdomain[3])
         j_tl,i_tl = find_nearest_point(grdname, subdomain[0], subdomain[3])
         # get extreme indices for slicing (using all to be safe in the case of a curvilinear grid)
-        j_min = min(j_bl,j_br,j_tr,j_tl)
-        j_max = max(j_bl,j_br,j_tr,j_tl)
-        i_min = min(i_bl,i_br,i_tr,i_tl)
-        i_max = max(i_bl,i_br,i_tr,i_tl)
+        j_min = min(j_bl,j_br,j_tr,j_tl)-1
+        j_max = max(j_bl,j_br,j_tr,j_tl)+1
+        i_min = min(i_bl,i_br,i_tr,i_tl)-1
+        i_max = max(i_bl,i_br,i_tr,i_tl)+1
         # create the slice objects
         eta_rho = slice(j_min,j_max+1) # adding one as slice is non-inclusive of the end index
         xi_rho = slice(i_min,i_max+1) # adding one as slice is non-inclusive of the end index
@@ -607,21 +670,6 @@ def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
         xi_u = slice(i_min,i_max) # not adding one to keep the correct u-grid indices
         
     return eta_rho,eta_v,xi_rho,xi_u # all as slice objects
-
-def eta_or_xi_to_slice(eta_or_xi,var_str):
-    '''
-    simple function used in domain_to_slice()
-    '''
-    # as per time, make sure we keep the eta_rho/xi dimensions after the ds.isel() step, even if we specify a single value
-    # this greatly simplifies further functions for depth interpolation 
-    # as we know the number of dimensions, even if some of them are single length
-    # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
-    if not isinstance(eta_or_xi,slice):
-        eta_or_xi = [eta_or_xi]
-        if var_str=='u' or var_str=='v':
-            print('rather use get_ts_uv() for extracting a time-series of u/v data')
-            sys.exit()
-    return eta_or_xi
 
 def level_to_slice(level):
     '''
@@ -633,43 +681,49 @@ def level_to_slice(level):
     # as we have the option of a constant z level which needs interpolation...
     # so we start by getting a variable 'level_for_isel' which is as it sounds
     if not isinstance(level,slice):
-        # so level is a single number
-        if level >= 0: 
-            # so we're extracting a single sigma layer
-            level_for_isel = slice(level, level+1) # this gets a single level 
+        # so level is a single number or a list of numbers
+        level=np.atleast_1d(level).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
+        if np.mean(level) >= 0: 
+            # so we're extracting a single sigma layer or a list of sigma layers
+            level_for_isel = slice(int(level[0]), int(level[-1]+1))
+            level = level_for_isel
         else:
-            # sp we'll need to do vertical interpolations later 
+            # so we're extracting one or more z levels
+            # so we'll need to do vertical interpolations later 
             # for this we'll need to initially extract all the sigma levels
             level_for_isel = slice(None)
     else:
         level_for_isel = level # a slice object by definition of the logic
     
-    return level_for_isel
+    return level_for_isel, level
 
 def get_var(fname,var_str,
             grdname=None,
-            tstep=slice(None),
+            time=slice(None),
             level=slice(None),
             eta_rho=slice(None),
             eta_v=slice(None),
             xi_rho=slice(None),
             xi_u=slice(None),
             subdomain=None,
-            ref_date=None):
+            ref_date=None,
+            nc_out=None):
     '''
         extract a variable from a CROCO file
         fname = CROCO output file name (or file pattern to be used with open_mfdataset())
                 fname can also be a previously extracted xarray dataset for enhanced functionality
         var_str = variable name (string) in the CROCO output file(s)
-        grdname = option name of your croco grid file (only needed if the grid info is not in fname)
-        tstep = time step indices to extract 
-                it can be a single integer (starting at zero) or datetime
-                or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
-                If slice(None), then all time-steps are extracted
+        grdname = optional name of your croco grid file (only needed if the grid info is not in fname)
+        time = time step indices to extract 
+               If slice(None), then all time-steps are extracted
+               time can be a single integer (starting at zero) or a datetime object, in which case the nearest time index is extracted
+               time can betwo integers/datetimes in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+                
         level = vertical level to extract
-                If >= 0 then a sigma level is extracted 
-                If <0 then a z level in meters is extracted
-                If slice(None), then all sigma levels are extracted
+                if slice(None), then all sigma levels are extracted, and the depths of the levels are provided as an additional variable
+                if a positve integer or a list of positive integers, then those sigma levels are extracted (zero denotes the bottom layer, going upward to the surface)
+                if a negative number, or a list of negative numers then data are interpolated to those z levels
+                (if zero is contained in a list of negative numbers, then it will be treated as the surface)
         eta_rho = index/indices of the eta_rho axis
               If slice(None), then all indices are extracted
         eta_v = index/indices of the eta_v axis
@@ -683,158 +737,139 @@ def get_var(fname,var_str,
         subdomain = extents used to do a spatial subset, as a list in format [lon0,lon1,lat0,lat1]
               If None, then no subsetting will get done
         ref_date = reference datetime used in croco runs
+        nc_out = option to write a netcdf file from the output dataset
         
-        Retruns an xarray dataarray object of the requested data
+        Retruns an xarray dataset object of the requested data
     '''
     
-    # ---------------------------
-    # Get a dataset for the grid
-    # ---------------------------
+    print('extracting the data from croco file(s) - ' + var_str)
+
+    # Get an xarray dataset for the grid
     if grdname is None:
         grdname = fname
-    # using 'lon_rho' as var_str input to get_ds, as a hack to ensure that
-    # get_ds uses open_dataset, not open_mfdataset 
-    # since get_ds only uses var_str for this purpose
-    ds_grd = get_ds(grdname,var_str='lon_rho') 
-        
-    print('extracting the data from croco file(s) - ' + var_str)
-    # ----------------------------------------------
-    # Prepare indices for slicing in ds.isel() below
-    # ----------------------------------------------
-    #
-    # for each of the input dimensions we check the format of the input 
-    # and construct the appropriate slice to extract using ds.isel() below
-    tstep = tstep_to_slice(fname, tstep, ref_date)
-    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str)
-    level_for_isel = level_to_slice(level)
-
-    # -------------------------
-    # Get a subset of the data
-    # -------------------------
-    #
-    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
+    ds_grd = get_ds(grdname) 
+    
+    # Get an xarray dataset of the croco file(s)
+    if isinstance(fname, xr.Dataset): # handles the case of using an already extracted dataset as input
         ds = fname.copy()
     else:
         ds = get_ds(fname,var_str)
-    ds = ds.isel(time=tstep,
+    
+    # get the time as a list of datetimes
+    time_dt = get_time(fname, ref_date)
+    ds = ds.assign_coords(time=time_dt)
+    
+    # for each of the input dimensions we check the format of the input 
+    # and construct the appropriate slice to extract
+    time = time_to_slice(time_dt, time)
+    eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str)
+    level_for_isel,level = level_to_slice(level)
+    
+    # subset the dataset
+    ds = ds.isel(time=time,
                        s_rho=level_for_isel,
                        s_w=level_for_isel,
                        eta_rho=eta_rho,
                        xi_rho=xi_rho,
                        xi_u=xi_u,
                        eta_v=eta_v,
-                       missing_dims='ignore' # handle case where input is a previously extracted dataset/dataarray
+                       missing_dims='ignore' # handle case where input is a previously extracted dataset
                        )
     ds_grd = ds_grd.isel(eta_rho=eta_rho,
                        xi_rho=xi_rho,
                        xi_u=xi_u,
                        eta_v=eta_v,
-                       missing_dims='ignore' # handle case where input is a previously extracted dataset/dataarray
+                       missing_dims='ignore' # handle case where input is a previously extracted dataset
                        )
-    if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
-        # extract data for the requested variable
-        # da is a dataarray object
-        # all dimensions not related to var_str are dropped in da
-        da = ds[var_str]
+    
+    # get dataarrays of the data we want
+    da = ds[var_str]
+    if len(da.shape)==4:
+        var_is_2d=False
     else:
-        da = ds.copy()
-    # da = da.values # avoiding this at all costs as it's slow!!!
+        var_is_2d=True
+    h = ds_grd['h']
+    zeta = ds['zeta']
     
-    # replace the time dimension with a list of datetimes
-    if 'time' in da.dims: # handles static variables like 'h', 'angle' etc
-        time_dt = get_time(fname, ref_date, time_lims=tstep)
-        da = da.assign_coords(time=time_dt)
-    
-    # regrid u/v data onto the rho grid
+    # regrid u/v vector components onto the rho grid if needed
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
-        if not isinstance(fname, xr.DataArray): # handle the case where input is a previously extracted dataarray (this might be the case if you want to extract a subset after doing a full extraction)
-            if var_str in ['u','sustr','bustr','ubar']:
-                data_rho=u2rho(da)   
-            if var_str in ['v','svstr','bvstr','vbar']:
-                data_rho=v2rho(da) 
-        else:
-            data_rho=da.copy() 
+        print('regridding '+var_str+' onto rho grid')
+        if var_str in ['u','sustr','bustr','ubar']:
+            data_rho=u2rho(da)   
+        if var_str in ['v','svstr','bvstr','vbar']:
+            data_rho=v2rho(da) 
+    
         # Create a new xarray DataArray with correct dimensions
         # now that u/v data is on the rho grid
-        if len(data_rho.shape)==4:
-            da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
+        if var_is_2d:
+            da_rho = xr.DataArray(data_rho, 
+                                  coords={'time': ds['time'].values,
+                                                 'eta_rho': ds['eta_rho'].values, 
+                                                 'xi_rho': ds['xi_rho'].values},
+                                  dims=['time', 'eta_rho', 'xi_rho'])
+        else:
+            da_rho = xr.DataArray(data_rho, 
+                                  coords={'time': ds['time'].values, 
                                                  's_rho': ds['s_rho'].values, 
-                                                 'eta_rho': ds_grd['eta_rho'].values, 
-                                                 'xi_rho': ds_grd['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
-                                                 },
-                                          dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
-        else: # the case where a single sigma level is extracted
-            da_rho = xr.DataArray(data_rho, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds_grd['eta_rho'].values, 
-                                                 'xi_rho': ds_grd['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
-                                                 },
-                                          dims=['time', 'eta_rho', 'xi_rho'])
-        # use the same attributes
+                                                 'eta_rho': ds['eta_rho'].values, 
+                                                 'xi_rho': ds['xi_rho'].values},
+                                  dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
+            
+        # add back the original variable attributes
         da_rho.attrs = da.attrs
         # update da to be the data on the rho grid
-        da = da_rho
+        da = da_rho.copy()
     
-    # ------------------------------------
     # Do vertical interpolations if needed
-    # ------------------------------------
-    #
-    if len(da.shape)==4 and not isinstance(level,slice): # the len(da.shape)==4 check is to exclude 2D variables
-        if level < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
-            print('getting numpy array of data for doing vertical interpolations - ' + var_str)
-            # unavoidable here unfortunately...
-            # this step can be a bit slow, but if we don't do this the vertical interpolation becomes snail pace
-            # TODO: we need a more efficient way of doing the vertical interpolation
-            data = da.values
+    if not var_is_2d and not isinstance(level,slice):
+        if np.mean(np.atleast_1d(level)) < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
+            
             print('doing vertical interpolations - ' + var_str)
             # given the above checks in the code, here we should be dealing with a 3D variable 
             # and we want a hz slice at a constant depth level
-            z=get_depths(ds) # have to use ds as we need zeta and h for this
-            # z is on the rho grid, but u and v are already regridded to the rho grid above so no need to catch anything here
-            T,D,M,L=da.shape
-            data_out=np.zeros((T,M,L))
-            for t in np.arange(T):
-                data_out[t,:,:]=hlev(data[t,::], z[t,::], level)
-            # create a new dataarray for the data for this level
-            da_out = xr.DataArray(data_out, coords={'time': da['time'].values, # NB to use da not ds here!
-                                                 'eta_rho': ds_grd['eta_rho'].values, 
-                                                 'xi_rho': ds_grd['xi_rho'].values,
-                                                 'lon_rho': (('eta_rho', 'xi_rho'), ds_grd['lon_rho'].values),
-                                                 'lat_rho': (('eta_rho', 'xi_rho'), ds_grd['lat_rho'].values)
-                                                 },
-                                          dims=['time', 'eta_rho', 'xi_rho'])
-            # use the same attributes
+            z=get_depths(ds) # have to use ds, not da, as we need zeta and h for this
+            da_out=hlev_xarray(da, z, level)
+            # use the same attributes as the original da
             da_out.attrs = da.attrs
             # update da to be the data for the specified level
             da=da_out.copy()
         
-    # --------
     # Masking
-    # --------
     print('applying the mask - ' + var_str)
-    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.DataArray):
-            _,_,mask=get_lonlatmask(grdname,type='r', # u and v are already regridded to the rho grid so can spcify type='r' here
+    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.Dataset):
+            _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
                                     eta_rho=eta_rho,
                                     xi_rho=xi_rho)
     else:
         mask=1
-    # it looks like xarray and numpy are clever enough to use the 2D mask on a 3D or 4D variable
-    # that's useful!
     da_masked=da.squeeze()*mask
     # masking throws away the attributes, so let's keep those
     da_masked.attrs = da.attrs
     da = da_masked.copy()
     
+    # include the depths of the sigma levels in the output
+    if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
+        print('computing depths of sigma levels')
+        depths_da = get_depths(ds).squeeze()
+        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+    else:
+        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+    
+    # remove singleton dimensions
+    ds_out = ds_out.squeeze()
+    
+    if nc_out is not None:
+        print('writing the netcdf file')
+        ds_out.to_netcdf(nc_out)
+    
     ds.close()
     ds_grd.close()
-    return da
+    
+    return ds_out
 
 def get_uv(fname,
            grdname=None,
-           tstep=slice(None),
+           time=slice(None),
            level=slice(None),
            eta_rho=slice(None),
            eta_v=slice(None),
@@ -843,8 +878,8 @@ def get_uv(fname,
            subdomain=None,
            ref_date=None,
            var_u='u', # could also be sustr, bustr, ubar
-           var_v='v' # could also be svstr, bvstr, vbar
-           ):
+           var_v='v', # could also be svstr, bvstr, vbar
+           nc_out=None):
     '''
     extract u and v components from a CROCO output file(s), regrid onto the 
     rho grid and rotate from grid-aligned to east-north components
@@ -861,7 +896,7 @@ def get_uv(fname,
     
     u=get_var(fname,var_u,
               grdname=grdname,
-              tstep=tstep,
+              time=time,
               level=level,
               eta_rho=eta_rho,
               eta_v=eta_v,
@@ -871,7 +906,7 @@ def get_uv(fname,
               ref_date=ref_date)
     v=get_var(fname,var_v,
               grdname=grdname,
-              tstep=tstep,
+              time=time,
               level=level,
               eta_rho=eta_rho,
               eta_v=eta_v,
@@ -879,6 +914,9 @@ def get_uv(fname,
               xi_u=xi_u,
               subdomain=subdomain,
               ref_date=ref_date)
+    # get the dataarrays from the datasets
+    u_da=u[var_u]
+    v_da=v[var_v]
     
     # regridding from the u and v grids to the rho grid is now handled inside 
     # get_var() which allows us to more easily do the vertical interpolation 
@@ -887,7 +925,7 @@ def get_uv(fname,
     # -------------------
     # Rotate the vectors
     # -------------------
-    
+    print('rotating u/v vector components to be east/north components')
     # grid angle
     if grdname is None:
         grdname = fname
@@ -901,8 +939,8 @@ def get_uv(fname,
     #
     # Refer to https://en.wikipedia.org/wiki/Rotation_matrix
     # although 'angle' is 2D, numpy and xarray are clever enough for this to work even if u_rho and v_rho are 3D or 4D
-    u_out = u*cos_a - v*sin_a
-    v_out = v*cos_a + u*sin_a
+    u_out = u_da*cos_a - v_da*sin_a
+    v_out = v_da*cos_a + u_da*sin_a
     
     # add attributes for u_out, v_out - now east,north components
     # Define a dictionary of the attributes for potential variables
@@ -953,14 +991,19 @@ def get_uv(fname,
     v_out.attrs = attributes[var_v]
     
     # create a dataset containing both u and v
-    # preferring not to do this as it makes downstream code a little easier and I'm too lazy to change it
-    # ds = xr.Dataset({'u': u_out, 'v': v_out})
+    ds_out=u # just using u as the basis for the output dataset
+    # then overwrite var_u and add var_v
+    ds_out = ds_out.assign({var_u: u_out, var_v: v_out})
     
-    return u_out, v_out
+    if nc_out is not None:
+        print('writing the netcdf file')
+        ds_out.to_netcdf(nc_out)
+    
+    return ds_out
 
 def get_vort(fname,
              grdname=None,
-             tstep=slice(None),
+             time=slice(None),
              level=slice(None),
              ref_date=None):
     '''
@@ -969,17 +1012,19 @@ def get_vort(fname,
     
     see get_var() for a description of the inputs   
     
-    subsetting in space not perimitted for this. makes no sense for a single
-    point, and doing it on a subset of the domain is a proper edge case.
-    Actually, the subdomain input to get_var does in fact allow for you to compute
+    subsetting in space not perimitted for this. get_var does in fact allow for you to compute
     vorticity on a subset easily... just need to implement here
+    
+    get_var() functionality has been massively updated since this function was last used
+    so it is guarenteed to need some edits to get it to work again
+    
     '''
     
     # start by getting u and v
     # and we'll leave them on their native grids for this calc
     # (i.e. intentionally not regridding to the rho grid)
-    u=get_var(fname,'u',grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
-    v=get_var(fname,'v',grdname=grdname,tstep=tstep,level=level,ref_date=ref_date)
+    u=get_var(fname,'u',grdname=grdname,time=time,level=level,ref_date=ref_date)
+    v=get_var(fname,'v',grdname=grdname,time=time,level=level,ref_date=ref_date)
     if grdname is None:
         grdname = fname
     pm=get_grd_var(grdname, 'pm') # 1/dx on the rho grid
@@ -1020,41 +1065,44 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
-def find_nearest_point(fname, Longi, Latit, Bottom=None):
+def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     """
-            Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
+    Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
             
-            Parameters:
-            - fname :filename of the model, or the grid file
-            - Longi :longitude
-            - Latit :latitude
-            - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
-              lat and lon in water that is as deep as reference. If == None then
-              this looks for only the closest horizontal point.
+    Parameters:
+    - fname :filename of the model, or the grid file
+    - Longi :longitude
+    - Latit :latitude
+    - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+      lat and lon in water that is as deep as reference. If == None then
+      this looks for only the closest horizontal point.
 
-            Returns:
-            - j :the nearest eta index
-            - i :the nearest xi index
+    Returns:
+    - j :the nearest eta index
+    - i :the nearest xi index
+    
+    j,i can be used in xarrays built-in xr.isel() function to extract data at this grid point
+    
+    (Note j,i aren't the eta_rho,xi_rho values! 
+     The j,i indices are one less than the eta_rho,xi_rho values
+     because eta_rho,xi_rho are 1 based)
+
+    
     """
     
-    if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-        ds = fname.copy()
-    else:
-        # for effeciency we shouldn't use open_mfdataset for this function 
-        # only use the first file
-        if ('*' in fname) or ('?' in fname) or ('[' in fname):
-            fname=glob(fname)[0]
-        ds = get_ds(fname)
+    lon_rho = get_grd_var(grdname, 'lon_rho').values
+    lat_rho = get_grd_var(grdname, 'lat_rho').values
+    h = get_grd_var(grdname, 'h').values
 
     # Calculate the distance between (Longi, Latit) and all grid points
-    distance = ((ds['lon_rho'].values - Longi) ** 2 +
-                (ds['lat_rho'].values - Latit) ** 2) ** 0.5
+    distance = ((lon_rho - Longi) ** 2 +
+                (lat_rho - Latit) ** 2) ** 0.5
     
     if Bottom is None:
-        mask=ds['h'].values/ds['h'].values
+        mask=h/h
 
     else:
-        mask=ds['h'].values
+        mask=h
         mask[mask<Bottom]=10000
         mask[mask<10000]=1
     
@@ -1067,28 +1115,101 @@ def find_nearest_point(fname, Longi, Latit, Bottom=None):
 
     j, i = min_index
 
-    ds.close()
-
     return j, i
+
+def dist_spheric(lat1,lon1,lat2,lon2,R=6367442.76):
+    l=np.abs(lon2-lon1)
+    if ((np.size(lat1)>1) | (np.size(lat2)>1)):
+        l[l>=180]=360-l[l>=180]
+    else:
+        if l>180:
+            l=360-l
+    lat1 = np.radians(lat1)
+    lat2 = np.radians(lat2)
+    l=np.radians(l)
+    dist=R*np.arctan2(np.sqrt((np.sin(l)*np.cos(lat2))**2 +(np.sin(lat2)*np.cos(lat1)
+                     -np.cos(lat2)*np.sin(lat1)*np.cos(l))**2 ),
+                          np.sin(lat2)*np.sin(lat1)+ np.cos(lat2)*np.cos(lat1)*np.cos(l)
+                          )
+    return dist
+
+def find_fractional_eta_xi(grdname,lons,lats):
+    '''
+    extract the fractional eta_rho,xi_rho indices corresponding to 
+    the provided lon,lat coordinates
+    
+    inputs:
+        grdname - croco grid file
+        lons  - input longitudes
+        lats  - input latitudes
+    
+    Unlike find_nearest_point(), here we return the eta_rho, xi_rho values, not the indices
+    This is useful as we can use these as input to xarrays built-in xr.interp() function
+    
+    '''
+    
+    lons, lats = np.atleast_1d(lons), np.atleast_1d(lats)  # Ensure inputs are arrays
+    
+    lon_rho = get_grd_var(grdname, 'lon_rho').values
+    lat_rho = get_grd_var(grdname, 'lat_rho').values
+    eta_rho = get_grd_var(grdname, 'eta_rho').values
+    xi_rho = get_grd_var(grdname, 'xi_rho').values
+    angle = get_grd_var(grdname, 'angle').values
+    dx = 1/get_grd_var(grdname, 'pm').values
+    dy = 1/get_grd_var(grdname, 'pn').values
+    eta_fracs = []
+    xi_fracs = []
+    for lon, lat in zip(lons, lats):
+        # Compute distance to find the nearest grid cell
+        lonlat_diff = np.sqrt((lon_rho - lon) ** 2 + (lat_rho - lat) ** 2)
+        j, i = np.unravel_index(np.argmin(lonlat_diff), lonlat_diff.shape)  # Closest grid point
+        
+        eta_nearest=eta_rho[j]
+        xi_nearest=xi_rho[i]
+        
+        # find the residual lon,lat around this point
+        dlon = lon - lon_rho[j,i]
+        dlat = lat - lat_rho[j,i]
+        
+        # convert dlon,dlat to a distance in m and an angle relative to TN
+        distance = dist_spheric(lat_rho[j,i],lon_rho[j,i],lat,lon)
+        angle_TN = (270 - np.rad2deg(np.arctan2(-dlat, -dlon))) % 360  # Angle in radians measured clockwise from true north, toward which the vector is pointing
+            
+        # change the angle so it is now relative to the rotated model axis (the input angle needs to be added to the TN angle)
+        angle_grid = np.rad2deg(angle[j,i]) + angle_TN # this is now the angle clockwise from the eta_rho axis
+        
+        # use the distance and the angle relative to the grid to compute the grid aligned distance vector components
+        distance_eta = distance * np.cos(np.deg2rad(angle_grid))
+        distance_xi = distance * np.sin(np.deg2rad(angle_grid))
+        
+        # compute the fractional eta, xi offsets, based on the grid size dx, dy
+        deta = distance_eta / dy[j,i]
+        dxi = distance_xi / dx[j,i]
+        
+        # compute the fractional eta and xi to return
+        eta_fracs.append(eta_nearest + deta)
+        xi_fracs.append(xi_nearest + dxi)
+
+    return eta_fracs, xi_fracs
+
 
 def get_ts_multivar(fname, lon, lat, ref_date, 
                 grdname=None,
                 vars = ['temp','salt'],
                 i_shift=0, j_shift=0, 
-                time_lims=slice(None),
-                depths=slice(None),
-                write_nc=False,
-                fname_nc='ts.nc'
+                time=slice(None),
+                level=slice(None),
+                nc_out=None
                 ):
     """
-           Convenience function to get multiple variables of interest into a single xarray dataset/ nc file.
-           By default zeta, temp, salt, u and v are extracted, but you can add 'rho' variables to the 'vars' input if you like
+    Convenience function to get multiple variables of interest into a single xarray dataset/ nc file.
+    By default zeta, temp, salt, u and v are extracted, but you can add 'rho' variables to the 'vars' input if you like
                    
-            Parameters:
-            - see get_ts() for a description of the inputs - they're the same
+    Parameters:
+    - see get_ts() for a description of the inputs - they're the same
             
-            Returns:
-            - ds, an xarray dataset containing the time-series or profile data
+    Returns:
+    - ds, an xarray dataset containing the time-series or profile data
     """
     
     # Initialize an empty list to store datasets
@@ -1097,85 +1218,43 @@ def get_ts_multivar(fname, lon, lat, ref_date,
         ds_var = get_ts(fname, var, lon, lat, ref_date, 
                         grdname=grdname,
                         i_shift=i_shift, j_shift=j_shift, 
-                        time_lims=time_lims,
-                        depths=depths)
+                        time=time,
+                        level=level)
         all_datasets.append(ds_var)
     # add u,v
     ds_uv = get_ts_uv(fname, lon, lat, ref_date, 
                     grdname=grdname,
                     i_shift=i_shift, j_shift=j_shift, 
-                    time_lims=time_lims,
-                    depths=depths)
+                    time=time,
+                    level=level)
     all_datasets.append(ds_uv)
-    # add zeta (not added to 'vars' above as we don't want to add 'depths' 
-    # as input to get_ts() for obvious reasons)
-    ds_zeta = get_ts(fname, 'zeta', lon, lat, ref_date, 
-                    grdname=grdname,
-                    i_shift=i_shift, j_shift=j_shift, 
-                    time_lims=time_lims)
-    all_datasets.append(ds_zeta)
     
     # merge into a single dataset
     ds_all = xr.merge(all_datasets)
     
-    # write a netcdf file if specified
-    if write_nc:
-        ds_all.to_netcdf(fname_nc, mode='w')
+    if nc_out is not None:
+        print('writing the netcdf file')
+        ds_all.to_netcdf(nc_out)
     
     return ds_all
 
-def preprocess_profile_depths(depths,default_to_bottom,h):
-    # handle the different kinds of 'depths' input,
-    # specifically when negative z level(s) is (are) defined
-    # I'm sticking this in it's own function as we need it for both get_profile() and get_profile_uv()
-    # 
-    if np.mean(depths)<0:
-        # we're extracting z levels
-        # in which case we'll want a depth of 0 to represent the surface layer
-        depths[depths==0]=-0.001 # 1mm below the surface will automatically default to the surface layer as it'll be above the top layer, so no  will get done
-        # by definition a value of -99999 represents the bottom layer
-        depths[depths==-99999]=0
-        if default_to_bottom:
-            # option to set depths deeper than the model depth to the bottom sigma layer
-            depths[depths<-h.values] = 0
-    return depths
-
-def get_ts(fname, var, lon, lat, ref_date,
+def get_ts(fname, var_str, lon, lat, ref_date,
                 grdname=None,
                 i_shift=0, j_shift=0,
-                time_lims=slice(None),
-                depths=slice(None),
-                default_to_bottom=False,
-                write_nc=False,
-                fname_nc='ts.nc',
+                time=slice(None),
+                level=slice(None),
+                nc_out=None,
                 Bottom=None
                 ):
     """
            Extract a ts from the model:
                    
             Parameters:
-            - fname             :CROCO output file name (or file pattern to be used with open_mfdataset())
-                                 fname can also be an xarray dataset to enhance functionality
-            - var               :variable name (string) in the CROCO output file(s)
-                                 (not intended for use with u,v variables - rather use get_ts_uv())
+            see get_var() for a description of the common inputs. This function has a few additional ones:
             - lat               :latitude of time-series
             - lon               :longitude of time-series
-            - ref_date          :reference datetime used in croco runs
-            - grdname           :optional grid file input - only needed if grid info isn't in the croco output file(s)
             - i_shift           :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
             - j_shift           :number of grid cells to shift along the eta axis, (similar utility to i_shift)
-            - time_lims         :time step indices to extract 
-                                 it can be a single integer (starting at zero) or datetime
-                                 or two values in a list e.g. [dt1,dt2], in which case the range between the two is extracted
-                                 If slice(None), then all time-steps are extracted
-            - depths            :if slice(None), then all sigma levels are extracted, and the depths of the levels are provided as an additional variable
-                                 if a positve integer or a slice of positive integers, then those sigma levels are extracted (zero denotes the bottom layer, going upward to the surface)
-                                 if a negative number, or a list of negative numers then data interpolated to those z levels are extracted 
-                                 if zero is contained in a list of negative numbers, then it is treated as the surface layer
-                                 if -99999 is contained in a list of negative numbers, it is assumed to represent the bottom layer in the model 
-            - default_to_bottom :flag to extract data for the bottom layer if input z level is below the model seafloor (True/False)
-            - write_nc          :write a netcdf file? (True/False)
-            - fname_nc          :netcdf file name. Only used if write_nc = True
             - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
               lat and lon in water that is as deep as reference. If == None then
               this looks for only the closest horizontal point.
@@ -1183,13 +1262,9 @@ def get_ts(fname, var, lon, lat, ref_date,
             Returns:
             - ds, an xarray dataset containing the ts data
     """
-    if var=='u' or var=='v':
-        print('rather use get_ts_uv() for extracting a time-series/ profile of u/v data')
-        sys.exit()
-        
-    # get the model time
-    time_model = get_time(fname, ref_date, time_lims=time_lims)
-    time_lims = tstep_to_slice(fname, time_lims, ref_date)
+    if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
+        print('WARNING: '+var_str+' will be the grid aligned vector component')
+        print('rather use get_ts_uv() for extracting a time-series of u/v data which represents east/north components')
     
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
@@ -1200,118 +1275,26 @@ def get_ts(fname, var, lon, lat, ref_date,
     i = i+i_shift
     j = j+j_shift
     
-    # get the model depth at this location
-    h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
-    
-    if isinstance(depths,slice):
-        # so we're extracting some or all of the sigma levels
-        # (note the case of extracting a single sigma level is handled in the else: below)
-        ts_da = get_var(fname, var,
-                              grdname=grdname,
-                              tstep=time_lims,
-                              level=depths,
-                              eta_rho=j,
-                              xi_rho=i,
-                              ref_date=ref_date)
+    ds = get_var(fname, var_str,
+                          grdname=grdname,
+                          time=time,
+                          level=level,
+                          eta_rho=j,
+                          xi_rho=i,
+                          ref_date=ref_date,
+                          nc_out=nc_out)
         
-        if 's_rho' in ts_da.coords:
-            # we explicitly check for existance of 's_rho' so we can handle 2D variables
-            
-            # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-            if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-                ds = fname.copy()
-            else:
-                ds = get_ds(fname,var)
-            ds = ds.isel(time=time_lims,
-                                s_rho=depths,
-                                eta_rho=slice(j,j+1), # making it a slice to maintain the spatial dimensions for input to get_depths()
-                                xi_rho=slice(i,i+1))
-            depths_out = np.squeeze(get_depths(ds))
-            
-            # we need to create a new dataarray for the depths of the sigma levels
-            depths_da = xr.DataArray(depths_out, coords={'time': ts_da['time'].values,
-                                                 'eta_rho': ts_da['eta_rho'].values, 
-                                                 'xi_rho': ts_da['xi_rho'].values,
-                                                 's_rho': ts_da['s_rho'].values,
-                                                 'lon_rho': ts_da['lon_rho'].values,
-                                                 'lat_rho': ts_da['lat_rho'].values
-                                                 },
-                                          dims=['time', 's_rho'])
-            depths_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
-            depths_da.attrs['units'] = 'meter'
-            depths_da.attrs['positive'] = 'up'
-        
-            # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
-            ds = xr.Dataset({var: ts_da, 'depth': depths_da, 'h': h})
-        else:
-            # handle the case of a 2D variable like 'zeta', where 'depths' won't be (or shouldn't be) a specified input
-            ds = xr.Dataset({var: ts_da, 'h': h})
-            
-    else:
-        # we're extracting data at specified z level(s) or a single sigma level
-        depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
-        depths_in=depths.copy() # keep a record of the user input for writing to the dataarray
-        depths=preprocess_profile_depths(depths,default_to_bottom,h)
-        # set up an empty array of the correct size, which we populate in a loop through depths
-        ts = np.zeros((len(time_model),len(depths)))
-        for index, depth in enumerate(depths):
-            # extract a time-series for this z level (or sigma level)
-            if depth>=0:
-                depth=int(depth) # must be an integer for a sigma level
-            ts_i = get_var(fname, var,
-                              grdname=grdname,
-                              tstep=time_lims,
-                              level=depth,
-                              eta_rho=j,
-                              xi_rho=i,
-                              ref_date=ref_date)
-            # and populate the ts array
-            ts[:,index]=ts_i.values
-        
-        # create an xarray dataarray for ts
-        # We can use the last 'ts_i' dataarray to extract some of the coordinate information
-        if len(depths) > 1:
-            # this is a profile extraction so we need a 'depth' dimension
-            ts_da = xr.DataArray(ts, coords={'time': ts_i['time'].values,
-                                                 'eta_rho': ts_i['eta_rho'].values, 
-                                                 'xi_rho': ts_i['xi_rho'].values,
-                                                 'depth': depths_in,
-                                                 'lon_rho': ts_i['lon_rho'].values,
-                                                 'lat_rho': ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time', 'depth'])
-            ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
-            ts_da.coords['depth'].attrs['units'] = 'meters'
-            ts_da.coords['depth'].attrs['postive'] = 'up'
-            ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
-        else: 
-            # we're extracting a time-series (either a sigma level or a z level), so drop the 'depth' dimension
-            ts_da = xr.DataArray(ts.squeeze(), coords={'time': ts_i['time'].values,
-                                                 'eta_rho': ts_i['eta_rho'].values, 
-                                                 'xi_rho': ts_i['xi_rho'].values,
-                                                 'lon_rho': ts_i['lon_rho'].values,
-                                                 'lat_rho': ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time'])
-        ts_da.attrs = ts_i.attrs # add the attributes for this variable
-        
-        # create a new dataset with the extracted time-series at this grid cell 
-        ds = xr.Dataset({var: ts_da, 'h': h})
-    
-    # write a netcdf file if specified
-    if write_nc:
-        ds.to_netcdf(fname_nc)
-    
     return ds
 
 def get_ts_uv(fname, lon, lat, ref_date, 
                 grdname=None,
                 i_shift=0, j_shift=0, 
-                time_lims=slice(None),
-                depths=slice(None),
+                time=slice(None),
+                level=slice(None),
                 default_to_bottom=False,
-                write_nc=False,
-                fname_nc='ts_uv.nc',
+                var_u='u', # could also be sustr, bustr, ubar
+                var_v='v', # could also be svstr, bvstr, vbar
+                nc_out=None,
                 Bottom=None
                 ):
     """
@@ -1328,10 +1311,6 @@ def get_ts_uv(fname, lon, lat, ref_date,
             - ds, an xarray dataset containing the time-series or profile data
               
     """
-    
-    # get the model time
-    time_model = get_time(fname, ref_date, time_lims=time_lims)
-    time_lims = tstep_to_slice(fname, time_lims, ref_date)
     
     # finds the rho grid indices nearest to the input lon, lat
     if grdname is None:
@@ -1351,143 +1330,161 @@ def get_ts_uv(fname, lon, lat, ref_date,
     j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
     i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
     j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
-    
-    # get the model depth at this location
-    h = get_grd_var(grdname,"h",eta_rho=j,xi_rho=i)
-    
-    if isinstance(depths,slice):
-        # so we're extracting some or all of the sigma levels
-        # (note the case of extracting a single sigma level is actually handled in the else: below)
-        u_ts_da,v_ts_da = get_uv(fname,
-                              grdname=grdname,
-                              tstep=time_lims,
-                              level=depths,
-                              eta_rho=j_rho,
-                              xi_rho=i_rho,
-                              eta_v=j_v,
-                              xi_u=i_u,
-                              ref_date=ref_date)
-        
-        # pull out the middle data point from our 3x3 block of rho grid points
-        # this is by definition the grid cell we are interested in
-        u_ts_da = u_ts_da[:,:,1,1]
-        v_ts_da = v_ts_da[:,:,1,1]
-        
-        # note here we don't check to see if 's_rho' exists like we did in get_ts(), 
-        # as we are dealing with u,v which by definition have the 's_rho' coordinate
-        
-        # get the depths of the sigma levels using the get_depths() function, which takes the dataset as input
-        if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
-            ds = fname.copy()
-        else:
-            ds = get_ds(fname)
-        
-        ds = ds.isel(time=time_lims,
-                            s_rho=depths,
-                            eta_rho=slice(j,j+1), # making it a slice to maintain the spacial dimensions for input to get_depths()
-                            xi_rho=slice(i,i+1))
-        depths_out = np.squeeze(get_depths(ds))
-        
-        # we need to create a new dataarray for the depths of the sigma levels
-        depths_da = xr.DataArray(depths_out, coords={'time': u_ts_da['time'].values,
-                                             'eta_rho': u_ts_da['eta_rho'].values, 
-                                             'xi_rho': u_ts_da['xi_rho'].values,
-                                             's_rho': u_ts_da['s_rho'].values,
-                                            'lon_rho': u_ts_da['lon_rho'].values,
-                                            'lat_rho': u_ts_da['lat_rho'].values
-                                             },
-                                      dims=['time', 's_rho'])
-        depths_da.attrs['long_name'] = 'Depth of sigma levels of the rho grid (centred in grid cells)'
-        depths_da.attrs['units'] = 'meter'
-        depths_da.attrs['positive'] = 'up'
-        
-        # create a new dataset with the extracted profile and depths of the sigma levels at this grid cell 
-        ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'depth': depths_da, 'h': h})
-    
-    else:
-        # we're extracting data at specified z level(s) or a single sigma level
-        depths=np.atleast_1d(depths).astype('float32') # makes life easier for handling both profiles and time-series if they're both arrays
-        depths_in=depths.copy() # keep a record of the user input for writing to the dataarray
-        depths=preprocess_profile_depths(depths,default_to_bottom,h)
-        # set up empty arrays of the correct size, which we populate in a loop through depths
-        u_ts = np.zeros((len(time_model),len(depths)))
-        v_ts = np.zeros((len(time_model),len(depths)))
-        for index, depth in enumerate(depths):
-            # extract a time-series for this z level (or sigma level)
-            if depth>=0: 
-                depth=int(depth) # must be an integer for a sigma level
-            u_ts_i,v_ts_i = get_uv(fname,
-                                 grdname=grdname,
-                                 tstep=time_lims,
-                                 level=depth,
-                                 eta_rho=j_rho,
-                                 xi_rho=i_rho,
-                                 eta_v=j_v,
-                                 xi_u=i_u,
-                                 ref_date=ref_date)
             
-            # pull out the middle data point from our 3x3 block of rho grid points
-            # this is by definition the grid cell we are interested in
-            u_ts_i = u_ts_i[:, 1, 1] 
-            v_ts_i = v_ts_i[:, 1, 1]
-            # populate our output arrays
-            u_ts[:, index] = u_ts_i.values
-            v_ts[:, index] = v_ts_i.values
-            
-        # create xarray dataarrays for u_ts and v_ts
-        if len(depths) > 1:
-            # this is a profile extraction so we need a 'depth' dimension
-            u_ts_da = xr.DataArray(u_ts, coords={'time': u_ts_i['time'].values,
-                                                 'eta_rho': u_ts_i['eta_rho'].values, 
-                                                 'xi_rho': u_ts_i['xi_rho'].values,
-                                                 'depth': depths_in,
-                                                 'lon_rho': u_ts_i['lon_rho'].values,
-                                                 'lat_rho': u_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time', 'depth'])
-            u_ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
-            u_ts_da.coords['depth'].attrs['units'] = 'meters'
-            u_ts_da.coords['depth'].attrs['postive'] = 'up'
-            u_ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
-            
-            v_ts_da = xr.DataArray(v_ts, coords={'time': v_ts_i['time'].values,
-                                                 'eta_rho': v_ts_i['eta_rho'].values, 
-                                                 'xi_rho': v_ts_i['xi_rho'].values,
-                                                 'depth': depths_in,
-                                                 'lon_rho': v_ts_i['lon_rho'].values,
-                                                 'lat_rho': v_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time', 'depth'])
-            v_ts_da.coords['depth'].attrs['long_name'] = 'water depth from free surface'
-            v_ts_da.coords['depth'].attrs['units'] = 'meters'
-            v_ts_da.coords['depth'].attrs['postive'] = 'up'
-            u_ts_da.coords['depth'].attrs['bottom'] = '-99999 denotes the bottom layer of the model'
-        else:
-            # we're extracting a time-series (either a sigma level or a z level), so drop the depth dimension
-            u_ts_da = xr.DataArray(u_ts.squeeze(), coords={'time': u_ts_i['time'].values,
-                                                 'eta_rho': u_ts_i['eta_rho'].values, 
-                                                 'xi_rho': u_ts_i['xi_rho'].values,
-                                                 'lon_rho': u_ts_i['lon_rho'].values,
-                                                 'lat_rho': u_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time'])
-            
-            v_ts_da = xr.DataArray(v_ts.squeeze(), coords={'time': v_ts_i['time'].values,
-                                                 'eta_rho': v_ts_i['eta_rho'].values, 
-                                                 'xi_rho': v_ts_i['xi_rho'].values,
-                                                 'lon_rho': v_ts_i['lon_rho'].values,
-                                                 'lat_rho': v_ts_i['lat_rho'].values
-                                                 },
-                                          dims=['time'])
-        # add the attributes for u,v (note these are set in get_var())
-        u_ts_da.attrs = u_ts_i.attrs 
-        v_ts_da.attrs = v_ts_i.attrs
-        
-        # create a new dataset with the extracted time-series at this grid cell 
-        ds = xr.Dataset({'u': u_ts_da,'v': v_ts_da, 'h': h})
+    ds = get_uv(fname,
+                grdname=grdname,
+                time=time,
+                level=level,
+                eta_rho=j_rho,
+                xi_rho=i_rho,
+                eta_v=j_v,
+                xi_u=i_u,
+                var_u=var_u,
+                var_v=var_v,
+                ref_date=ref_date
+                )
     
-    # write a netcdf file if specified
-    if write_nc:
-        ds.to_netcdf(fname_nc)
-        
+    # pull out the middle data point from our 3x3 block of rho grid points
+    # this is by definition the grid cell we are interested in
+    ds = ds.isel(eta_rho=1,xi_rho=1).squeeze()
+    
+    if nc_out is not None:
+        print('writing the netcdf file')
+        ds.to_netcdf(nc_out)
+    
+    return ds
+
+def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
+    """Computes points along a great-circle path with approximately equal distances.
+
+    Args:
+        lon0, lat0: Start point in degrees.
+        lon1, lat1: End point in degrees.
+        dgc: Distance between points in meters.
+        R: Earth radius in meters.
+
+    Returns:
+        lons, lats, distances: Arrays of longitudes, latitudes, and cumulative distances.
+    """
+    # Convert inputs to radians
+    lat0, lon0, lat1, lon1 = map(np.radians, [lat0, lon0, lat1, lon1])
+
+    # Compute total great-circle distance using the Haversine formula
+    delta_lat = lat1 - lat0
+    delta_lon = lon1 - lon0
+    a = np.sin(delta_lat / 2)**2 + np.cos(lat0) * np.cos(lat1) * np.sin(delta_lon / 2)**2
+    sigma_total = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))  # Central angle
+    dist_total = R * sigma_total  # Convert to meters
+
+    # Determine the number of segments
+    npsec = int(dist_total // dgc) + 1  # Number of points
+
+    # Compute the initial bearing
+    X = np.cos(lat1) * np.sin(delta_lon)
+    Y = np.cos(lat0) * np.sin(lat1) - np.sin(lat0) * np.cos(lat1) * np.cos(delta_lon)
+    initial_bearing = np.arctan2(X, Y)
+
+    # Generate points along the great-circle path
+    lons, lats, distances = [lon0], [lat0], [0]
+    
+    for i in range(1, npsec):
+        sigma = i * dgc / R  # Angular distance along the sphere
+
+        lat_new = np.arcsin(np.sin(lat0) * np.cos(sigma) +
+                            np.cos(lat0) * np.sin(sigma) * np.cos(initial_bearing))
+        lon_new = lon0 + np.arctan2(np.sin(initial_bearing) * np.sin(sigma) * np.cos(lat0),
+                                    np.cos(sigma) - np.sin(lat0) * np.sin(lat_new))
+
+        lats.append(lat_new)
+        lons.append(lon_new)
+        distances.append(i * dgc)  # Keep cumulative distance
+
+    # Convert back to degrees
+    lons, lats = np.degrees(lons), np.degrees(lats)
+
+    return np.array(lons), np.array(lats), np.array(distances)
+
+def get_section(fname,
+                var_str,
+                section_start,
+                section_end,
+                grdname=None,
+                time=slice(None),
+                level=slice(None),
+                ref_date=None,
+                res=None,
+                nc_out=None,
+                ):
+    """
+    Extract a vertical section from a CROCO output file(s) 
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    Inputs:
+    see get_var() for a description of some of the inputs. In addition to the get_var inputs there is:
+    section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
+    section_end = End points of transect (list; eg. section_end = [lon1, lat1])
+    res = Horizontal resolution of the section in meters (eg. res = 300). Default is None in which case 
+         it takes the smallest grid size as the resolution. 
+    ...
+           
+    
+    Returns:
+    - ds, an xarray dataset containing the section data for the variable
+    """
+    
+    # if the gridname is not provided, we use the fname for the gridname 
+    if grdname is None:
+        grdname = fname
+    
+    # Define the start and end points of the transect
+    lon0,lat0 = section_start[0],section_start[1]
+    lon1,lat1 = section_end[0],section_end[1]
+    
+    # extract the data for the defined subdomain which covers the section extents
+    subdomain = [lon0,lon1,lat0,lat1]
+    ds = get_var(fname,var_str,
+                 grdname=grdname,
+                 time=time,
+                 level=level,
+                 subdomain=subdomain,
+                 ref_date=ref_date)
+    
+    # if the grid resolution is not provided, we use the smallest grid size as the resolution. 
+    if res is None:
+        dy_min=np.min(1/get_grd_var(grdname, 'pn').values[:])
+        dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
+        res = min(dy_min,dx_min)
+    
+    # Make the transect on which the interpolation will take place    
+    section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
+    
+    # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
+    
+    # Interpolate the variable along the line
+    print('interpolating along the section...')
+    ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
+    # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
+    # section_lons, section_lats, while theoretically they should be identical
+    # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
+    # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
+    # The error is however much less than the model grid size, so I am not too bothered by this
+    
+    # add the section distance to the ds
+    ds["distance"] = xr.DataArray(
+        section_dist, dims=("points",),
+        coords={"points": ds.coords["points"]},
+        name="distance_along_section",
+        attrs={
+            "units": "meter",
+            "standard_name": "distance",
+        })
+    
+    if nc_out is not None:
+        print('')
+        print(f'File saved to: {nc_out}')
+        print('')
+        ds.to_netcdf(nc_out)
+    
     return ds

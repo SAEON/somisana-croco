@@ -25,7 +25,8 @@ ENV DEBIAN_FRONTEND noninteractive
 # Install dependencies for compiling fortran tools
 RUN apt-get update && apt-get install -y \
     make \
-    build-essential
+    build-essential \
+    imagemagick
 
 RUN mkdir /somisana-croco
 WORKDIR /somisana-croco
@@ -33,6 +34,9 @@ WORKDIR /somisana-croco
 # Install somisana-croco environment into base conda environment
 COPY environment.yml .
 RUN mamba env update -n base -f environment.yml
+
+# Cache cartopy maps
+RUN /bin/bash -c "echo -e \"import cartopy\nfor s in ('c', 'l', 'i', 'h', 'f'): cartopy.io.shapereader.gshhs(s)\" | python"
 
 # add the somisana-croco code and install into the base environment
 ADD . /somisana-croco

@@ -109,9 +109,9 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier2 \
-                --fname /tmp/postprocess/croco_avg_t1.nc \
+                --fname /tmp/output/croco_avg.nc \
                 --fname_out /tmp/postprocess/croco_avg_t2.nc \
-                --depths 0,-5,-10,-50,-100,-500,-1000,-99999
+                --depths 0,-5,-10,-50,-100,-500,-1000
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
         continue-on-error: true
@@ -146,6 +146,20 @@ jobs:
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+      - name: animate bottom temperature and currents
+        continue-on-error: true
+        run: |
+          docker run \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg.nc \
+                --level 0 \
+                --gif_out /tmp/postprocess/croco_avg_temp_bot.gif \
+                --skip_time 6 \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif
       - name: animate 100m temperature and currents
         continue-on-error: true
         run: |
@@ -197,6 +211,7 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
           
       - name: clean up

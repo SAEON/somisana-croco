@@ -150,7 +150,7 @@ jobs:
   # the runs slow down hugely, so it's better to use more processors per domain, and maybe 2 domains max in parallel
 
   run_mercator_domains:
-    needs: [envs,prep_domains,download_surface,download_mercator]
+    needs: [envs,prep_domains,download_surface,download_mercator,make_tide_frc]
     uses: ./.github/workflows/run_all_domains.yml
     with:
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
@@ -161,7 +161,7 @@ jobs:
     secrets: inherit
 
   run_hycom_domains:
-    needs: [envs,prep_domains,download_surface,download_hycom,run_mercator_domains] 
+    needs: [envs,prep_domains,download_surface,download_hycom,make_tide_frc,run_mercator_domains] 
     if: ${{ always() }} # execute even if there was an error with the mercator runs
     uses: ./.github/workflows/run_all_domains.yml
     with:

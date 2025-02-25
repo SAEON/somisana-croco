@@ -9,12 +9,8 @@ import calendar
 import sys, os
 from pathlib import Path
 import xarray as xr
-import asyncio
 import subprocess
 import time
-# the lib imports are from the 'lib' directory
-# which is copied in from the original somisana repo Zach set up
-from download.lib.log import log
 import threading
 
 def is_valid_netcdf_file(file_path):
@@ -34,7 +30,7 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     # skip this file if it already exists
     f = os.path.normpath(os.path.join(outputDir, fname))
     if is_valid_netcdf_file(f):
-        log("file already exists - ", fname)
+        print("file already exists - "+ fname)
         return  
     
     variables = f"-v {' -v '.join(varlist)} "
@@ -62,27 +58,25 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
             -o {os.path.normpath(outputDir)} \
             -f {fname}"""
 
-    log(" ".join(runcommand.split()))
-    
     # allow for a few retries if there was a temporary download error
     MAX_RETRIES = 3
     RETRY_WAIT = 10      
     
     i = 0
     while i < MAX_RETRIES:
-        log(
+        print(
             f"Attempt {i+1} of {MAX_RETRIES}"
         )
         try: 
             os.system(runcommand)
             if is_valid_netcdf_file(f):
-                log("Completed", fname)
+                print("Completed "+fname)
                 break
             else:
                 os.unlink(f)
                 raise Exception(f"Mercator download failed (bad NetCDF output): {fname}")
         except Exception as e:  # Catch all potential exceptions here
-            log(f"Error: {e}, retrying in {RETRY_WAIT} seconds...")
+            print(f"Error: {e}, retrying in {RETRY_WAIT} seconds...")
             time.sleep(RETRY_WAIT)
             raise  # Re-raise the exception for potential retries
         i+=1
@@ -149,7 +143,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
         t.join()
     
     # Concatenate the separate NetCDF files
-    log("concatenating NetCDF files")
+    print("concatenating NetCDF files")
     output_path = os.path.abspath(os.path.join(outputDir, f"MERCATOR_{run_date.strftime('%Y%m%d_%H')}.nc"))
     with xr.open_mfdataset([os.path.abspath(os.path.join(outputDir, var["fname"])) for var in VARIABLES]) as ds:
         ds.to_netcdf(output_path, mode="w")

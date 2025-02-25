@@ -3,8 +3,8 @@
 #PBS -P ERTH1103
 #PBS -q normal
 #PBS -l walltime=18:00:00
-#PBS -o /home/gfearon/run_croco_inter_lengau/stdout 
-#PBS -e /home/gfearon/run_croco_inter_lengau/stderr 
+#PBS -o /home/$USER/run_croco_inter_lengau/stdout 
+#PBS -e /home/$USER/run_croco_inter_lengau/stderr 
 #
 #unalias cp
 #unalias mv
@@ -18,7 +18,7 @@ MK=/bin/mkdir
 ########################################################
 #
 
-cd /home/gfearon/run_croco_inter_lengau 
+cd /home/$USER/run_croco_inter_lengau 
 source myenv_inter.sh
 cd $RUNDIR
 EXEDIR=$RUNDIR/$EXENAME
