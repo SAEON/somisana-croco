@@ -43,7 +43,6 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     runcommand = f"""
         copernicusmarine subset -i {dataset} \
             {version} \
-            --force-download \
             --username {usrname} \
             --password {passwd} \
             -x {domain[0]} \

@@ -1113,7 +1113,10 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
                 "shortName": "10v",
                 "stepType": "instant",
             },
-            # will need to add patm here
+            "patm": {
+                "shortName": "prmsl",
+                "stepType": "instant",
+            },
         }
     
     for var in variables:
@@ -1532,10 +1535,6 @@ def make_bry(input_file,output_dir,start_date,end_date,Yorig,fname_out):
 
 
 if __name__ == '__main__':
-    input_file = '~/Projects/somisana-croco/DATASETS_CROCOTOOLS/MERCATOR/MERCATOR_20241004_07.nc'
-    param_dir  = '/home/g.rautenbach/tmp/croco_forecast_2024104_00/MERCATOR/'
-    run_date   = datetime(2024,10,3)
-    hdays      = 1
-    fdays      = 1
-    # make_ini_fcst(input_file,param_dir,run_date,hdays)
-    # make_bry_fcst(input_file,param_dir,run_date,hdays,fdays)
+    gfs_dir = '/home/gfearon/test_forecast/downloaded_data/GFS'
+    out_dir  = '/home/gfearon/test_forecast/downloaded_data/GFS/for_croco'
+    reformat_gfs_atm(gfs_dir,out_dir,2000)
