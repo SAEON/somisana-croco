@@ -133,7 +133,7 @@ jobs:
             --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.DATA_DIR }}:/tmp/dataDir \
-            -v /mnt/saws-um-data:/tmp/sawsDir \
+            -v /mnt/saws-data/ocims:/tmp/sawsDir \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             reformat_saws_atm \
               --sawsDir '/tmp/sawsDir' \
