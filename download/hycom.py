@@ -7,6 +7,14 @@ import subprocess
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+import requests
+
+def is_server_reachable(url):
+    try:
+        response = requests.get(url, timeout=5, stream=True)  # Get headers only
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
 
 def is_file_valid(file_path):
     """
@@ -183,6 +191,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     for attempt in range(MAX_RETRIES):
         print('')
         print(f'Attempt {attempt+1} out of {MAX_RETRIES} tries for {metadata[var]["vars"][0]}.')
+        
         try:
             print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
             ds = xr.open_dataset(metadata[var]["url"],
@@ -191,8 +200,6 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
                                  engine="netcdf4").sel(lat=lat_range,
                                                        lon=lon_range)
 
-
-            
             if 'time' in ds:
                 ds['time'] = decode_time_units(ds['time'])
                 tmax=pd.to_datetime(ds.time.max().values)
@@ -328,25 +335,35 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     else:
         pass
     
-    if download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
-        ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
-        outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
-        if os.path.exists(outfile):
-            os.remove(outfile)
-        ds.to_netcdf(outfile, 'w')
-        subprocess.call(["chmod", "-R", "775", outfile])
-        print('')
-        print('created: ', outfile)
-        print('')
-        sys.exit()
+    server_url = "http://tds.hycom.org/thredds/dodsC/"
+
+    if is_server_reachable(server_url):
+        try:
+            if download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
+                ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
+                outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
+                if os.path.exists(outfile):
+                    os.remove(outfile)
+                ds.to_netcdf(outfile, 'w')
+                subprocess.call(["chmod", "-R", "775", outfile])
+                print('')
+                print('created: ', outfile)
+                print('')
+                sys.exit()
+            else:
+                print('HYCOM download failed.')
+                sys.exit()
+
+        except Exception as e:
+            print(f"Failed to open dataset: {e}")
+    
     else:
-        print('HYCOM download failed.')
-        sys.exit()
+        print(f"Server {server_url} is not reachable.")
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2025-01-14 12:00:00')
-    hdays = 1
-    fdays = 1
+    run_date = pd.to_datetime('2025-03-13 00:00:00')
+    hdays = 2
+    fdays = 2
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
     domain = [23,24,-37,-36]
     depths = [0,5]
