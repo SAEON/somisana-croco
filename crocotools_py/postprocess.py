@@ -846,14 +846,19 @@ def get_var(fname,var_str,
     # masking throws away the attributes, so let's keep those
     da_masked.attrs = da.attrs
     da = da_masked.copy()
-    
+
+    da_mask = xr.DataArray(mask,
+                           coords={'eta_rho': ds['eta_rho'].values,
+                                   'xi_rho' : ds['xi_rho'].values},
+                           dims=['eta_rho', 'xi_rho'])
+
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels')
         depths_da = get_depths(ds).squeeze()
-        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':da_mask})
     else:
-        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':mask})
     
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
