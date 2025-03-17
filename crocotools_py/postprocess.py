@@ -842,10 +842,21 @@ def get_var(fname,var_str,
                                     xi_rho=xi_rho)
     else:
         mask=1
-    da_masked=da.squeeze()*mask
+
+    mask[np.isnan(mask)]=0
+
+    da_masked=da.squeeze() * mask / mask
     # masking throws away the attributes, so let's keep those
     da_masked.attrs = da.attrs
     da = da_masked.copy()
+    
+    zeta_masked = zeta.squeeze() * mask / mask
+    zeta_masked.attrs = zeta.attrs
+    zeta = zeta_masked.copy()
+
+    h_masked = h.squeeze() * mask / mask
+    h_masked.attrs = h.attrs
+    h = h_masked.copy()
 
     da_mask = xr.DataArray(mask,
                            coords={'eta_rho': ds['eta_rho'].values,
@@ -855,10 +866,10 @@ def get_var(fname,var_str,
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels')
-        depths_da = get_depths(ds).squeeze()
+        depths_da = get_depths(ds).squeeze() * mask / mask
         ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':da_mask})
     else:
-        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':mask})
+        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':da_mask})
     
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
