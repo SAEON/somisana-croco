@@ -756,7 +756,7 @@ def get_var(fname,var_str,
         ds = get_ds(fname,var_str)
     
     # get the time as a list of datetimes
-    time_dt = get_time(fname, ref_date)
+    time_dt = get_time(ds, ref_date)
     ds = ds.assign_coords(time=time_dt)
     
     # for each of the input dimensions we check the format of the input 
