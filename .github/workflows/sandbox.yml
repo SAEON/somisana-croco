@@ -28,11 +28,11 @@ jobs:
             docker run \
               --user $(id -u):$(id -g) \
               --rm \
-              -v /home/somisana/ops/somisana_py/20250114_00/downloaded_data/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_somisana_py:latest \
+              -v /home/somisana/ops/main/20250317_00/downloaded_data/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_main:latest \
               download_hycom \
               --domain 11,36,-39,-25 \
               --run_date '2025-03-17 00:00:00' \
-              --hdays 2 \
-              --fdays 2 \
+              --hdays 5 \
+              --fdays 5 \
               --savedir '/tmp/' && echo "Download completed" || echo "Download failed"
