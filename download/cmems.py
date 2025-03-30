@@ -9,12 +9,8 @@ import calendar
 import sys, os
 from pathlib import Path
 import xarray as xr
-import asyncio
 import subprocess
 import time
-# the lib imports are from the 'lib' directory
-# which is copied in from the original somisana repo Zach set up
-from download.lib.log import log
 import threading
 
 def is_valid_netcdf_file(file_path):
@@ -34,7 +30,7 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     # skip this file if it already exists
     f = os.path.normpath(os.path.join(outputDir, fname))
     if is_valid_netcdf_file(f):
-        log("file already exists - ", fname)
+        print("file already exists - "+ fname)
         return  
     
     variables = f"-v {' -v '.join(varlist)} "
@@ -47,7 +43,6 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
     runcommand = f"""
         copernicusmarine subset -i {dataset} \
             {version} \
-            --force-download \
             --username {usrname} \
             --password {passwd} \
             -x {domain[0]} \
@@ -62,27 +57,25 @@ def download_cmems(usrname, passwd, dataset, varlist, start_date, end_date, doma
             -o {os.path.normpath(outputDir)} \
             -f {fname}"""
 
-    log(" ".join(runcommand.split()))
-    
     # allow for a few retries if there was a temporary download error
     MAX_RETRIES = 3
     RETRY_WAIT = 10      
     
     i = 0
     while i < MAX_RETRIES:
-        log(
+        print(
             f"Attempt {i+1} of {MAX_RETRIES}"
         )
         try: 
             os.system(runcommand)
             if is_valid_netcdf_file(f):
-                log("Completed", fname)
+                print("Completed "+fname)
                 break
             else:
                 os.unlink(f)
                 raise Exception(f"Mercator download failed (bad NetCDF output): {fname}")
         except Exception as e:  # Catch all potential exceptions here
-            log(f"Error: {e}, retrying in {RETRY_WAIT} seconds...")
+            print(f"Error: {e}, retrying in {RETRY_WAIT} seconds...")
             time.sleep(RETRY_WAIT)
             raise  # Re-raise the exception for potential retries
         i+=1
@@ -149,7 +142,7 @@ def download_mercator(usrname, passwd, domain, run_date, hdays, fdays, outputDir
         t.join()
     
     # Concatenate the separate NetCDF files
-    log("concatenating NetCDF files")
+    print("concatenating NetCDF files")
     output_path = os.path.abspath(os.path.join(outputDir, f"MERCATOR_{run_date.strftime('%Y%m%d_%H')}.nc"))
     with xr.open_mfdataset([os.path.abspath(os.path.join(outputDir, var["fname"])) for var in VARIABLES]) as ds:
         ds.to_netcdf(output_path, mode="w")
@@ -167,6 +160,8 @@ def download_glorys(usrname,
  
     """
     Download month by month of daily MERCATOR 1/12 deg reanalysis data (GLORYS)
+    
+    This is actually superseded by download_monthly()
     
     """
    
@@ -196,23 +191,65 @@ def download_glorys(usrname,
         downloadDate=downloadDate+timedelta(days=32) # 32 days ensures we get to the next month
         downloadDate=datetime(downloadDate.year, downloadDate.month, 1) # set the first day of the month
 
+def download_cmems_monthly(usrname, 
+                            passwd,
+                            dataset,
+                            domain,
+                            start_date,
+                            end_date,
+                            varlist, 
+                            depths, 
+                            outputDir):
+ 
+    """
+    Download month by month for any dataset on CMEMS
+    
+    """
+   
+    os.makedirs(outputDir,exist_ok=True)
+
+    downloadDate=start_date
+    
+    while downloadDate <= end_date:
+        
+        print(downloadDate.strftime('%Y-%m'))
+        
+        # start and end days of this month
+        start_date_download=datetime(downloadDate.year,downloadDate.month,1)
+        day_end = calendar.monthrange(downloadDate.year, downloadDate.month)[1]
+        end_date_download=datetime(downloadDate.year,downloadDate.month,day_end)
+    
+        # output filename
+        fname = str(downloadDate.strftime('%Y_%m'))+'.nc'
+        
+        download_cmems(usrname, passwd, dataset, varlist, start_date_download, end_date_download, domain, depths, outputDir, fname)
+            
+        downloadDate=downloadDate+timedelta(days=32) # 32 days ensures we get to the next month
+        downloadDate=datetime(downloadDate.year, downloadDate.month, 1) # set the first day of the month
+
+#TODO I think we should create a download_cmems_ops function which works in a similar
+# way to download_mercator (with the hdays and fdays option) but is generic for any cmems dataset
+# A lot of the code in download_mercator can be moved to the cli function, which would call the 
+# generic download_cmems_ops function
+
 if __name__ == "__main__":
     
     # Mercator glorys product
-    #
+    #:wq
     # your CMEMS username and password
-    usrname = 'your_usrname'
-    passwd = 'your_passwd'
+    usrname = 'gfearon'
+    passwd = 'Isabella_2015'
     # spatial extent
-    domain = [23, 34, -37, -31]
-    outputDir='./sa_southeast/'
+    domain = [47, 59, 22, 32]
+    outputDir='~/CMEMS_GLO_BGC_L4/'
     # variables to extract
-    varList = ['so', 'thetao', 'zos', 'uo', 'vo']
+    varList = ['CHL', 'CHL_uncertainty', 'flags']
     # min and max depths
-    depths = [0.493, 5727.918]
+    depths = [0, 0]
     # time to download
-    start_date = datetime(1993,1,1)
-    end_date = datetime(2019,12,1)
-    download_glorys(usrname, passwd, domain, start_date, end_date, varList, depths, outputDir)
+    start_date = datetime(2014,1,1)
+    end_date = datetime(2014,1,1)
+    dataset='cmems_obs-oc_glo_bgc-plankton_my_l4-gapfree-multi-4km_P1D'
+    download_cmems_monthly(usrname, passwd, dataset, domain, start_date, end_date, varList, depths, outputDir)
     
     

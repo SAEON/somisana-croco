@@ -20,7 +20,7 @@ tracers = ['temp','salt']
 
 # relative path to the CROCO grid
 croco_grd = '../GRID/croco_grd.nc'
-sigma_params = dict(theta_s=5, theta_b=7, N=30, hc=200) # Vertical streching, sig_surf/sig_bot/ nb level/critical depth
+sigma_params = dict(theta_s=7, theta_b=2, N=40, hc=200) # Vertical streching, sig_surf/sig_bot/ nb level/critical depth
 
 # Ini filename prefix
 ini_prefix = 'croco_ini_GLORYS'

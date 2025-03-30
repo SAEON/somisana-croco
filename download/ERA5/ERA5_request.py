@@ -12,7 +12,7 @@
 #  Tested using Python 3.8.6 and Python 3.9.1. This script need the following
 #  python libraries pre-installed: "calendar", "datetime", "json" and "os".
 #
-#  [*] https://cds.climate.copernicus.eu/api-how-to
+#  [*] https://cds.climate.copernicus.eu/how-to-api
 #
 #  Copyright (c) DDONOSO February 2021
 #  e-mail:ddonoso@dgeo.udec.cl  
@@ -38,25 +38,6 @@ print('year_start is '+str(year_start))
 
 # -------------------------------------------------
 dl=2
-if ownArea == 0:
-    lines = [line.rstrip('\n') for line in open(paramFile)]
-    for line in lines:
-        if "lonmin" in line:
-            iStart=line.find('=')+1
-            iEnd=line.find(';')
-            lonmin = line[iStart:iEnd]
-        elif "lonmax" in line:
-            iStart=line.find('=')+1
-            iEnd=line.find(';')
-            lonmax = line[iStart:iEnd]
-        elif "latmin" in line:
-            iStart=line.find('=')+1
-            iEnd=line.find(';')
-            latmin = line[iStart:iEnd]
-        elif "latmax" in line:
-            iStart=line.find('=')+1
-            iEnd=line.find(';')
-            latmax = line[iStart:iEnd]
 
 lonmin = str(float(lonmin)-dl)
 lonmax = str(float(lonmax)+dl)
@@ -76,14 +57,12 @@ area = [latmax, lonmin, latmin, lonmax]
 # Get the current directory
 os.makedirs(era5_dir_raw,exist_ok=True)
 
-
 # -------------------------------------------------
 # Loading ERA5 variables's information as 
 # python Dictionary from JSON file
 # -------------------------------------------------
 with open('ERA5_variables.json', 'r') as jf:
     era5 = json.load(jf)
-
 
 # -------------------------------------------------
 # Downloading ERA5 datasets
@@ -107,22 +86,8 @@ for j in range(len_monthly_dates):
     month = monthly_date.month;
 
     # Number of days in month
-    days_in_month = calendar.monthrange(year,month)[1]
-
-    # Date limits
-    date_start = datetime.datetime(year,month,1)
-    date_end = datetime.datetime(year,month,days_in_month)
-
-    # Ordinal date limits (days)
-    n_start = datetime.date.toordinal(date_start)
-    n_end = datetime.date.toordinal(date_end)
-
-    # Overlapping date string limits (yyyy-mm-dd)
-    datestr_start_overlap = datetime.date.fromordinal(n_start - n_overlap).strftime('%Y-%m-%d')
-    datestr_end_overlap = datetime.date.fromordinal(n_end + n_overlap).strftime('%Y-%m-%d')
-
-    # Overlapping date string interval 
-    vdate = datestr_start_overlap + '/' + datestr_end_overlap
+    days_in_month = calendar.monthrange(year,month)[1] 
+    days = [f"{day:02}" for day in range(1, days_in_month + 1)]
 
     # Variables/Parameters loop
     for k in range(len(variables)):
@@ -130,32 +95,33 @@ for j in range(len_monthly_dates):
         # Variable's name, long-name and level-type
         vname = variables[k]
         vlong = era5[vname][0]
-        vlevt = era5[vname][3]
 
         # Request options
         options = {
-             'product_type': 'reanalysis',
-             'type': 'an',
-             'date': vdate,
-             'variable': vlong,
-             'levtype': vlevt,
+             'product_type': ['reanalysis'],
+             'variable': [vlong],
+             'year': [str(year)],
+             'month': [str(month)],
+             'day': days,
+             # 'time': times,
+             'data_format': 'netcdf',
+             'download_format': 'unarchived',
              'area': area,
-             'format': 'netcdf',
-                  }
+             }
 		  
-        # Add options to Variable without "diurnal variations"
+        # # Add options to Variable without "diurnal variations"
         if vlong == 'sea_surface_temperature':
-           options['time'] = '00'
+            options['time'] = ['00:00']
    
         elif vlong == 'land_sea_mask':
-            options['time'] = '00:00'
+            options['time'] = ['00:00']
 
         else:
-           options['time'] = time
+           options['time'] = times
 
         # Add options to Product "pressure-levels"
         if vlong == 'specific_humidity' or vlong == 'relative_humidity':
-           options['pressure_level'] = '1000'
+           options['pressure_level'] = ['1000']
            product = 'reanalysis-era5-pressure-levels'
 
         # Product "single-levels"
@@ -186,8 +152,8 @@ for j in range(len_monthly_dates):
         c = cdsapi.Client()
 
         # Do the request
-        c.retrieve(product,options,output)
-  
+        c.retrieve(product, options).download(output)
+    
     # ---------------------------------------------------------------------
     # Next iteration to monthly date: add one month to current monthly date
     # ---------------------------------------------------------------------

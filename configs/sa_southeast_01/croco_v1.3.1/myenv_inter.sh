@@ -26,6 +26,8 @@ export CLIMATOLOGY_FILES=1
 export BOUNDARY_FILES=0
 export OGCM=GLORYS
 #
+export TIDE_FILES=1
+export TIDE_FRC=TPXO10
 #
 # runtime input
 export INNAME=I01

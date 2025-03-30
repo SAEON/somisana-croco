@@ -1,4 +1,4 @@
-name: make the croco forcing
+name: make the croco bry and ini files
 # make the boundary forcing for a particular domain          
 # we don't need to make surface forcing since we're using the ONLINE cpp key
 # (the blk files are already reformatted in download_surface.yml)
@@ -86,3 +86,11 @@ jobs:
               --hdays ${{ inputs.HDAYS }} \
               --fdays ${{ inputs.FDAYS }} \
               --Yorig 2000
+
+      - name: cleanup 
+        # cleanup.yml is struggling to clean up the __pycache__ dir left by running the above steps 
+        # so we'll just get rid of it here
+        id: cleanup
+        run: |
+          sudo rm -rf ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/__pycache__
+

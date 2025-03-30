@@ -1,0 +1,114 @@
+name: download regional hycom data
+
+on:
+  workflow_call:
+    inputs:
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      RUN_DATE:
+        description: 'time of T0 of the model run - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      HDAYS:
+        description: 'number of hindcast days (integer) from T0'
+        required: true
+        type: string
+      FDAYS:
+        description: 'number of forecast days (integer) from T0'
+        required: true
+        type: string
+
+env:
+  DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
+
+jobs:
+  check_files:
+    # checks to see if files have maybe already been downloaded as part of a previous running of this workflow
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    outputs:
+      OGCM_OK: ${{ steps.check_ogcm.outputs.value }}
+    steps:
+      - name: Check if OGCM file is already downloaded
+        id: check_ogcm
+        run: |
+          FILE_PATH=${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc
+          # could have an additional check on file size here?
+          if [ -f "$FILE_PATH" ]; then
+            echo "value=1" >> $GITHUB_OUTPUT
+          else
+            echo "value=0" >> $GITHUB_OUTPUT
+          fi
+
+  # Download hycom 
+  download_hycom:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files]
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: create the HYCOM directory
+        run: |
+          sudo rm -rf ${{ env.DATA_DIR }}/HYCOM
+          mkdir -p ${{ env.DATA_DIR }}/HYCOM
+          chown -R :runners ${{ env.DATA_DIR }}/HYCOM
+          chmod -R 774 ${{ env.DATA_DIR }}/HYCOM
+      - name: Download HYCOM
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60 # Script is considered failed if this limit is reached
+          retry_wait_seconds: 300 # Wait 5 minutes and try again
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/HYCOM/*.nc
+          command: |
+            docker run \
+              --user $(id -u):$(id -g) \
+              --rm \
+              -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              download_hycom \
+                --domain 11,36,-39,-25 \
+                --run_date ${{ steps.format_date.outputs.value }} \
+                --hdays ${{ inputs.HDAYS }} \
+                --fdays ${{ inputs.FDAYS }} \
+                --savedir '/tmp/'
+
+  archive_ocims:
+    # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
+    needs: [download_hycom]
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    # only archive if we are on the main branch
+    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
+    continue-on-error: true
+    steps:
+      - name: archive forcing files on ocims infrastructure
+        id: archive_dir
+        run: |
+          # get the archive directory name
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_yyyymm=${run_date:0:6}
+          run_date_hh=${run_date:9:2}
+          archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
+          # make the archive directory
+          sudo mkdir -p ${archive_dir}/HYCOM
+          # only archive one run per day (initialised at 00)
+          # the archiving is really for validation purposes, and I think one run per day is sufficient for this
+          if [ "${run_date_hh}" == "00" ]; then 
+            # We need to use sudo in the lines below because the target dir is owned by root
+            # Not an issue since we have ensured no password is needed for this command 
+            sudo cp ${{ env.DATA_DIR }}/HYCOM/HYCOM_${{ inputs.RUN_DATE }}.nc ${archive_dir}/HYCOM/
+          fi

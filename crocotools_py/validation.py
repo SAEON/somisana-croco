@@ -10,8 +10,6 @@ from datetime import datetime
 # import cftime
 from colorama import Fore, Style
 
-# %% rho & uv statistics
-
 def statistics(model_data,data_obs_model_timeaxis):
     """
             This Function calculates all model validation statistics
@@ -53,75 +51,35 @@ def statistics(model_data,data_obs_model_timeaxis):
     return (insitu_correlation, insitu_rmse, insitu_mean_diff, insitu_min_value, insitu_max_value,
             model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias)
 
-
-
-# %% Interpolate to model time step and average across depth levels
-
-def obs_2_model_timeaxis(da_obs, ds_mod):
+def obs_2_model_timeaxis(ds_obs, ds_mod):
     """
-            This Function is for matching time axis of both the insitu and model datasets:
-            obs_2_model_timeaxis function is designed to put the observation array on the model time axis.
-            This is achieved by reading the obs dataset using 
-            Parameters:
-            - fname_obs:        filename of observations
-            - time_model:       numpy array or list, corresponding time values
-            - var:              variable input by the user. should be the same in both the modeland obs netCDFs.
-
-            Returns:
-            - data_obs_model_timeaxis
+    get observations (or other) time onto the model time axis
+    One could of course use xarray's built-in interp function, which includes time averaging over predefined windows
+    but there is always the risk of not getting the observation time axis identical to the model, even if you get the same number of time-steps out
+    This function at least ensures the times line-up perfectly    
+    
+    inputs:
+        ds_obs: dataset/dataarray of the observations
+        ds_mod: dataset/dataarray of the model
+    
+    returns an xarray dataset/dataarray of the observations on the model time axis, including time averaging over each model time-step                                            
     """
-    # print("Coordinates of ds_obs:", da_obs.coords)
-            
-    ds_mod = np.squeeze(ds_mod)
-    ds_mod['time'] = ds_mod['time'].astype('datetime64[ns]')
-
-    # Interpolate onto the time axis of ds_model
-    data_obs_model_timeaxis = da_obs.interp(time=ds_mod['time'])
-        
-    # Create a new dataset by interpolating based on both time and depth
-    data_obs_model_timeaxis = np.squeeze(data_obs_model_timeaxis)
+    
     model_time = ds_mod['time']
     
-    data_obs_model_timeaxis[0].values #view the first dat in the array
+    # Compute bin edges of the model times
+    midpoints = model_time + (model_time.diff(dim="time") / 2)  # Compute midpoints
+    bin_edges = xr.concat(
+        [midpoints[0] - (model_time[1] - model_time[0]), midpoints, midpoints[-1] + (model_time[-1] - model_time[-2])],
+        dim="time"
+    )
     
-    # Here we check if the datasets (model and insitu) are the same shapes and correct them if they are not  
-    if data_obs_model_timeaxis.dims != ds_mod.dims:
-        data_obs_model_timeaxis.transpose(*(data_obs_model_timeaxis.dims))
+    # Use groupby_bins to average ds_obs values over each bin
+    ds_obs_model_timeaxis = ds_obs.groupby_bins("time", bin_edges, labels=model_time.values).mean(skipna=True)
     
-    # Here we calculate the half time step window to make the insitu data averaged at 00:00 to be averaged at 12:00 noon like the croco model
-    window_half_tstep = (model_time[1] - model_time[0]) / 2
-
-    obs_out = np.zeros_like(data_obs_model_timeaxis)
+    ds_obs_model_timeaxis = ds_obs_model_timeaxis.rename({"time_bins": "time"})
     
-    # The if statement applies to multilayered insitu data like Wirewalker data, 
-    # the else part applies to single layer or single depth station data like ATAP 
-    if "depth" in data_obs_model_timeaxis.dims:
-        for t_indx, t in enumerate(model_time):
-            model_depth = ds_mod['depth']
-            data_avg_list = []
-            for d_indx, d in enumerate(model_depth):
-                start_time = t - window_half_tstep
-                end_time = t + window_half_tstep
-                data_avg = data_obs_model_timeaxis[:,d_indx].sel(time=slice(start_time, end_time))
-                data_avg_list.append(np.nanmean(data_avg.values))
-            obs_out[t_indx] = data_avg_list
-
-    else:
-        for t_indx, t in enumerate(model_time):
-            start_time = t - window_half_tstep
-            end_time = t + window_half_tstep
-            data_avg = da_obs.sel(time=slice(start_time, end_time))
-            obs_out[t_indx] = np.nanmean(data_avg.values)
- 
-    # return data_obs_model_timeaxis
-    obs_out_xr = xr.DataArray(obs_out, dims=data_obs_model_timeaxis.dims, coords=data_obs_model_timeaxis.coords)
-    obs_out_xr = obs_out_xr.squeeze(drop=True)  # Drop extra dimensions that are not changing 
-    # h=ds_mod.h
-    return obs_out_xr#,h  #ONly bring h on ATAP
-
-
-
-# %%
+    return ds_obs_model_timeaxis
 
 def extract_lat_lon(ds):
     """
@@ -137,8 +95,8 @@ def extract_lat_lon(ds):
             - long_obs, lat_obs
         """
     try:
-        long_obs = ds.longitude.values
-        lat_obs = ds.latitude.values
+        long_obs = ds.lon.values
+        lat_obs = ds.lat.values
 
         if long_obs.size > 0 and (long_obs == [0]).any():
             raise ValueError(
@@ -173,8 +131,6 @@ def extract_lat_lon(ds):
     else:
         print("Longitude and latitude successfully retrieved.")
     return long_obs, lat_obs
-
-# %%
 
 def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, j_shifted=0, ref_date=None, lon_extract=None):
     """
@@ -409,7 +365,7 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
             long_obs = ds_obs.lon.values
             lat_obs = ds_obs.lat.values
         else:
-            long_obs,lat_obs =extract_lat_lon(ds_obs)
+            long_obs,lat_obs = extract_lat_lon(ds_obs)
             
         model_data = post.get_ts(fname, var, long_obs, lat_obs, ref_date,
                              i_shift=0, j_shift=0,

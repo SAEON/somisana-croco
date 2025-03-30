@@ -26,21 +26,8 @@ on:
 
 jobs:
   
-  # download the OGCM data we'll need to force the models
-  download_ogcm:
-    uses: ./.github/workflows/download_ogcm.yml  # Path to your reusable workflow
-    with:
-      RUNNER_NAME: mims1
-      RUN_DATE: ${{ inputs.RUN_DATE }}
-      BRANCH_REF: ${{ inputs.BRANCH_REF }}
-      OGCM: ${{ inputs.OGCM }}
-      HDAYS: 5
-      FDAYS: 5
-    secrets: inherit
-  
   # prepare croco boundary forcing for each domain
   make_bry_ini:
-    needs: [download_ogcm]
     strategy:
       matrix:
         # running as a matrix strategy allows us to prepare different domains in parallel inside a single job
@@ -59,7 +46,7 @@ jobs:
   # Run with GFS forcing 
   run_sa_west_gfs:
     needs: [make_bry_ini]
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -67,17 +54,35 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: GFS
-      FRC: ''
+      TIDE_FRC: TPXO10
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 5
+
+  postprocess_sa_west_gfs:
+    needs: [run_sa_west_gfs]
+    uses: ./.github/workflows/postprocess_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C06
+      INP: I99
+      BLK: GFS
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
 
   run_sa_southeast_gfs:
-    needs: [make_bry_ini]
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    needs: [run_sa_west_gfs]
+    uses: ./.github/workflows/run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -85,14 +90,32 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: GFS
-      FRC: ''
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
 
+  postprocess_sa_southeast_gfs:
+    needs: [run_sa_southeast_gfs]
+    uses: ./.github/workflows/postprocess_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C06
+      INP: I99
+      BLK: GFS
+      TIDE_FRC: TPXO10
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 5
+  
   # Now the SAWS forced runs
   # We only execute the SAWS forced runs if inputs.SAWS_OK == 1 i.e. if we were able to find
   # a SAWS file which was initialised not longer than 12 hrs ago. This is important, since our FDAYS parameter
@@ -100,9 +123,9 @@ jobs:
   # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
   # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
   run_sa_west_saws:
-    needs: [run_sa_west_gfs,run_sa_southeast_gfs]
+    needs: [run_sa_southeast_gfs]
     if: ${{ inputs.SAWS_OK == '1' }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -110,18 +133,37 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_west_02
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: SAWS
-      FRC: ''
+      TIDE_FRC: TPXO10
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 2.45
+
+  postprocess_sa_west_saws:
+    needs: [run_sa_west_saws]
+    if: ${{ inputs.SAWS_OK == '1' }}
+    uses: ./.github/workflows/postprocess_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_west_02
+      VERSION: v1.0
+      COMP: C06
+      INP: I99
+      BLK: SAWS
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
 
   run_sa_southeast_saws:
-    needs: [run_sa_west_gfs,run_sa_southeast_gfs]
+    needs: [run_sa_west_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
-    uses: ./.github/workflows/run_croco.yml  # Path to your reusable workflow
+    uses: ./.github/workflows/run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -129,10 +171,29 @@ jobs:
       MODEL: croco_v1.3.1
       DOMAIN: sa_southeast_01
       VERSION: v1.0
-      COMP: C04
+      COMP: C06
       INP: I99
       BLK: SAWS
-      FRC: ''
+      TIDE_FRC: TPXO10
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: 5
+      FDAYS: 2.45
+  
+  postprocess_sa_southeast_saws:
+    needs: [run_sa_southeast_saws]
+    if: ${{ inputs.SAWS_OK == '1' }}
+    uses: ./.github/workflows/postprocess_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: croco_v1.3.1
+      DOMAIN: sa_southeast_01
+      VERSION: v1.0
+      COMP: C06
+      INP: I99
+      BLK: SAWS
+      TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45

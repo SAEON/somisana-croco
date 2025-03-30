@@ -3,7 +3,7 @@ title:
 time_stepping: NTIMES   dt[sec]  NDTFAST  NINFO
                NUMTIMES     DTNUM    DTFAST     1
 S-coord: THETA_S,   THETA_B,    Hc (m)
-           5.0d0     7.0d0      200.0d0
+           7.0d0     2.0d0      200.0d0
 
 start_date:
 xxxx-xx-xx xx:xx:xx
@@ -67,7 +67,7 @@ vertical_mixing: Akv_bak, Akt_bak [m^2/sec]
                    0.d0    30*0.d0
 
 bottom_drag:     RDRG [m/s],  RDRG2,  Zob [m],  Cdb_min, Cdb_max
-                 0.0d-04      0.d-3    1.d-2     2.5d-3    2.d-2
+                 0.0d-04      0.d-3    1.d-3     1.d-4    1.d-1
 
 gamma2:
                  1.d0
@@ -266,5 +266,5 @@ psource_ncfile:   Nsrc  Isrc  Jsrc  Dsrc qbardir  Lsrc  Tsrc   runoff file name
                          35  13  1  -1   T T   20.0  15.0
 
 online:    byear  bmonth recordsperday byearend bmonthend / data path
-           NYONLINE  NMONLINE      24             2019     1
-          /home/gfearon/lustre/somisana-croco/DATASETS_CROCOTOOLS/ERA5/sa_eez_from_jenny/
+           NYONLINE  NMONLINE      24             2019     12
+          /home/gfearon/lustre/somisana-croco/DATASETS_CROCOTOOLS/ERA5/sa_eez/

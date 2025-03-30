@@ -1,0 +1,38 @@
+name: Sandbox for testing individual calleable workflows
+# (not used in th operational workflow at all)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_cli:
+    uses: ./.github/workflows/build_images.yml
+    with:
+      IMAGE_ID: cli
+
+  # Download hycom 
+  download_hycom:
+    runs-on: mims1
+    steps:
+      - name: Download HYCOM
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60
+          retry_wait_seconds: 300 
+          max_attempts: 10
+          retry_on: any
+          warning_on_retry: true
+          shell: bash
+          continue_on_error: false
+          command: |
+            docker run \
+              --user $(id -u):$(id -g) \
+              --rm \
+              -v /home/somisana/ops/main/20250317_00/downloaded_data/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_main:latest \
+              download_hycom \
+              --domain 11,36,-39,-25 \
+              --run_date '2025-03-17 00:00:00' \
+              --hdays 5 \
+              --fdays 5 \
+              --savedir '/tmp/' && echo "Download completed" || echo "Download failed"
