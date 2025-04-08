@@ -2,116 +2,28 @@ import crocotools_py.postprocess as post
 import numpy as np
 import xarray as xr
 import os,sys
-from datetime import datetime,timedelta
+from datetime import datetime
 import pandas as pd
-import matplotlib.pyplot as plt
 import matplotlib.path as mplPath
-from scipy.spatial import Delaunay
+from dask import delayed
+import dask.array as da
+from scipy.interpolate import griddata
 
-def get_tri_coef(lonold_vals, latold_vals, lonnew_vals, latnew_vals, verbose=0):
-    """
-    Compute Delaunay triangulation coefficients for xarray DataArrays.
-    
-    Inputs:
-    - lonold_vals, latold_vals: 2D numpy arrays from original xarray grids
-    - lonnew_vals, latnew_vals: 2D numpy arrays from target xarray grids
-    
-    Returns:
-    - elem: Indices of triangulation points used for interpolation
-    - coef: Interpolation coefficients
-    """
-    
-    # Flatten 2D grids into 1D arrays
-    Xp = np.array([lonold_vals.ravel(), latold_vals.ravel()]).T
-    Xc = np.array([lonnew_vals.ravel(), latnew_vals.ravel()]).T
-
-    # Compute Delaunay triangulation
-    if verbose: print("Computing Delaunay triangulation...")
-    tri = Delaunay(Xp)
-
-    # Find which triangle each new point falls into
-    simplex_indices = tri.find_simplex(Xc)
-
-    # Create a mask for points inside the triangulation
-    valid_points = simplex_indices >= 0
-
-    # Initialize empty outputs with NaNs
-    elem = np.full((Xc.shape[0], 3), -1, dtype=int)  # Default to -1 for out-of-bounds points
-    coef = np.full((Xc.shape[0], 3), np.nan)
-
-    # Process only valid points
-    if np.any(valid_points):
-        valid_Xc = Xc[valid_points]
-        valid_simplices = tri.simplices[simplex_indices[valid_points]]
-
-        points = tri.points[valid_simplices]
-        p = np.zeros((valid_Xc.shape[0], 3))
-
-        # Compute barycentric coordinates
-        for i in range(valid_Xc.shape[0]):
-            A = np.append(np.ones((3, 1)), points[i], axis=1)
-            B = np.append(1., valid_Xc[i])
-            p[i, :] = np.linalg.lstsq(A.T, B.T, rcond=None)[0]
-
-        elem[valid_points] = valid_simplices
-        coef[valid_points] = p
-
-    # Reshape results to match new grid shape
-    elem = elem.reshape(lonnew_vals.shape + (3,))
-    coef = coef.reshape(lonnew_vals.shape + (3,))
-
-    return elem, coef
-
-def horiz_interp_delaunay(lonold, latold, varold, lonnew, latnew, elem=None, coef=None):
-    """
-    Perform horizontal interpolation using Delaunay triangulation for xarray DataArray objects.
-
-    Parameters:
-    - lonold, latold: xarray.DataArray (2D) - Original longitude and latitude grids
-    - varold: xarray.DataArray (2D) - Original variable to be interpolated
-    - lonnew, latnew: xarray.DataArray (2D) - New longitude and latitude grids
-    - elem, coef: (Optional) Precomputed triangulation elements and coefficients for efficiency
-
-    Returns:
-    - varnew: xarray.DataArray (2D) - Interpolated variable on the new grid
-    - (elem, coef): Only returned when computing coefficients
-    """
-
-    # Ensure input is xarray DataArray and extract numerical values
-    lonold_vals, latold_vals, varold_vals = lonold.values, latold.values, varold.values
-    lonnew_vals, latnew_vals = lonnew.values, latnew.values
-
-    if (elem is None) | (coef is None):
-        # Compute interpolation coefficients
-        elem, coef = get_tri_coef(lonold_vals, latold_vals, lonnew_vals, latnew_vals)
-
-        # Normalize coefficients
-        coef /= np.sum(coef, axis=2, keepdims=True)
-
-        # Perform interpolation
-        varnew_vals = np.sum(coef * varold.values.ravel()[elem], axis=2)
-
-        # Return coefficients for future reuse
-        return elem, coef, xr.DataArray(varnew_vals, coords=lonnew.coords, dims=lonnew.dims, attrs=varold.attrs)
-
-    else:
-        # Use precomputed interpolation coefficients
-        varnew_vals = np.sum(coef * varold.values.ravel()[elem], axis=2)
-        return xr.DataArray(varnew_vals, coords=lonnew.coords, dims=lonnew.dims, attrs=varold.attrs)
-
-def write_attrs(info):
+def write_attrs(info,doi=None):
     attrs={
         "title"          : info['Description/Guidance'][3],
         "institution"    : info['Description/Guidance'][6],
         "source"         : "CROCO model",
         "history"        : "Created " + str(datetime.strftime(datetime.now(),"%Y-%m-%d %H:%M:%S")),
-        "reference"      : "DOI ###",
         "conventions"    : "CF-1.8",
         "author"         : info['Description/Guidance'][4],
         "contact person" : info['Description/Guidance'][5],
         "summery"        : info['Description/Guidance'][10],
         "keywords"       : info['Description/Guidance'][8],
     }
+    if doi is not None: 
+        attrs["reference"] = f"doi: {doi}"
+        
     return attrs
 
 def write_coords(ds, regrid_ver, ref_date=None):
@@ -191,8 +103,6 @@ def write_vars(ds, regrid_ver, fill_value=None, ref_date=None):
     if ref_date is None:
         ref_date = datetime(2000,1,1)
 
-    
-    
     valid_zeta = ds.zeta.where(ds.zeta.values!=fill_value)
     valid_temp = ds.temp.where(ds.temp.values!=fill_value)
     valid_salt = ds.salt.where(ds.salt.values!=fill_value)
@@ -427,23 +337,21 @@ def write_vars(ds, regrid_ver, fill_value=None, ref_date=None):
     
     return data_vars
 
+def write_cf_compliant_netCDF(file_out, ds_in, doi, ref_date, info_dir, regrid_ver):
 
-
-def write_cf_compliant_netCDF(file_out, ds_in, ref_date, info_dir, regrid_ver):
-
-    info = pd.read_excel(info_path)
+    info = pd.read_excel(info_dir)
 
     # Use a fill value to ensure Compliance
     fill_value = -9999.0
 
     ds_in = ds_in.fillna(fill_value)
-
+    
     ds = xr.Dataset(
         coords=write_coords(ds_in,regrid_ver),
         data_vars=write_vars(ds_in,regrid_ver),
-        attrs=write_attrs(info)
+        attrs=write_attrs(info,doi)
     )
-
+    
     ds.to_netcdf(file_out, format="NETCDF4")
 
     ds.close()
@@ -452,7 +360,8 @@ def write_cf_compliant_netCDF(file_out, ds_in, ref_date, info_dir, regrid_ver):
     print(f'Created: {file_out}')
     print('')
 
-def regrid1_cf_compliant(fname_in,info_path,out_dir=None,ref_date=None):
+
+def regrid1_cf_compliant(fname_in,info_dir,out_dir=None,doi=None,ref_date=None):
     
     if ref_date is None:
         ref_date = datetime(2000,1,1)
@@ -526,11 +435,27 @@ def regrid1_cf_compliant(fname_in,info_path,out_dir=None,ref_date=None):
             pass
         
         try:
-            write_cf_compliant_netCDF(fname_out, ds_out, ref_date, info_path, regrid_ver=1)
+            write_cf_compliant_netCDF(fname_out, ds_out, doi, ref_date, info_dir, regrid_ver=1)
         except Exception as e:
             print(f"Error: {e}")
 
-def regrid2_cf_compliant(fname_in,info_dir,out_dir=None,depths=None,ref_date=None):
+def regrid2_cf_compliant(fname_in,info_dir,out_dir=None,doi=None,depths=None,ref_date=None):
+    """
+    Function that takes the output of regrid-tier1 as input and
+    regrids the sigma levels to constant z levels, including the surface and bottom layers
+    output variables are the same as tier 1, only depths is now a dimension with the user specified values.
+
+    INPUTS:
+    fname_in : Path to the croco file/s that is of interest to be regrided. Can be a specific file, or a list of files or one can use a 
+    wildcard (*) to include all the files in a specific directory.  
+    out_dir  : Path to the directory to save outputs.
+    info_dir : Path to croco directory with model info (i.e. /somisana-croco/configs/sa_west_02/croco_v1.3.1/MERCATOR/)
+    depths : Depths of the horizontal slices. If not specified, depth are : 0,-5,-10,-20,-50,-75,-100,-200,-500,-1000.
+    
+    OUTPUTS:
+    Saves a netCDF file in the out_dir that is CF-complient.
+    """
+
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
             fname_in = [fname_in]
@@ -550,7 +475,7 @@ def regrid2_cf_compliant(fname_in,info_dir,out_dir=None,depths=None,ref_date=Non
 
     if ref_date is None:
         ref_date = datetime(2000,1,1)
-    
+   
     for file in fname_in:
         print('')
         print(f'Opening: {file}')
@@ -608,12 +533,12 @@ def regrid2_cf_compliant(fname_in,info_dir,out_dir=None,depths=None,ref_date=Non
             pass
         
         try:
-            write_cf_compliant_netCDF(fname_out, ds_out, ref_date, info_path, regrid_ver=2)
+            write_cf_compliant_netCDF(fname_out, ds_out, doi, ref_date, info_dir, regrid_ver=2)
         except Exception as e:
             print(f"Error: {e}")
 
 
-def regrid3_cf_compliant(fname_in,out_dir=None,spacing=None,ref_date=None):
+def regrid3_cf_compliant(fname_in,info_dir,out_dir=None,doi=None,spacing=None,ref_date=None):
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
             fname_in = [fname_in]
@@ -630,9 +555,10 @@ def regrid3_cf_compliant(fname_in,out_dir=None,spacing=None,ref_date=None):
 
     if spacing is None:
         spacing = 0.01
-
+        
     if ref_date is None:
         ref_date = datetime(2000,1,1)
+
 
     for file in fname_in:
         print('')
@@ -684,37 +610,101 @@ def regrid3_cf_compliant(fname_in,out_dir=None,spacing=None,ref_date=None):
                 else:
                     mask_out[y, x] = 0
 
-        # Here we do the horizontal interpolation
-        # Even though the horizantal interpolation is made to work for an Xarray dataset, it does not
-        # work in a loop when filling the xarray datasets because xarray is lazy!
-        # When we do the interpolation for the variables in a loop, we have to write to numpy arrays,
-        # otherwise xarray does not write the outputs properly and you end up with the incorrect values.
-        # Therefore, we write to numpy arrays, then construct the xarray dataset!
+        @delayed
+        def compute_2d_chunk(t, variable, method="nearest"):
+            return (
+                griddata(
+                    lonlat_input,
+                    np.ravel(variable[t, ::]),
+                    (lon_out_grd, lat_out_grd),
+                    method,
+                )
+                * mask_out / mask_out
+            )
+    
+        @delayed
+        def compute_3d_chunk(t, variable, n, method="nearest"):
+            return (
+                griddata(
+                    lonlat_input,
+                    np.ravel(variable[t, n, ::]),
+                    (lon_out_grd, lat_out_grd),
+                    method,
+                )
+                * mask_out / mask_out
+            )
 
-        # make empty arrays
-        zeta = np.zeros((Nt, Ny, Nx)) + np.nan
-        temp = np.zeros((Nt, Nz, Ny, Nx)) + np.nan
-        salt = np.zeros((Nt, Nz, Ny, Nx)) + np.nan
-        u = np.zeros((Nt, Nz, Ny, Nx)) + np.nan
-        v = np.zeros((Nt, Nz, Ny, Nx)) + np.nan
-
-        # here we are just interested in calculating the elem and coef arrays.
-        elem, coef, _ = horiz_interp_delaunay(ds.lon_rho, ds.lat_rho, ds.zeta[0], lon_out_grd,lat_out_grd)
 
 
-        # do the main loop to do the horizontal interpolation
-        for t in range(Nt):
-            zeta[t,:,:]=horiz_interp_delaunay(ds.lon_rho,ds.lat_rho,ds.zeta[t],lon_out_grd,lat_out_grd,elem,coef).values
-            for z in range(Nz):
-                temp[t,z,:,:] = horiz_interp_delaunay(ds.lon_rho,ds.lat_rho,ds.temp[t,z,:,:],lon_out_grd,lat_out_grd,elem,coef).values
+        # Separate lists for each time step
+        zeta_out = []
+        temp_out_time = []
+        salt_out_time = []
+        u_out_time = []
+        v_out_time = []
 
-                salt[t,z,:,:] = horiz_interp_delaunay(ds.lon_rho[:],ds.lat_rho[:],ds.salt[t,z,:,:],lon_out_grd,lat_out_grd,elem,coef).values
+        print('Interpolating the model output onto the regular horizontal output grid...')
 
-                u[t,z,:,:] = horiz_interp_delaunay(ds.lon_rho,ds.lat_rho,ds.u[t,z,:,:],lon_out_grd,lat_out_grd,elem,coef).values
+        for t in np.arange(Nt):
+            # Lists for each depth level
+            temp_out_depth = []
+            salt_out_depth = []
+            u_out_depth = []
+            v_out_depth = []
 
-                v[t,z,:,:] = horiz_interp_delaunay(ds.lon_rho,ds.lat_rho,ds.v[t,z,:,:],lon_out_grd,lat_out_grd,elem,coef).values
+            zeta_out.append(
+                da.from_delayed(
+                    compute_2d_chunk(t, ds.zeta.values),
+                    shape=(Nlat, Nlon),
+                    dtype=float,
+                )
+            )
 
-        # Construvt the dataset which contains the regridded variables
+            for n in np.arange(Nz):
+                temp_out_depth.append(
+                    da.from_delayed(
+                        compute_3d_chunk(t, ds.temp.values, n),
+                        shape=(Nlat, Nlon),
+                        dtype=float,
+                    )
+                )
+                salt_out_depth.append(
+                    da.from_delayed(
+                        compute_3d_chunk(t, ds.salt.values, n),
+                        shape=(Nlat, Nlon),
+                        dtype=float,
+                    )
+                )
+                u_out_depth.append(
+                    da.from_delayed(
+                        compute_3d_chunk(t, ds.u.values, n),
+                        shape=(Nlat, Nlon),
+                        dtype=float,
+                    )
+                )
+                v_out_depth.append(
+                    da.from_delayed(
+                        compute_3d_chunk(t, ds.v.values, n),
+                        shape=(Nlat, Nlon),
+                        dtype=float,
+                    )
+                )
+    
+    
+            # Stack the depth dimension and append to the time list
+            temp_out_time.append(da.stack(temp_out_depth, axis=0))
+            salt_out_time.append(da.stack(salt_out_depth, axis=0))
+            u_out_time.append(da.stack(u_out_depth, axis=0))
+            v_out_time.append(da.stack(v_out_depth, axis=0))
+    
+        # Stack the time dimension
+        zeta_out = da.stack(zeta_out, axis=0)
+        temp_out = da.stack(temp_out_time, axis=0)
+        salt_out = da.stack(salt_out_time, axis=0)
+        u_out = da.stack(u_out_time, axis=0)
+        v_out = da.stack(v_out_time, axis=0)
+
+        # Construct the dataset which contains the regridded variables       
         ds_out = xr.Dataset(
             coords={
                 "time" : ds.time.values,
@@ -723,11 +713,11 @@ def regrid3_cf_compliant(fname_in,out_dir=None,spacing=None,ref_date=None):
                 "longitude" : lon_out
             },
             data_vars={
-                "zeta": (["time", "latitude", "longitude"], zeta),
-                "temp": (["time", "depths", "latitude", "longitude"], temp),
-                "salt": (["time", "depths", "latitude", "longitude"], salt),
-                "u": (["time", "depths", "latitude", "longitude"], u),
-                "v": (["time", "depths", "latitude", "longitude"], v)
+                "zeta": (["time", "latitude", "longitude"], zeta_out.compute()),
+                "temp": (["time", "depths", "latitude", "longitude"], temp_out.compute()),
+                "salt": (["time", "depths", "latitude", "longitude"], salt_out.compute()),
+                "u": (["time", "depths", "latitude", "longitude"], u_out.compute()),
+                "v": (["time", "depths", "latitude", "longitude"], v_out.compute())
             }
         )
 
@@ -737,30 +727,31 @@ def regrid3_cf_compliant(fname_in,out_dir=None,spacing=None,ref_date=None):
             os.makedirs(os.path.dirname(out_dir), exist_ok=True)
         else:
             os.makedirs(os.path.dirname(out_dir), exist_ok=True)
-
+        
         fname_out = os.path.abspath(os.path.join(os.path.dirname(out_dir), os.path.basename(file)[:18] + '_regrid3_CF_COMPLIANT.nc'))
-
+        
         if os.path.exists(fname_out):
             os.remove(fname_out)
         else:
             pass
-
+            
         try:
-            write_cf_compliant_netCDF(fname_out, ds_out, ref_date, info_path, regrid_ver=3)
+            write_cf_compliant_netCDF(fname_out, ds_out, doi, ref_date, info_dir, regrid_ver=3)
         except Exception as e:
             print(f"Error: {e}")
 
         ds.close()
         ds_out.close()
 
+
 if __name__ == "__main__":
     fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_Y2009M09.nc'
-    info_path = '/home/g.rautenbach/Scripts/metadata/SAEON ODP metadata sheet - ISO19115 (data provider).xlsx'
-    regrid1_cf_compliant(fname_in,info_path)
+    info_dir = '/home/g.rautenbach/Scripts/metadata/SAEON ODP metadata sheet - ISO19115 (data provider).xlsx'
+    doi = '10.15493/SOMISANA.26032025'
+    regrid1_cf_compliant(fname_in,info_dir,doi)
 
     fname_in = '/home/g.rautenbach/Data/models/sa_southeast/regrid_tier_1/croco_avg_Y2009M09_regrid1_CF_COMPLIANT.nc'
-    info_path = '/home/g.rautenbach/Scripts/metadata/SAEON ODP metadata sheet - ISO19115 (data provider).xlsx'
-    regrid2_cf_compliant(fname_in,info_path)
+    regrid2_cf_compliant(fname_in,info_dir,doi)
 
     fname_in = '/home/g.rautenbach/Data/models/sa_southeast/regrid_tier_2/croco_avg_Y2009M09_regrid2_CF_COMPLIANT.nc'
-    ds_out = regrid3_cf_compliant(fname_in)
+    ds_out = regrid3_cf_compliant(fname_in,info_dir,doi)
