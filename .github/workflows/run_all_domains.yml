@@ -42,11 +42,11 @@ jobs:
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
-  
+
   # Run with GFS forcing 
   run_sa_west_gfs:
     needs: [make_bry_ini]
-    uses: ./.github/workflows/run_croco.yml
+    uses: ./.github/workflows/retry_run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -64,7 +64,7 @@ jobs:
 
   postprocess_sa_west_gfs:
     needs: [run_sa_west_gfs]
-    uses: ./.github/workflows/postprocess_croco.yml
+    uses: ./.github/workflows/retry_postprocess_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -82,7 +82,7 @@ jobs:
 
   run_sa_southeast_gfs:
     needs: [run_sa_west_gfs]
-    uses: ./.github/workflows/run_croco.yml
+    uses: ./.github/workflows/retry_run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -100,7 +100,7 @@ jobs:
 
   postprocess_sa_southeast_gfs:
     needs: [run_sa_southeast_gfs]
-    uses: ./.github/workflows/postprocess_croco.yml
+    uses: ./.github/workflows/retry_postprocess_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -125,7 +125,7 @@ jobs:
   run_sa_west_saws:
     needs: [run_sa_southeast_gfs]
     if: ${{ inputs.SAWS_OK == '1' }}
-    uses: ./.github/workflows/run_croco.yml
+    uses: ./.github/workflows/retry_run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -144,7 +144,7 @@ jobs:
   postprocess_sa_west_saws:
     needs: [run_sa_west_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
-    uses: ./.github/workflows/postprocess_croco.yml
+    uses: ./.github/workflows/retry_postprocess_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -163,7 +163,7 @@ jobs:
   run_sa_southeast_saws:
     needs: [run_sa_west_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
-    uses: ./.github/workflows/run_croco.yml
+    uses: ./.github/workflows/retry_run_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -182,7 +182,7 @@ jobs:
   postprocess_sa_southeast_saws:
     needs: [run_sa_southeast_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
-    uses: ./.github/workflows/postprocess_croco.yml
+    uses: ./.github/workflows/retry_postprocess_croco.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}

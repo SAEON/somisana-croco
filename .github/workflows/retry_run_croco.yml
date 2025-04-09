@@ -1,0 +1,113 @@
+name: Retry Wrapper for run_croco
+
+on:
+  workflow_call:
+    inputs:
+      RUN_DATE:
+        description: 'time of T0 of the model run in format YYYYMMDD_HH - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      BRANCH_REF:
+        description: 'what branch are we on - defined dynamically in run_ops.yml'
+        required: true
+        type: string
+      RUNNER_NAME:
+        description: 'specify the runner name to determine what server we are running on'
+        required: true
+        type: string
+      MODEL:
+        description: 'directory name used to define the model e.g.croco_v1.3.1'
+        required: true
+        type: string
+      DOMAIN:
+        description: 'directory name used to define the domain e.g. sa_west_02'
+        required: true
+        type: string
+      VERSION:
+        description: 'the version used in the archiving directory e.g. v1.0 (this is intended to handle major changes to the model in the forecasts)'
+        required: true
+        type: string
+      COMP:
+        description: 'directory corresponding to the CROCO compilation options e.g. C01'
+        required: true
+        type: string
+      INP:
+        description: 'directory corresponding to the CROCO run-time input options e.g. I01'
+        required: true
+        type: string
+      BLK:
+        description: 'name of bulk forcing e.g. GFS'
+        required: true
+        type: string
+      TIDE_FRC:
+        description: 'name of tidal forcing e.g. TPXO10'
+        required: true
+        type: string
+      OGCM:
+        description: 'name of boundary forcing e.g. MERCATOR'
+        required: true
+        type: string
+      HDAYS:
+        description: 'number of hindcast days (integer) from T0'
+        required: true
+        type: string
+      FDAYS:
+        description: 'number of forecast days (integer) from T0'
+        required: true
+        type: string
+
+jobs:
+  attempt1:
+    uses: ./.github/workflows/run_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: ${{ inputs.MODEL }}
+      DOMAIN: ${{ inputs.DOMAIN }}
+      VERSION: ${{ inputs.VERSION }}
+      COMP: ${{ inputs.COMP }}
+      INP: ${{ inputs.INP }}
+      BLK: ${{ inputs.BLK }}
+      TIDE_FRC: ${{ inputs.TIDE_FRC }}
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: ${{ inputs.HDAYS }}
+      FDAYS: ${{ inputs.FDAYS }}
+
+  attempt2:
+    if: ${{ needs.attempt1.result != 'success' }}
+    needs: attempt1
+    uses: ./.github/workflows/run_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: ${{ inputs.MODEL }} 
+      DOMAIN: ${{ inputs.DOMAIN }}
+      VERSION: ${{ inputs.VERSION }} 
+      COMP: ${{ inputs.COMP }}
+      INP: ${{ inputs.INP }}
+      BLK: ${{ inputs.BLK }}
+      TIDE_FRC: ${{ inputs.TIDE_FRC }}
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: ${{ inputs.HDAYS }}
+      FDAYS: ${{ inputs.FDAYS }}
+      
+  attempt3:
+    if: ${{ needs.attempt2.result != 'success' }}
+    needs: attempt2
+    uses: ./.github/workflows/run_croco.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+      MODEL: ${{ inputs.MODEL }} 
+      DOMAIN: ${{ inputs.DOMAIN }}
+      VERSION: ${{ inputs.VERSION }} 
+      COMP: ${{ inputs.COMP }}
+      INP: ${{ inputs.INP }}
+      BLK: ${{ inputs.BLK }}
+      TIDE_FRC: ${{ inputs.TIDE_FRC }}
+      OGCM: ${{ inputs.OGCM }}
+      HDAYS: ${{ inputs.HDAYS }}
+      FDAYS: ${{ inputs.FDAYS }}
