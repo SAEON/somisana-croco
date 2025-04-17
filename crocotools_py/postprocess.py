@@ -3,6 +3,15 @@ from datetime import timedelta
 import xarray as xr
 from datetime import timedelta, datetime
 from glob import glob
+from crocotools_py.update_attrs import *
+
+def change_attrs(vars,da,var_str):
+    meta = getattr(vars, var_str)
+    da.attrs['long_name'] = meta.long_name
+    da.attrs['units'] = meta.units
+    da.attrs['standard_name'] = meta.standard_name
+    
+    return da
 
 def u2rho(u):
     """
@@ -742,6 +751,9 @@ def get_var(fname,var_str,
         Retruns an xarray dataset object of the requested data
     '''
     
+    # We load in out variable class to assign CF-Compliant attributes
+    vars = ModelOriginalVectors()
+
     print('extracting the data from croco file(s) - ' + var_str)
 
     # Get an xarray dataset for the grid
@@ -814,12 +826,10 @@ def get_var(fname,var_str,
                                                  'eta_rho': ds['eta_rho'].values, 
                                                  'xi_rho': ds['xi_rho'].values},
                                   dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
-            
-        # add back the original variable attributes
-        da_rho.attrs = da.attrs
-        # update da to be the data on the rho grid
-        da = da_rho.copy()
-    
+
+       
+        da = change_attrs(vars,da_rho,var_str)
+   
     # Do vertical interpolations if needed
     if not var_is_2d and not isinstance(level,slice):
         if np.mean(np.atleast_1d(level)) < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
@@ -843,33 +853,33 @@ def get_var(fname,var_str,
     else:
         mask=1
 
+
     mask[np.isnan(mask)]=0
 
-    da_masked=da.squeeze() * mask / mask
-    # masking throws away the attributes, so let's keep those
-    da_masked.attrs = da.attrs
-    da = da_masked.copy()
-    
-    zeta_masked = zeta.squeeze() * mask / mask
-    zeta_masked.attrs = zeta.attrs
-    zeta = zeta_masked.copy()
+    da = da.squeeze() * mask
+    da = change_attrs(vars,da,var_str)
+   
+    zeta = zeta.squeeze() * mask
+    zeta = change_attrs(vars,zeta,'zeta')
 
-    h_masked = h.squeeze() * mask / mask
-    h_masked.attrs = h.attrs
-    h = h_masked.copy()
+    h = h.squeeze() * mask
+    h = change_attrs(vars,h,'h')
 
     da_mask = xr.DataArray(mask,
                            coords={'eta_rho': ds['eta_rho'].values,
                                    'xi_rho' : ds['xi_rho'].values},
                            dims=['eta_rho', 'xi_rho'])
 
+    mask = change_attrs(vars,da_mask,'mask')
+
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels')
-        depths_da = get_depths(ds).squeeze() * mask / mask
-        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':da_mask})
+        da_depth = get_depths(ds).squeeze() * mask
+        depth = change_attrs(vars,da_depth,'depth')
+        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depth.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':mask})
     else:
-        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':da_mask})
+        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':mask})
     
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
@@ -909,7 +919,8 @@ def get_uv(fname,
     returns xarray dataarrays for both u and v data
     
     '''
-    
+    vars = ModelRotatedVectors()
+
     u=get_var(fname,var_u,
               grdname=grdname,
               time=time,
@@ -957,55 +968,10 @@ def get_uv(fname,
     # although 'angle' is 2D, numpy and xarray are clever enough for this to work even if u_rho and v_rho are 3D or 4D
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
-    
-    # add attributes for u_out, v_out - now east,north components
-    # Define a dictionary of the attributes for potential variables
-    attributes = {
-        'u': {
-            'long_name': 'Eastward component of baroclinic velocity',
-            'units': 'meters per second',
-            'standard_name': 'baroclinic_eastward_sea_water_velocity'
-        },
-        'sustr': {
-            'long_name': 'Eastward component of surface stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'surface_eastward_stress'
-        },
-        'bustr': {
-            'long_name': 'Eastward component of bottom stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'bottom_eastward_stress'
-        },
-        'ubar': {
-            'long_name': 'Eastward component of barotropic velocity',
-            'units': 'meters per second',
-            'standard_name': 'barotropic_eastward_sea_water_velocity'
-        },
-        'v': {
-            'long_name': 'Northward component of baroclinic velocity',
-            'units': 'meters per second',
-            'standard_name': 'baroclinic_northward_sea_water_velocity'
-        },
-        'svstr': {
-            'long_name': 'Northward component of surface stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'surface_northward_stress'
-        },
-        'bvstr': {
-            'long_name': 'Northward component of bottom stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'bottom_northward_stress'
-        },
-        'vbar': {
-            'long_name': 'Northward component of barotropic velocity',
-            'units': 'meters per second',
-            'standard_name': 'barotropic_northward_sea_water_velocity'
-        }
-    }
-    
-    u_out.attrs = attributes[var_u]
-    v_out.attrs = attributes[var_v]
-    
+
+    u_out = change_attrs(vars,u_out,var_u)
+    v_out = change_attrs(vars,v_out,var_v)
+
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
     # then overwrite var_u and add var_v
@@ -1504,3 +1470,8 @@ def get_section(fname,
         ds.to_netcdf(nc_out)
     
     return ds
+
+#if __name__ == "__main__":
+#    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
+#    ref_date=datetime(2000,1,1)
+#    ds_temp = get_var(file, "temp", ref_date=ref_date)
