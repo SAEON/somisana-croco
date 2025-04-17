@@ -91,7 +91,7 @@ jobs:
 
   attempt_2:
     needs: [attempt_1, check_files_after_1]
-    if: ${{ needs.attempt_1.result == 'failure' || needs.check_files_after_1.outputs.exists == 'false'
+    if: ${{ needs.attempt_1.result == 'failure' || needs.check_files_after_1.outputs.exists == 'false' }}
     uses: ./.github/workflows/download_hycom.yml
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
