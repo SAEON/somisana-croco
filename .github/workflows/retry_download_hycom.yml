@@ -90,7 +90,7 @@ jobs:
       exists: ${{ steps.check.outputs.exists }}
 
   attempt_2:
-    needs: [attempt_1, check_files_after_1]
+    needs: [setup,attempt_1, check_files_after_1]
     if: ${{ needs.attempt_1.result == 'failure' || needs.check_files_after_1.outputs.exists == 'false' }}
     uses: ./.github/workflows/download_hycom.yml
     with:
@@ -118,7 +118,7 @@ jobs:
       exists: ${{ steps.check.outputs.exists }}
 
   attempt_3:
-    needs: [attempt_2,check_files_after_2]
+    needs: [setup,attempt_2,check_files_after_2]
     if: ${{ needs.attempt_2.result == 'failure' || needs.check_files_after_2.outputs.exists == 'false' }}
     uses: ./.github/workflows/download_hycom.yml
     with:
