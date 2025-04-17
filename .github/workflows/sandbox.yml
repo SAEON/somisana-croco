@@ -39,6 +39,13 @@ jobs:
           fi
           echo "value=$run_date" >> $GITHUB_OUTPUT
 
+      # Dynamically set the branch ref to the currently executing branch
+      - name: Set the BRANCH_REF
+        id: BRANCH_REF
+        run: |
+          echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+
+
   download_hycom:
     needs: [envs, build_cli]
     uses: ./.github/workflows/retry_download_hycom.yml
