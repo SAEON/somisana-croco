@@ -1,7 +1,7 @@
 name: retry_hycom_download
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       RUN_DATE:
         required: true
