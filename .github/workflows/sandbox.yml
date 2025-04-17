@@ -5,34 +5,48 @@ on:
   workflow_dispatch:
 
 jobs:
+  # note that the jobs aren't executed in the order they are written below
+  # they are executed in the order depending on the 'needs' attribute of each job
   build_cli:
     uses: ./.github/workflows/build_images.yml
     with:
       IMAGE_ID: cli
-
-  # Download hycom 
-  download_hycom:
-    runs-on: mims1
+ 
+  # set some environment variables
+  envs:
+    runs-on: ubuntu-latest
+    outputs:
+      BRANCH_REF: ${{ steps.BRANCH_REF.outputs.value }}
+      RUN_DATE: ${{ steps.calculate_date.outputs.value }}
     steps:
-      - name: Download HYCOM
-        uses: nick-fields/retry@master
-        with:
-          timeout_minutes: 60
-          retry_wait_seconds: 300 
-          max_attempts: 10
-          retry_on: any
-          warning_on_retry: true
-          shell: bash
-          continue_on_error: false
-          command: |
-            docker run \
-              --user $(id -u):$(id -g) \
-              --rm \
-              -v /home/somisana/ops/main/20250317_00/downloaded_data/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_main:latest \
-              download_hycom \
-              --domain 11,36,-39,-25 \
-              --run_date '2025-03-17 00:00:00' \
-              --hdays 5 \
-              --fdays 5 \
-              --savedir '/tmp/' && echo "Download completed" || echo "Download failed"
+      - name: Calculate run_date
+        id: calculate_date
+        run: | 
+          input_run_date=${{ github.event.inputs.run_date || 'unspecified' }}
+          if [[ ${{ github.event_name }} == 'workflow_dispatch' && ${input_run_date} != 'unspecified' ]]
+          then
+            run_date="${{ github.event.inputs.run_date }}"  # Use provided run_date
+          else
+            # automatically set the run_date by finding an appropriate time stamp in the past (corresponding to our cron schedule)
+            # Get the current time in UTC
+            current_time=$(date -u +'%Y%m%d_%H')
+            # Extract the hour and calculate the nearest multiple of 12 in the past (as per our cron schedule above)
+            hour=$(echo ${current_time:9:2} | awk '{print int($1 - ($1%12))}')
+            # Correct hour formatting (ensure leading zero)
+            hour=$(printf "%02d" $hour)
+            # Assemble the run_date
+            run_date=$(echo ${current_time:0:8}_${hour})
+          fi
+          echo "value=$run_date" >> $GITHUB_OUTPUT
+
+  download_hycom:
+    needs: [envs, build_cli]
+    uses: ./.github/workflows/retry_download_hycom.yml
+    with:
+      RUNNER_NAME: mims1
+      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+      HDAYS: 5
+      FDAYS: 5
+    secrets: inherit
+

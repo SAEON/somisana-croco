@@ -1,0 +1,130 @@
+name: retry_hycom_download
+
+on:
+  workflow_dispatch:
+    inputs:
+      RUN_DATE:
+        required: true
+        type: string
+      BRANCH_REF:
+        required: true
+        type: string
+      HDAYS:
+        required: true
+        type: string
+      FDAYS:
+        required: true
+        type: string
+      RUNNER_NAME:
+        required: true
+        type: string
+
+env:
+  DATA_DIR: /home/somisana/ops/${{ inputs.BRANCH_REF }}/${{ inputs.RUN_DATE }}/downloaded_data
+
+jobs:
+  check_files:
+    runs-on: ubuntu-latest
+    outputs:
+      OGCM_OK: ${{ steps.check.outputs.OGCM_OK }}
+      OGCM_FILES: ${{ steps.check.outputs.OGCM_FILES }}
+    steps:
+      - name: Check if HYCOM file exists
+        id: check
+        run: |
+          FILE=HYCOM_${{ inputs.RUN_DATE }}.nc
+          if [[ -f "${{ env.DATA_DIR }}/HYCOM/$FILE" ]]; then
+            echo "OGCM_OK=1" >> $GITHUB_OUTPUT
+            echo "OGCM_FILES=OK" >> $GITHUB_OUTPUT
+          else
+            echo "OGCM_OK=0" >> $GITHUB_OUTPUT
+            echo "OGCM_FILES=MISSING" >> $GITHUB_OUTPUT
+          fi
+
+  setup:
+    needs: check_files
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
+    outputs:
+      RUN_DATE_FORMATTED: ${{ steps.format_date.outputs.value }}
+    steps:
+      - name: Format RUN_DATE
+        id: format_date
+        run: |
+          run_date=${{ inputs.RUN_DATE }}
+          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+
+      - name: Create HYCOM directory (only if not exists)
+        run: |
+          mkdir -p ${{ env.DATA_DIR }}/HYCOM
+          chown -R :runners ${{ env.DATA_DIR }}/HYCOM
+          chmod -R 774 ${{ env.DATA_DIR }}/HYCOM
+
+  attempt_1:
+    needs: setup
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
+    uses: ./.github/workflows/download_hycom.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      RUN_DATE_FORMATTED: ${{ needs.setup.outputs.RUN_DATE_FORMATTED }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      HDAYS: ${{ inputs.HDAYS }}
+      FDAYS: ${{ inputs.FDAYS }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+
+  check_files_after_1:
+    needs: attempt_1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if file exists after attempt 1
+        id: check
+        run: |
+          FILE="HYCOM_${{ inputs.RUN_DATE }}.nc"
+          if [[ -f "${{ env.DATA_DIR }}/HYCOM/$FILE" ]]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+
+  attempt_2:
+    needs: [attempt_1, check_files_after_1]
+    if: ${{ needs.attempt_1.result == 'failure' || needs.check_files_after_1.outputs.exists == 'false'
+    uses: ./.github/workflows/download_hycom.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      RUN_DATE_FORMATTED: ${{ needs.setup.outputs.RUN_DATE_FORMATTED }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      HDAYS: ${{ inputs.HDAYS }}
+      FDAYS: ${{ inputs.FDAYS }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
+
+  check_files_after_2:
+    needs: attempt_2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if file exists after attempt 2
+        id: check
+        run: |
+          FILE="HYCOM_${{ inputs.RUN_DATE }}.nc"
+          if [[ -f "${{ env.DATA_DIR }}/HYCOM/$FILE" ]]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+
+  attempt_3:
+    needs: [attempt_2,check_files_after_2]
+    if: ${{ needs.attempt_2.result == 'failure' || needs.check_files_after_2.outputs.exists == 'false' }}
+    uses: ./.github/workflows/download_hycom.yml
+    with:
+      RUN_DATE: ${{ inputs.RUN_DATE }}
+      RUN_DATE_FORMATTED: ${{ needs.setup.outputs.RUN_DATE_FORMATTED }}
+      BRANCH_REF: ${{ inputs.BRANCH_REF }}
+      HDAYS: ${{ inputs.HDAYS }}
+      FDAYS: ${{ inputs.FDAYS }}
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}

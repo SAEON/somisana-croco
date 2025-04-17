@@ -116,7 +116,7 @@ jobs:
 
   download_hycom:
     needs: [envs, build_cli]
-    uses: ./.github/workflows/download_hycom.yml
+    uses: ./.github/workflows/retry_download_hycom.yml
     with:
       RUNNER_NAME: mims1
       RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
