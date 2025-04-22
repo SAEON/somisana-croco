@@ -11,7 +11,8 @@ from scipy.interpolate import griddata
 from glob import glob
 
 def write_attrs(info=None, doi_link=None):
-    attrs = {   
+    attrs = {
+        "title": "Model Outputs Regridded Tier 1",
         "source": "CROCO model",
         "history": "Created " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
         "conventions": "CF-1.8",
@@ -55,6 +56,9 @@ def regrid_tier1(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None):
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     
     '''
+
+    os.makedirs(os.path.dirname(fname_out), exist_ok=True)
+
     if ref_date is None:
         ref_date = datetime(2000,1,1,0,0)
     
@@ -80,8 +84,6 @@ def regrid_tier1(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None):
         
         print("Extracting the model output variables we need")
     
-        # using the get_var() function so masking is included
-        # returns datasets
         ds_temp = post.get_var(file, "temp", ref_date=ref_date)
         ds_salt = post.get_var(file, "salt", ref_date=ref_date)
         ds_uv   = post.get_uv(file,ref_date=ref_date)
@@ -103,7 +105,7 @@ def regrid_tier1(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None):
             
             coords={
                    
-                "time"    : ((pd.to_datetime(ds_temp.time.values) - ref_date) / pd.Timedelta(hours=1)).astype(np.float32),
+                "time"    : ds_temp.time,
                 "s_rho"   : ds_temp.s_rho,
                 "eta_rho" : ds_temp.eta_rho,
                 "xi_rho"  : ds_temp.xi_rho,
@@ -114,22 +116,18 @@ def regrid_tier1(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None):
 
             )
         
-        ds_out["time"].attrs = {
-                "long_name": "Time",
-                "units": f"hours since {ref_date}",
-                "standard_name":"time",
-                "calender":"standard"
-                }
+        ds_out["time"].attrs = {"long_name": "Time","standard_name":"time"}
 
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file[:-3]) + '_t1.nc'))
+        fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file)[:-3] + '_t1.nc'))
         
-        if os.path.exists(fname_out):
-            os.remove(fname_out)
-        else:
-            pass
-
         try:
-            ds_out.to_netcdf(fname_out,format="NETCDF4")
+            ds_out.to_netcdf(fname_out,format="NETCDF4",encoding={"time":{
+                                                                            "units": f"hours since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                                                                            "calendar": "standard",
+                                                                            "dtype": "float32"
+                                                                            }
+                                                                  }
+                             )
             ds_out.close()
             print('')
             print(f'Created: {fname_out}')
@@ -137,7 +135,7 @@ def regrid_tier1(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None):
         except Exception as e:
             print(f"Error: {e}")
 
-def regrid_tier2(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None, depths=None):
+def regrid_tier2(fname_in,fname_out,info_file=None, doi_link=None,ref_date=None,depths=None):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -147,14 +145,15 @@ def regrid_tier2(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None, 
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True).
     fname_out : path to output tier 2 netcdf file (required = True).
-    info_file : path to CF-Compliance spreadsheet (required = False).
-    doi_link  : doi link in string (required = False).
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1).
     depths    : list of depths to extract (in metres, negative down, required = False).
                 If not specified depth = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000].
                 A value of 0 denotes the surface and a value of -99999 denotes the bottom layer.
 
     '''
+
+    os.makedirs(os.path.dirname(fname_out), exist_ok=True)
+
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
             fname_in = [fname_in]
@@ -237,7 +236,13 @@ def regrid_tier2(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None, 
             pass
 
         try:
-            ds_out.to_netcdf(fname_out, format="NETCDF4")
+            ds_out.to_netcdf(fname_out, format="NETCDF4",encoding={"time":{
+                                                                            "units": f"hours since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                                                                            "calendar": "standard",
+                                                                            "dtype": "float32"
+                                                                            }
+                                                                  }
+                             )
             ds_out.close()
             print('')
             print(f'Created: {fname_out}')
@@ -351,7 +356,7 @@ def regrid_tier3(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None,s
                     (lon_out_grd, lat_out_grd),
                     method,
                 )
-                * mask_out
+                * mask_out / mask_out
             )
     
         @delayed
@@ -363,7 +368,7 @@ def regrid_tier3(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None,s
                     (lon_out_grd, lat_out_grd),
                     method,
                 )
-                * mask_out
+                * mask_out / mask_out
             )
 
         # Separate lists for each time step
@@ -470,7 +475,13 @@ def regrid_tier3(fname_in,fname_out,info_file=None,doi_link=None,ref_date=None,s
             pass
 
         try:
-            ds_out.to_netcdf(fname_out, format="NETCDF4")
+            ds_out.to_netcdf(fname_out, format="NETCDF4",encoding={"time":{
+                                                                "units": f"hours since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                                                                "calendar": "standard",
+                                                                "dtype": "float32"
+                                                                }
+                                                      }
+                             )
             ds_out.close()
             print('')
             print(f'Created: {fname_out}')
@@ -483,10 +494,10 @@ if __name__ == "__main__":
     fname_out = '/home/g.rautenbach/Data/models/sa_southeast/'
     info_dir = '/home/g.rautenbach/Scripts/metadata/SAEON ODP metadata sheet - ISO19115 (data provider).xlsx'
     doi = '10.15493/SOMISANA.26032025'
-    regrid_tier1(fname_in,fname_out,info_dir,doi)
+    ref_date=datetime(2000,1,1)
 
+    #regrid_tier1(fname_in,fname_out,info_dir,doi,ref_date=ref_date)
     #fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_t1.nc'
-    #regrid_tier2(fname_in,fname_out,info_dir,doi)
-
-    #fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_t2.nc'
-    #regrid_tier3(fname_in,fname_out,info_dir,doi)
+    #regrid_tier2(fname_in,fname_out,info_dir,doi,ref_date=ref_date,depths=[0,10,20])
+    fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_t2.nc'
+    regrid_tier3(fname_in,fname_out,info_dir,doi,ref_date=ref_date,spacing=0.02)
