@@ -187,47 +187,56 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     time_range = slice(start_date, end_date)
     
     variable=None
+    download_false=False
+    timeout = 3600
+    start_time = time.time()
+    while download_false is not True:
+        try:
+            print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
+            ds = xr.open_dataset(metadata[var]["url"],
+                                 drop_variables=vars_to_drop,
+                                 decode_times=False,
+                                 engine="netcdf4").sel(lat=lat_range,
+                                                       lon=lon_range)
 
-    try:
-        print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
-        ds = xr.open_dataset(metadata[var]["url"],
-                             drop_variables=vars_to_drop,
-                             decode_times=False,
-                             engine="netcdf4").sel(lat=lat_range,
-                                                   lon=lon_range)
+            if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
+                
+            variable = ds[metadata[var]["vars"][0]]
 
-        if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
+            if variable.ndim == 4: variable = variable.sel(depth=depth_range)
+
+            if run_date.hour == 0:
+                variable = variable.resample(time='1D').mean()
+            elif run_date.hour == 12:
+                variable = variable.resample(time='1D',offset='12h').mean()
+            else:
+                print(f'Invalid run date: {run_date.hour}')
+
+            variable = variable.sel(time=time_range)
             
-        variable = ds[metadata[var]["vars"][0]]
+            save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
+            variable.to_netcdf(save_path, 'w')
+            ds.close()
+            
+            if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
+                print(f'File written to {save_path} and validation was successful.')
+                download_false=True
+            
+            else:
+                print(f"File {save_path} validation failed and retrying the download")
 
-        if variable.ndim == 4: variable = variable.sel(depth=depth_range)
+            if time.time() - start_time > timeout:
+                print("Timeout reached.")
+                break
 
-        if run_date.hour == 0:
-            variable = variable.resample(time='1D').mean()
-        elif run_date.hour == 12:
-            variable = variable.resample(time='1D',offset='12h').mean()
-        else:
-            print(f'Strange run date: {run_date.hour}')
+            time.sleep(5)  # Wait a bit before checking again
 
-        variable = variable.sel(time=time_range)
-        
-        save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
-        variable.to_netcdf(save_path, 'w')
-        ds.close()
-        
-        if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
-            print('')
-            print(f'File written to {save_path} and validation was successful.')
-        
-        else:
-            print(f"File {save_path} validation failed and retrying the download")
+        except Exception as e:
+            print(f"Error: {e}")
 
-    except Exception as e:
-        print(f"Error: {e}")
-
-    finally:
-        # Explicitly delete large variables to free up memory
-        del variable
+        finally:
+            # Explicitly delete large variables to free up memory
+            del variable
 
 def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
     var_metadata = update_var_list(variables)
@@ -271,9 +280,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     # We add an additional day to ensure that it exceeds the model run time. 
     hdays, fdays = hdays+1, fdays+1
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
-    print(start_date)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
-    print(end_date)
 
     if workers is None:
         workers=1
@@ -289,7 +296,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     
     # Find missing variables
     missing_vars = [var for var in variables if var not in existing_vars]
-
+    
     for file_path in files:
         var_name = os.path.basename(file_path).replace('hycom_', '').replace('.nc', '')
         if var_name in variables:
@@ -307,14 +314,12 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     # Print missing variables list
     print(f'Missing variables to download: {missing_vars}')
     print('')
-    
     server_url = "http://tds.hycom.org/thredds/dodsC/"
-    
     if is_server_reachable(server_url):
         try:
             if download_vars_parallel(missing_vars, domain, depths, run_date, hdays, fdays, workers, save_dir):
                 nvar_files = len([os.path.basename(f).replace('hycom_', '').replace('.nc', '') for f in glob(os.path.join(save_dir, 'hycom_*.nc'))])
-                if nvar_files==5:
+                if nvar_files==len(variables):
                     print('')
                     print("All variables are present. Creating the combined netCDF file.")
                     ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
@@ -326,21 +331,15 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
                     print('')
                     print('created: ', outfile)
                     print('')
-                else:
-                    print('')
-                    print('HYCOM download failed.')
-                    print('')
-
         except Exception as e:
             print('')
-            print(f"Failed to open dataset: {e}")
-    
+            print(f"Failed to download dataset: {e}")
     else:
         print('')
         print(f"Server {server_url} is not reachable.")
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2025-04-22 00:00:00')
+    run_date = pd.to_datetime('2025-04-23 00:00:00')
     hdays = 5
     fdays = 5
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
