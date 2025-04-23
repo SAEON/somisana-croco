@@ -13,6 +13,7 @@ jobs:
   # Download hycom 
   download_hycom:
     runs-on: mims1
+    shell: bash
     needs: [build_cli]
     steps:
       - name: Download HYCOM
