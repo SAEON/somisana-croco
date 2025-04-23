@@ -19,7 +19,7 @@ jobs:
           docker run \
             --user $(id -u):$(id -g) \
             --rm \
-            -v /home/somisana/ops/main/20250317_00/downloaded_data/HYCOM:/tmp \
+            -v /home/somisana/ops/testing-hycom-download/20250423_00/downloaded_data/HYCOM:/tmp \
             ghcr.io/saeon/somisana-croco_cli_main:latest \
             download_hycom \
             --domain 23,24,-37,-36 \
