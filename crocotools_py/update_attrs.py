@@ -50,5 +50,3 @@ class ModelOriginalVectors:
         self.svstr  = VariableMetadata('Wind stress on sea surface in y direction', 'N m2', 'surface_downward_y_stress')
         self.bvstr  = VariableMetadata('Stress due to sea water on sea floor in y direction', 'N m2', 'stress_due_to_sea_water_on_sea_floor_in_y_direction')
         self.vbar   = VariableMetadata('Barotropic velocity of sea water in y direction', 'm s-1', 'barotropic_sea_water_y_velocity')
-
-
