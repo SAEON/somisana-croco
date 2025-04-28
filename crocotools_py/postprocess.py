@@ -1,6 +1,7 @@
 import numpy as np
 from datetime import timedelta
 import xarray as xr
+import dask
 from datetime import timedelta, datetime
 from glob import glob
 
@@ -829,11 +830,17 @@ def get_var(fname,var_str,
     
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
-        print('computing depths of sigma levels')
+        print('computing depths of sigma levels...')
         depths_da = get_depths(ds).squeeze()
-        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+        print('making the output dataset for get_var()...')
+        var_data, depth_data, zeta_data, h_data = dask.compute(da, depths_da, zeta, h)
+        ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data})
+        #ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
     else:
-        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+        print('making the output dataset for get_var()...')
+        var_data, zeta_data, h_data = dask.compute(da, zeta, h)
+        ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data})
+        #ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
     
     # remove singleton dimensions
     ds_out = ds_out.squeeze()

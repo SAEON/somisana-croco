@@ -284,10 +284,11 @@ def plot(fname,
     # get the data we want to 
     print('extracting the data to plot')
     ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,ref_date=ref_date)
-    lon = ds['lon_rho'].values
-    lat = ds['lat_rho'].values
     da_var=ds[var]
     time_var=np.atleast_1d(ds.time.values)
+    lon = post.get_grd_var(grdname,'lon_rho').values
+    lat = post.get_grd_var(grdname,'lat_rho').values
+    
     
     if len(time_var)==1:
         data_plt=da_var.values
