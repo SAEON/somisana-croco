@@ -262,8 +262,8 @@ psource:   Nsrc  Isrc  Jsrc  Dsrc  Qbar [m3/s]    Lsrc        Tsrc
 psource_ncfile:   Nsrc  Isrc  Jsrc  Dsrc qbardir  Lsrc  Tsrc   runoff file name
                                   croco_runoff.nc
                  2
-                         24  35  0  -1   T T   20.0  15.0
-                         35  13  1  -1   T T   20.0  15.0
+                         24  35  1  -1   T T   20.0  0.0
+                         35  13  1  -1   T T   20.0  0.0
 
 online:    byear  bmonth recordsperday byearend bmonthend / data path
            NYONLINE   NMONLINE     24     2024     3
