@@ -257,6 +257,7 @@ def plot(fname,
         skip_uv = None, # only every nth vector will get plotted (automatically defined in None)
         num_vectors=25, # baseline number of vectors in each direction, given an aspect ratio of 1
         skip_time = 1, # every nth time-step will be animated (if provided)
+        add_time_label = True,
         isobaths = None, # optional list of isobaths to overlay over plot
         jpg_out=None, # full path to jpg output
         gif_out=None, # full path to gif output
@@ -284,10 +285,11 @@ def plot(fname,
     # get the data we want to 
     print('extracting the data to plot')
     ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,ref_date=ref_date)
-    lon = ds['lon_rho'].values
-    lat = ds['lat_rho'].values
     da_var=ds[var]
     time_var=np.atleast_1d(ds.time.values)
+    lon = post.get_grd_var(grdname,'lon_rho').values
+    lat = post.get_grd_var(grdname,'lat_rho').values
+    
     
     if len(time_var)==1:
         data_plt=da_var.values
@@ -320,18 +322,18 @@ def plot(fname,
         dl = 0.5 * (lon_max - lon_min + lat_max - lat_min) * factor
         extents=[lon_min-dl,lon_max+dl,lat_min-dl,lat_max+dl]
     
-    if ax is None:
-        # Create a Mercator projection
-        proj = ccrs.Mercator()
-        # Convert the corner points of the extents to Mercator projected coordinates
-        # this is needed to compute the plot aspect ratio properly
-        x0, y0 = proj.transform_point(extents[0], extents[2], ccrs.PlateCarree())  # lon0, lat0
-        x1, y1 = proj.transform_point(extents[1], extents[3], ccrs.PlateCarree())  # lon1, lat1
-        # Calculate the width and height of the domain in projected coordinates
-        width = abs(x1 - x0)
-        height = abs(y1 - y0)
-        aspect_ratio = width/height
-        
+    # Create a Mercator projection
+    proj = ccrs.Mercator()
+    # Convert the corner points of the extents to Mercator projected coordinates
+    # this is needed to compute the plot aspect ratio properly
+    x0, y0 = proj.transform_point(extents[0], extents[2], ccrs.PlateCarree())  # lon0, lat0
+    x1, y1 = proj.transform_point(extents[1], extents[3], ccrs.PlateCarree())  # lon1, lat1
+    # Calculate the width and height of the domain in projected coordinates
+    width = abs(x1 - x0)
+    height = abs(y1 - y0)
+    aspect_ratio = width/height
+    
+    if ax is None:        
         # set figsize according to the plot aspect ratio
         if aspect_ratio>1:
             fig_width = 6*aspect_ratio
@@ -359,7 +361,8 @@ def plot(fname,
              )
     
     # add a time label
-    time_plt = plot_time(ax,time_var[0])
+    if add_time_label:
+        time_plt = plot_time(ax,time_var[0])
     
     if add_cbar:
         if cbar_label is None:
@@ -416,8 +419,9 @@ def plot(fname,
             var_i=da_var.isel(time=i).values
             
             # update the figure for this time-step
-            time_plt.set_text(pd.Timestamp(time_var[i]).strftime('%Y-%m-%d %H:%M'))
-            var_plt.set_array(var_i.ravel())
+            if add_time_label:
+                time_plt.set_text(pd.Timestamp(time_var[i]).strftime('%Y-%m-%d %H:%M'))
+                var_plt.set_array(var_i.ravel())
             
             if add_vectors:
                 u_i=da_u.isel(time=i).values
