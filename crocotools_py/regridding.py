@@ -12,7 +12,7 @@ from glob import glob
 
 def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
     '''
-    tier 1 regridding of a raw CROCO output file:
+    tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
         -> rotates u/v to be east/north components instead of grid-aligned components
         -> adds a 'depth' variable providing the depths of each sigma level at each time-step
