@@ -161,6 +161,8 @@ def download_glorys(usrname,
     """
     Download month by month of daily MERCATOR 1/12 deg reanalysis data (GLORYS)
     
+    This is actually superseded by download_monthly()
+    
     """
    
     if start_date >= datetime(2021,7,1):
@@ -189,23 +191,65 @@ def download_glorys(usrname,
         downloadDate=downloadDate+timedelta(days=32) # 32 days ensures we get to the next month
         downloadDate=datetime(downloadDate.year, downloadDate.month, 1) # set the first day of the month
 
+def download_cmems_monthly(usrname, 
+                            passwd,
+                            dataset,
+                            domain,
+                            start_date,
+                            end_date,
+                            varlist, 
+                            depths, 
+                            outputDir):
+ 
+    """
+    Download month by month for any dataset on CMEMS
+    
+    """
+   
+    os.makedirs(outputDir,exist_ok=True)
+
+    downloadDate=start_date
+    
+    while downloadDate <= end_date:
+        
+        print(downloadDate.strftime('%Y-%m'))
+        
+        # start and end days of this month
+        start_date_download=datetime(downloadDate.year,downloadDate.month,1)
+        day_end = calendar.monthrange(downloadDate.year, downloadDate.month)[1]
+        end_date_download=datetime(downloadDate.year,downloadDate.month,day_end)
+    
+        # output filename
+        fname = str(downloadDate.strftime('%Y_%m'))+'.nc'
+        
+        download_cmems(usrname, passwd, dataset, varlist, start_date_download, end_date_download, domain, depths, outputDir, fname)
+            
+        downloadDate=downloadDate+timedelta(days=32) # 32 days ensures we get to the next month
+        downloadDate=datetime(downloadDate.year, downloadDate.month, 1) # set the first day of the month
+
+#TODO I think we should create a download_cmems_ops function which works in a similar
+# way to download_mercator (with the hdays and fdays option) but is generic for any cmems dataset
+# A lot of the code in download_mercator can be moved to the cli function, which would call the 
+# generic download_cmems_ops function
+
 if __name__ == "__main__":
     
     # Mercator glorys product
-    #
+    #:wq
     # your CMEMS username and password
-    usrname = 'your_usrname'
-    passwd = 'your_passwd'
+    usrname = 'gfearon'
+    passwd = 'Isabella_2015'
     # spatial extent
-    domain = [23, 34, -37, -31]
-    outputDir='./sa_southeast/'
+    domain = [47, 59, 22, 32]
+    outputDir='~/CMEMS_GLO_BGC_L4/'
     # variables to extract
-    varList = ['so', 'thetao', 'zos', 'uo', 'vo']
+    varList = ['CHL', 'CHL_uncertainty', 'flags']
     # min and max depths
-    depths = [0.493, 5727.918]
+    depths = [0, 0]
     # time to download
-    start_date = datetime(1993,1,1)
-    end_date = datetime(2019,12,1)
-    download_glorys(usrname, passwd, domain, start_date, end_date, varList, depths, outputDir)
+    start_date = datetime(2014,1,1)
+    end_date = datetime(2014,1,1)
+    dataset='cmems_obs-oc_glo_bgc-plankton_my_l4-gapfree-multi-4km_P1D'
+    download_cmems_monthly(usrname, passwd, dataset, domain, start_date, end_date, varList, depths, outputDir)
     
     

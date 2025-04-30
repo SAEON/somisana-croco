@@ -15,7 +15,7 @@ from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_a
 from crocotools_py.postprocess import get_ts_multivar
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
-from download.cmems import download_glorys, download_mercator
+from download.cmems import download_glorys, download_cmems_monthly, download_mercator
 from download.gfs import download_gfs_atm
 from download.hycom import download_hycom
 
@@ -37,6 +37,12 @@ def parse_int(value):
 def parse_list(value):
     return [float(x) for x in value.split(',')]
 
+def parse_list_str(value):
+    if value is None or value == 'None':
+        return None
+    else:
+        return [x.strip() for x in value.split(',')]
+    
 def parse_bool(s: str) -> bool:
     try:
         return {'true':True, 'false':False}[s.lower()]
@@ -49,6 +55,33 @@ def main():
     subparsers = parser.add_subparsers(dest='function', help='Select the function to run')
 
     # just keep adding new subparsers for each new function as we go...
+
+    # -----------------------
+    # download_cmems_monthly
+    # -----------------------
+    # This actually supersedes download_glorys since it is a general version of the same function
+    parser_download_cmems_monthly = subparsers.add_parser('download_cmems_monthly', 
+            help='Download month by month for any dataset from CMEMS')
+    parser_download_cmems_monthly.add_argument('--usrname', required=True, type=str, help='Copernicus username')
+    parser_download_cmems_monthly.add_argument('--passwd', required=True, help='Copernicus password')
+    parser_download_cmems_monthly.add_argument('--dataset', required=True, help='Copernicus dataset ID')
+    parser_download_cmems_monthly.add_argument('--domain', type=parse_list, 
+                        default=[23, 34, -37, -31],
+                        help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
+    parser_download_cmems_monthly.add_argument('--start_date', required=True, type=parse_datetime, 
+                        help='start time in format "YYYY-MM-DD HH:MM:SS"')
+    parser_download_cmems_monthly.add_argument('--end_date', required=True, type=parse_datetime, 
+                        help='end time in format "YYYY-MM-DD HH:MM:SS"')
+    parser_download_cmems_monthly.add_argument('--varList', type=parse_list_str, 
+                        default=['so', 'thetao', 'zos', 'uo', 'vo'],
+                        help='comma separated list of variables to download e.g. "so,thetao,zos,uo,vo"')
+    parser_download_cmems_monthly.add_argument('--depths', type=parse_list, 
+                        default=[0.493, 5727.918],
+                        help='comma separated list of depth extent to download (positive down). For all depths use "0.493,5727.918"')
+    parser_download_cmems_monthly.add_argument('--outputDir', required=True, help='Directory to save files')
+    def download_cmems_monthly_handler(args):
+        download_cmems_monthly(args.usrname, args.passwd, args.dataset, args.domain, args.start_date,args.end_date,args.varList, args.depths, args.outputDir)
+    parser_download_cmems_monthly.set_defaults(func=download_cmems_monthly_handler)
 
     # ----------------
     # download_glorys
@@ -118,6 +151,7 @@ def main():
     def download_gfs_atm_handler(args):
         download_gfs_atm(args.domain, args.run_date, args.hdays, args.fdays, args.outputDir)
     parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler) 
+    
     # -------------------
     # download_hycom
     # -------------------

@@ -1,6 +1,7 @@
 import numpy as np
 from datetime import timedelta
 import xarray as xr
+import dask
 from datetime import timedelta, datetime
 from glob import glob
 from crocotools_py.update_attrs import *
@@ -226,91 +227,76 @@ def csf(sc, theta_s, theta_b):
 
 def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
     """
+    Vectorised version of z_levels, accepts zeta with shape (T, M, L) and returns
+    z with shape (T, N, M, L).
+    """
+
+    """
     this provides a 3D grid of the depths of the sigma levels
     h = 2D bathymetry of your grid
-    zeta = zeta at particular timestep that you are interested in
+    zeta = zeta at particular timestep or also accepts zeta with shape (T, M, L) 
     theta_s = surface stretching parameter
     theta_b = bottom stretching parameter
     hc = critical depth
     N = number of sigma levels
     type = 'w' or 'rho'
     vtransform = 1 (OLD) or 2 (NEW)
+    
+    returns
+    z with shape (T, N, M, L).
 
-    this is adapted (by J.Veitch - Feb 2022) from zlevs.m in roms_tools (by P. Penven)
+    this is adapted (by J.Veitch and G.Fearon - Feb 2022, Mar 2025) from zlevs.m in roms_tools (by P. Penven)
     """
 
-    [M, L] = np.shape(h)
+    if zeta.ndim == 2:
+        # Add time dimension if missing
+        zeta = zeta[None, :, :]
 
-    sc_r = np.zeros((N, 1))
-    Cs_r = np.zeros((N, 1))
-    sc_w = np.zeros((N + 1, 1))
-    Cs_w = np.zeros((N + 1, 1))
+    T, M, L = zeta.shape
 
+    # Stretching coordinates
     if vtransform == 2:
         ds = 1 / N
-
         if type == "w":
-            sc_r[0, 0] = -1.0
-            sc_w[N, 0] = 0
-            Cs_w[0, 0] = -1.0
-            Cs_w[N, 0] = 0
-
-            sc_w[1:-1, 0] = ds * (np.arange(1, N, 1) - N)
-
-            Cs_w = csf(sc_w, theta_s, theta_b)
-            N = N + 1
+            sc = np.linspace(-1.0, 0.0, N + 1)
+            Cs = csf(sc, theta_s, theta_b)
+            N += 1
         else:
-            sc = ds * (np.arange(1, N + 1, 1) - N - 0.5)
-            Cs_r = csf(sc, theta_s, theta_b)
-            sc_r = sc
-
+            sc = ds * (np.arange(1, N + 1) - N - 0.5)
+            Cs = csf(sc, theta_s, theta_b)
     else:
+        if type == "w":
+            sc = (np.arange(0, N + 1) - N) / N
+            N += 1
+        else:
+            sc = (np.arange(1, N + 1) - N - 0.5) / N
         cff1 = 1.0 / np.sinh(theta_s)
         cff2 = 0.5 / np.tanh(0.5 * theta_s)
-
-        if type == "w":
-            sc = (np.arange(0, N + 1, 1) - N) / N
-            N = N + 1
-        else:
-            sc = (np.arange(1, N + 1, 1) - N - 0.5) / N
-
-        Cs = (1.0 - theta_b) * cff1 * np.sinh(theta_s * sc) + theta_b * (
+        Cs = (1 - theta_b) * cff1 * np.sinh(theta_s * sc) + theta_b * (
             cff2 * np.tanh(theta_s * (sc + 0.5)) - 0.5
         )
 
-    h[h == 0] = 1e-2
-    Dcrit = 0.01
-    zeta[zeta < (Dcrit - h)] = Dcrit - h[zeta < (Dcrit - h)]
-    hinv = 1 / h
+    # Safety check
+    h = np.where(h == 0, 1e-2, h)  # avoid divide-by-zero
+    zeta = np.maximum(zeta, 0.01 - h[None, :, :])  # ensure zeta >= Dcrit - h
 
-    z = np.zeros((N, M, L))
+    # Broadcast h to match zeta
+    h_bcast = h[None, :, :]  # shape (1, M, L)
 
     if vtransform == 2:
-        if type == "w":
-            cff1 = Cs_w
-            cff2 = sc_w + 1
-            sc = sc_w
-        else:
-            cff1 = Cs_r
-            cff2 = sc_r + 1
-            sc = sc_r
-        h2 = h + hc
-        cff = hc * sc
-        h2inv = 1 / h2
+        h2 = h_bcast + hc
+        h2inv = 1.0 / h2
+        cff = hc * sc[:, None, None] + Cs[:, None, None] * h_bcast
 
-        for k in np.arange(N, dtype=int):
-            z0 = cff[k] + cff1[k] * h
-            z[k, :, :] = z0 * h / (h2) + zeta * (1.0 + z0 * h2inv)
+        z = cff * h_bcast / h2 + zeta[:, None, :, :] * (1.0 + cff * h2inv)
     else:
-        cff1 = Cs
-        cff2 = sc + 1
-        cff = hc * (sc - Cs)
-        cff2 = sc + 1
-        for k in np.arange(N, dtype=int):
-            z0 = cff[k] + cff1[k] * h
-            z[k, :, :] = z0 + zeta * (1.0 + z0 * hinv)
+        hinv = 1.0 / h_bcast
+        cff = hc * (sc[:, None, None] - Cs[:, None, None])
+        z = cff + Cs[:, None, None] * h_bcast + zeta[:, None, :, :] * (
+            1.0 + (cff + Cs[:, None, None] * h_bcast) * hinv
+        )
 
-    return z
+    return z  # shape (T, N, M, L)
 
 def hlev_xarray(var, z, depth):
     """
@@ -489,12 +475,7 @@ def get_depths(ds):
     if not vtransform == 1 and not vtransform == 2:
         raise Exception("Unexpected value for vtransform (" + vtransform + ")")
 
-    T,M,L = np.shape(ssh)
-    depth_rho = np.zeros((T,N,M,L))
-    for x in np.arange(T):
-        depth_rho[x, :, :, :] = z_levels(
-            h, ssh[x, :, :], theta_s, theta_b, hc, N, type_coordinate, vtransform
-        )
+    depth_rho = z_levels(h, ssh, theta_s, theta_b, hc, N, type_coordinate, vtransform)
     
     # depth_rho = np.squeeze(depth_rho)
     
@@ -768,7 +749,7 @@ def get_var(fname,var_str,
         ds = get_ds(fname,var_str)
     
     # get the time as a list of datetimes
-    time_dt = get_time(fname, ref_date)
+    time_dt = get_time(ds, ref_date)
     ds = ds.assign_coords(time=time_dt)
     
     # for each of the input dimensions we check the format of the input 
@@ -874,12 +855,15 @@ def get_var(fname,var_str,
 
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
-        print('computing depths of sigma levels')
-        da_depth = get_depths(ds).squeeze() * mask
-        depth = change_attrs(vars,da_depth,'depth')
-        ds_out = xr.Dataset({var_str: da.compute(), 'depth': depth.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':mask})
+        print('computing depths of sigma levels...')
+        depths_da = get_depths(ds).squeeze() * mask
+        print('making the output dataset for get_var()...')
+        var_data, depth_data, zeta_data, h_data = dask.compute(da, depths_da, zeta, h)
+        ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data})
     else:
-        ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute(), 'mask':mask})
+        print('making the output dataset for get_var()...')
+        var_data, zeta_data, h_data = dask.compute(da, zeta, h)
+        ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data})
     
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
