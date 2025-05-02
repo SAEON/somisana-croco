@@ -24,7 +24,12 @@ def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     doi_link  : doi link in string (required = False)
     '''
-
+    
+    # fname_out must be dir_out throughout!
+    # Apply to regrid tier 2 and tier 3
+    # and also change inputs to cli
+    # and consequently calls to cli in .github/workflows/postprocess_croco.yml
+    
     os.makedirs(os.path.dirname(fname_out), exist_ok=True) # WON'T BE NEEDED
 
     if ref_date is None:
@@ -94,6 +99,9 @@ def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
 
         # CHANGE THIS - now dir_out
         # os.path.basename(file)[:-3] won't work for file names like *.nc.1
+        # file_split = file.split('.')
+        # fname_out = os.path.abspath(dir_out,file_split[0],'_t1',file_split[1:])
+        # Apply this approach to tier 2 and tier 3
         fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file)[:-3] + '_t1.nc'))
         
         try:
