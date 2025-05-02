@@ -859,11 +859,11 @@ def get_var(fname,var_str,
         depths_da = get_depths(ds).squeeze() * mask
         print('making the output dataset for get_var()...')
         var_data, depth_data, zeta_data, h_data = dask.compute(da, depths_da, zeta, h)
-        ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data})
+        ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
     else:
         print('making the output dataset for get_var()...')
         var_data, zeta_data, h_data = dask.compute(da, zeta, h)
-        ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data})
+        ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
     
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
