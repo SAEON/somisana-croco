@@ -265,22 +265,22 @@ def main():
     parser_regrid_tier1 = subparsers.add_parser('regrid_tier1', 
             help='tier 1 regridding of a raw CROCO output file: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> adds a depth variable providing the depths of each sigma level at each time-step')
     parser_regrid_tier1.add_argument('--fname', required=True, type=str, help='input native CROCO filename')
-    parser_regrid_tier1.add_argument('--fname_out', required=True, help='tier 1 output filename')
+    parser_regrid_tier1.add_argument('--dir_out', required=True, help='tier 1 output directory')
     parser_regrid_tier1.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
     parser_regrid_tier1.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     def regrid_tier1_handler(args):
-        regrid_tier1(args.fname, args.fname_out, args.ref_date, args.doi_link)
+        regrid_tier1(args.fname, args.dir_out, args.ref_date, args.doi_link)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
     
     # --------------
     # regrid_tier2
     # --------------
     parser_regrid_tier2 = subparsers.add_parser('regrid_tier2', 
-            help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
+            help='tier 2 regridding of a raw CROCO output file: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> regrids the sigma levels to the user defined constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input native CROCO filename')
-    parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
+    parser_regrid_tier2.add_argument('--dir_out', required=True, help='tier 2 output directory')
     parser_regrid_tier2.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
@@ -289,25 +289,25 @@ def main():
                          default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],  
                          help='list of depths to extract (in metres, negative down)')
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.fname_out, args.ref_date, args.doi_link, depths = args.depths)
+        regrid_tier2(args.fname, args.dir_out, args.ref_date, args.doi_link, depths = args.depths)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------
     # regrid_tier3
     # --------------
     parser_regrid_tier3 = subparsers.add_parser('regrid_tier3', 
-            help='tier 3 regridding of a CROCO output: takes the output of regrid-tier3 as input and regrids the horizontal grid to be regular with a specified grid spacing. Output variables are the same as tier 1 and 2, only horizontal grid is now rectilinear with hz dimensions of longitude,latitude i.e. horizontal grid is no longer curvilinear. The extents of the rectilinear grid are automatically determined using the curvilinear grid extents.')    
+            help='tier 3 regridding of a CROCO output: takes the output of regrid-tier2 as input and regrids the horizontal grid to a regular grid with a specified grid spacing. Output variables are the same as tier 1 and 2, only horizontal grid is now rectilinear with hz dimensions of longitude,latitude i.e. horizontal grid is no longer curvilinear. The extents of the rectilinear grid are automatically determined using the curvilinear grid extents.')
     parser_regrid_tier3.add_argument('--fname', required=True, type=str, help='input regridded tier2 filename')
-    parser_regrid_tier3.add_argument('--fname_out', required=True, help='tier 3 output filename')
+    parser_regrid_tier3.add_argument('--dir_out', required=True, help='tier 3 output directory')
     parser_regrid_tier3.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
+                        default=datetime(2000,1,1,0,0,0),
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
     parser_regrid_tier3.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier3.add_argument('--spacing', type=str,
-                         default='0.01', 
+                         default='0.01',
                          help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
     def regrid_tier3_handler(args):
-        regrid_tier3(args.fname, args.fname_out, args.ref_date, args.doi_link, spacing=args.spacing)
+        regrid_tier3(args.fname, args.dir_out, args.ref_date, args.doi_link, spacing=args.spacing)
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
     # ----------------

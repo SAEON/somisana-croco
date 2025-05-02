@@ -9,8 +9,12 @@ from dask import delayed
 import dask.array as da
 from scipy.interpolate import griddata
 from glob import glob
+import subprocess
+import dask
+import dask.array as da
+import re
 
-def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
+def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -20,18 +24,10 @@ def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
     Parameters
     ----------
     fname_in  : path to input CROCO file(s). Can include wildcards *. (required = True) 
-    fname_out : path to output tier 1 netcdf file (required = True)
+    dir_out   : path to output directory (required = True)
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     doi_link  : doi link in string (required = False)
     '''
-    
-    # fname_out must be dir_out throughout!
-    # Apply to regrid tier 2 and tier 3
-    # and also change inputs to cli
-    # and consequently calls to cli in .github/workflows/postprocess_croco.yml
-    
-    os.makedirs(os.path.dirname(fname_out), exist_ok=True) # WON'T BE NEEDED
-
     if ref_date is None:
         ref_date = datetime(2000,1,1,0,0)
     
@@ -53,73 +49,48 @@ def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
     for file in fname_in:
         print('')
         print('Opening: ', file)
-        print('')
-        
         print("Extracting the model output variables we need")
     
         ds_temp = post.get_var(file, "temp", ref_date=ref_date)
         ds_salt = post.get_var(file, "salt", ref_date=ref_date)
         ds_uv   = post.get_uv(file,ref_date=ref_date)
+       
+        ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
         
-        ds_out = xr.Dataset(
-                coords={
-                   
-                    "time"    : ds_temp.time,
-                    "s_rho"   : ds_temp.s_rho,
-                    "eta_rho" : ds_temp.eta_rho,
-                    "xi_rho"  : ds_temp.xi_rho,
+        ds_all.attrs["title"] = "Model Outputs Regridded Tier 1"
+        ds_all.attrs["source"] = "CROCO Model"
+        ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+        ds_all.attrs["conventions"] = "CF-1.8"
+        if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-                    }, 
-                data_vars={
-
-                    "lon_rho" : ds_temp.lon_rho,
-                    "lat_rho" : ds_temp.lat_rho,
-                    "h"       : ds_temp.h,
-                    "mask"    : ds_temp.mask,
-                    "zeta"    : ds_temp.zeta,
-                    "depth"   : ds_temp.depth,
-                    "temp"    : ds_temp.temp,
-                    "salt"    : ds_salt.salt,
-                    "u"       : ds_uv.u,
-                    "v"       : ds_uv.v
-                    
-                    },
-                attrs = {
-                    "title": "Model Outputs Regridded Tier 1",
-                    "source": "CROCO model",
-                    "history": "Created " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
-                    "conventions": "CF-1.8",
+        encoding = {
+                "zeta": {"dtype": "float32"},
+                "temp": {"dtype": "float32"},
+                "salt": {"dtype": "float32"},
+                "u": {"dtype": "float32"},
+                "v": {"dtype": "float32"},
+                "depth": {"dtype": "float32"},
+                "h": {"dtype": "float32"},
+                "lon_rho": {"dtype": "float32"},
+                "lat_rho": {"dtype": "float32"},
+                "time": {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                         "calendar": "standard",
+                         "dtype": "i4"},
                 }
-            )
+       
+        parts = os.path.split(file)[1].split('.')
+
+        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t1.' + ".".join(parts[1:])))
         
-        if doi_link is not None: ds_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
-
-
-        ds_out["time"].attrs = {"long_name": "Time","standard_name":"time"}
-
-        # CHANGE THIS - now dir_out
-        # os.path.basename(file)[:-3] won't work for file names like *.nc.1
-        # file_split = file.split('.')
-        # fname_out = os.path.abspath(dir_out,file_split[0],'_t1',file_split[1:])
-        # Apply this approach to tier 2 and tier 3
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file)[:-3] + '_t1.nc'))
+        ds_all.to_netcdf(fname_out, encoding=encoding, mode="w")
         
-        try:
-            ds_out.to_netcdf(fname_out,format="NETCDF4",encoding={"time":{
-                                                                            "units": f"hours since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
-                                                                            "calendar": "standard",
-                                                                            "dtype": "float32"
-                                                                            }
-                                                                  }
-                             )
-            ds_out.close()
-            print('')
-            print(f'Created: {fname_out}')
-            print('')
-        except Exception as e:
-            print(f"Error: {e}")
+        subprocess.call(["chmod", "-R", "775", fname_out])
+        
+        ds_all.close()
 
-def regrid_tier2(fname_in,fname_out, ref_date=None, doi_link=None, depths=None):
+        print(f'Created: {fname_out}')
+
+def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -128,15 +99,13 @@ def regrid_tier2(fname_in,fname_out, ref_date=None, doi_link=None, depths=None):
     Parameters
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True).
-    fname_out : path to output tier 2 netcdf file (required = True).
+    dir_out   : path to output directory (required = True).
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1).
     depths    : list of depths to extract (in metres, negative down, required = False).
                 If not specified depth = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000].
                 A value of 0 denotes the surface and a value of -99999 denotes the bottom layer.
     doi_link  : doi link in string (required = False)
     '''
-
-    os.makedirs(os.path.dirname(fname_out), exist_ok=True)
 
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
@@ -161,83 +130,46 @@ def regrid_tier2(fname_in,fname_out, ref_date=None, doi_link=None, depths=None):
     for file in fname_in:
         print('')
         print(f'Opening: {file}')
-        print('')
+        print("Extracting the model output variables we need")
     
-        ds = xr.open_dataset(file)
-
-        # Create an empty dataset with NaNs
-        ds_out = xr.Dataset(
-                coords={
-
-                    "time"    : ds.time,
-                    "depth"  : np.array(depths),
-                    "eta_rho" : ds.eta_rho,
-                    "xi_rho"  : ds.xi_rho
-
-                    },
-                data_vars={
-
-                    "lon_rho" : ds.lon_rho,
-                    "lat_rho" : ds.lat_rho,
-                    "h"       : ds.h,
-                    "mask"    : ds.mask,
-                    "zeta"    : ds.zeta,
-                    "temp"    : (["time", "depth", "eta_rho", "xi_rho"], np.full((np.size(ds.time), np.size(depths), np.size(ds.eta_rho),np.size(ds.xi_rho)), np.nan)),
-                    "salt"    : (["time", "depth", "eta_rho", "xi_rho"], np.full((np.size(ds.time), np.size(depths), np.size(ds.eta_rho),np.size(ds.xi_rho)), np.nan)),
-                    "u"       : (["time", "depth", "eta_rho", "xi_rho"], np.full((np.size(ds.time), np.size(depths), np.size(ds.eta_rho),np.size(ds.xi_rho)), np.nan)),
-                    "v"       : (["time", "depth", "eta_rho", "xi_rho"], np.full((np.size(ds.time), np.size(depths), np.size(ds.eta_rho),np.size(ds.xi_rho)), np.nan))
-
-                    },
-                attrs = {
-
-                    "title": "Model Outputs Regridded Tier 2",
-                    "source": "CROCO model",
-                    "history": "Created " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
-                    "conventions": "CF-1.8",
-
-                    }
-                )
+        ds_temp = post.get_var(file, "temp", ref_date=ref_date, level=depths)
+        ds_salt = post.get_var(file, "salt", ref_date=ref_date, level=depths)
+        ds_uv = post.get_uv(file, ref_date=ref_date, level=depths)
         
-        if doi_link is not None: ds_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
-
-        print("Doing the vertical interpolation to constant depth levels")
-        print('')
-        for i,d in enumerate(depths):
-            print(f"Depth = {d} m")
-            ds_out["temp"][:, i, :, :] = post.hlev_xarray(ds.temp, ds.depth, d)
-            ds_out["salt"][:, i, :, :] = post.hlev_xarray(ds.salt, ds.depth, d)
-            ds_out["u"][:, i, :, :]    = post.hlev_xarray(ds.u   , ds.depth, d)
-            ds_out["v"][:, i, :, :]    = post.hlev_xarray(ds.v   , ds.depth, d)
+        ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
         
-        ds_out["temp"].attrs = ds.temp.attrs
-        ds_out["salt"].attrs = ds.salt.attrs
-        ds_out["u"].attrs = ds.u.attrs
-        ds_out["v"].attrs = ds.v.attrs
-        ds_out["depth"].attrs = {"long_name": "Fixed depth levels","units": "m","standard_name": "depth"}
+        ds_all.attrs["title"] = "Model Outputs Regridded Tier 2"
+        ds_all.attrs["source"] = "CROCO Model"
+        ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+        ds_all.attrs["conventions"] = "CF-1.8"
+        if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file)[:-6] + '_t2.nc'))
+        encoding = {
+                "zeta": {"dtype": "float32"},
+                "temp": {"dtype": "float32"},
+                "salt": {"dtype": "float32"},
+                "u": {"dtype": "float32"},
+                "v": {"dtype": "float32"},
+                "depth": {"dtype": "float32"},
+                "h": {"dtype": "float32"},
+                "lon_rho": {"dtype": "float32"},
+                "lat_rho": {"dtype": "float32"},
+                "time": {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                         "calendar": "standard",
+                         "dtype": "i4"},
+                }
 
-        if os.path.exists(fname_out):
-            os.remove(fname_out)
-        else:
-            pass
+        parts = os.path.split(file)[1].split('.')
 
-        try:
-            ds_out.to_netcdf(fname_out, format="NETCDF4",encoding={"time":{
-                                                                            "units": f"hours since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
-                                                                            "calendar": "standard",
-                                                                            "dtype": "float32"
-                                                                            }
-                                                                  }
-                             )
-            ds_out.close()
-            print('')
-            print(f'Created: {fname_out}')
-            print('')
-        except Exception as e:
-            print(f"Error: {e}")
+        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t2.' + ".".join(parts[1:])))
+        
+        ds_all.to_netcdf(fname_out, encoding=encoding, mode="w")
+        
+        subprocess.call(["chmod", "-R", "775", fname_out])
+        
+        print(f'Created: {fname_out}')
 
-def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None):
+def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
     '''
     tier 3 regridding of a CROCO output:
       -> takes the output of regrid-tier2 as input and
@@ -250,7 +182,7 @@ def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None
     Parameters
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True)
-    fname_out : path to output tier 3 netcdf file (required = True)
+    dir_out   : path to output directory (required = True)
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     spacing   : constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output (type: str or float). 
                 If None, the default is 0.01.
@@ -285,13 +217,14 @@ def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None
     for file in fname_in:
         print('')
         print(f'Opening: {file}')
-        print('')
+        print("Extracting the tier 2 re-gridded model output")
 
         ds = xr.open_dataset(file)
         Nt, Nz = np.shape(ds.temp[:,:,0,0].values)
         lon_rho_1d = np.ravel(ds.lon_rho.values)
         lat_rho_1d = np.ravel(ds.lat_rho.values)
-
+        
+        print("Generating the regular horizontal output grid")
         # input for griddata function later
         lonlat_input = np.array([lon_rho_1d, lat_rho_1d]).T
 
@@ -331,6 +264,8 @@ def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None
                     mask_out[y, x] = 1
                 else:
                     mask_out[y, x] = 0
+        
+        print("Interpolating the model output onto the regular horizontal output grid")
 
         @delayed
         def compute_2d_chunk(t, variable, method="nearest"):
@@ -362,8 +297,6 @@ def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None
         salt_out_time = []
         u_out_time = []
         v_out_time = []
-
-        print('Interpolating the model output onto the regular horizontal output grid...')
 
         for t in np.arange(Nt):
             # Lists for each depth level
@@ -422,79 +355,122 @@ def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None
         salt_out = da.stack(salt_out_time, axis=0)
         u_out = da.stack(u_out_time, axis=0)
         v_out = da.stack(v_out_time, axis=0)
-
-        # Construct the dataset which contains the regridded variables       
-        ds_out = xr.Dataset(
-            coords={
-
-                "time" : ds.time,
-                "depth": ds.depth,
-                "latitude" : lat_out,
-                "longitude" : lon_out            
-                
-                },
+        
+        # Create new xarray dataset with selected variables
+        print("Generating dataset")
+        data_out = xr.Dataset(
             data_vars={
+                "zeta": xr.Variable(
+                    ["time", "latitude", "longitude"],
+                    zeta_out,
+                    ds.zeta.attrs,
+                ),
+                "temp": xr.Variable(
+                    ["time", "depth", "latitude", "longitude"],
+                    temp_out,
+                    ds.temp.attrs,
+                ),
+                "salt": xr.Variable(
+                    ["time", "depth", "latitude", "longitude"],
+                    salt_out,
+                    ds.salt.attrs,
+                ),
+                "u": xr.Variable(
+                    ["time", "depth", "latitude", "longitude"],
+                    u_out,
+                    ds.u.attrs,
+                ),
+                "v": xr.Variable(
+                    ["time", "depth", "latitude", "longitude"],
+                    v_out,
+                    ds.v.attrs,
+                ),
+            },
+            coords={
+                "longitude": xr.Variable(
+                    ["longitude"],
+                    lon_out,
+                    ds.lon_rho.attrs,
+                ),
+                "latitude": xr.Variable(
+                    ["latitude"],
+                    lat_out,
+                    ds.lat_rho.attrs,
+                ),
+                "time": xr.Variable(
+                    ["time"],
+                    ds.time.values,
+                    ds.time.attrs,
+                ),
+                "depth": xr.Variable(
+                    ["depth"],
+                    ds.depth.values,
+                    ds.depth.attrs,
+                ),
+            },
+        )
 
-                "zeta": (["time", "latitude", "longitude"], zeta_out.compute()),
-                "temp": (["time", "depths", "latitude", "longitude"], temp_out.compute()),
-                "salt": (["time", "depths", "latitude", "longitude"], salt_out.compute()),
-                "u": (["time", "depths", "latitude", "longitude"], u_out.compute()),
-                "v": (["time", "depths", "latitude", "longitude"], v_out.compute())
-                
-                },
-             attrs = {
+        data_out.attrs["title"] = "Model Outputs Regridded Tier 3"
+        data_out.attrs["source"] = "CROCO Model"
+        data_out.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+        data_out.attrs["conventions"] = "CF-1.8"
+        if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-                "title": "Model Outputs Regridded Tier 3",
-                "source": "CROCO model",
-                "history": "Created " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"),
-                "conventions": "CF-1.8",
-            
-                }
-            )
+        # Explicitly set chunk sizes of some dimensions
+        chunksizes = {
+            "time": 24,
+            "depth": 1,
+        }
+
+        # For data_vars, set chunk sizes for each dimension
+        # This is either the override specified in "chunksizes"
+        # or the length of the dimension
+        default_chunksizes = {dim: len(data_out[dim]) for dim in data_out.dims}
+
+        encoding = {
+            var: {
+                "dtype": "float32", 
+                "chunksizes": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims]
+            }
+            for var in data_out.data_vars
+        }
+
+        # Adjust for non-chunked variables
+        encoding["time"] = {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                            "calendar": "standard",
+                            "dtype": "i4"}
+        encoding['latitude'] = {"dtype": "float32"}
+        encoding['longitude'] = {"dtype": "float32"}
+        encoding['depth'] = {"dtype": "float32"}
         
-        if doi_link is not None: ds_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
-      
-        # We just reassign the old attributes because they are CF-Compliant
-        ds_out["longitude"].attrs = ds.lon_rho.attrs
-        ds_out["latitude"].attrs = ds.lat_rho.attrs
-        ds_out["zeta"].attrs = ds.zeta.attrs
-        ds_out["temp"].attrs = ds.temp.attrs
-        ds_out["salt"].attrs = ds.salt.attrs
-        ds_out["u"].attrs = ds.u.attrs
-        ds_out["v"].attrs = ds.v.attrs
+        # I think it might be cleaner if we have a function here that does all of this. 
+        parts = os.path.split(file)[1].split('.')
+        base = parts[0]
+        rest = ".".join(parts[1:])
+        base = re.sub(r"_t\d+$", "", base)
+        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), f"{base}{'_t3'}.{rest}"))
         
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file)[:-6] + '_t3.nc'))
- 
-        if os.path.exists(fname_out):
-            os.remove(fname_out)
-        else:
-            pass
+        print("Generating NetCDF data")
+        write_op = data_out.to_netcdf(
+                fname_out,
+                encoding=encoding,
+                mode="w",
+                compute=False,
+                )
+        
+        print("Writing NetCDF file")
+        dask.compute(write_op)
 
-        try:
-            ds_out.to_netcdf(fname_out, format="NETCDF4",encoding={"time":{
-                                                                "units": f"hours since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
-                                                                "calendar": "standard",
-                                                                "dtype": "float32"
-                                                                }
-                                                      }
-                             )
-            ds_out.close()
-            print('')
-            print(f'Created: {fname_out}')
-            print('')
-        except Exception as e:
-            print(f"Error: {e}")
+        subprocess.call(["chmod", "-R", "775", fname_out])
+        print(f'Created: {fname_out}')
 
 if __name__ == "__main__":
-    fname_in = '/mnt/c/Users/GilesF/Downloads/croco_avg_Y2009M03.nc'
-    fname_out = '/mnt/c/Users/GilesF/Downloads/'
+    fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
+    dir_out = '/home/g.rautenbach/Data/models/sa_southeast/'
     doi = '10.15493/SOMISANA.26032025'
     ref_date=datetime(2000,1,1)
 
-    regrid_tier1(fname_in, fname_out, ref_date=ref_date, doi_link=doi)
-    
-    fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_t1.nc'
-    regrid_tier2(fname_in, fname_out, ref_date=ref_date, doi_link=doi, depths=[0,10,20])
-    
+    regrid_tier1(fname_in, dir_out, ref_date=ref_date, doi_link=doi)
+    regrid_tier2(fname_in, dir_out, ref_date=ref_date, doi_link=doi, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000])
     fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_t2.nc'
-    regrid_tier3(fname_in, fname_out, ref_date=ref_date, doi_link=doi, spacing=0.02)
+    regrid_tier3(fname_in, dir_out, ref_date=ref_date, doi_link=doi, spacing=0.05)
