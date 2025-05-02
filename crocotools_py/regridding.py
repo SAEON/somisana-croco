@@ -92,6 +92,8 @@ def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
 
         ds_out["time"].attrs = {"long_name": "Time","standard_name":"time"}
 
+        # CHANGE THIS - now dir_out
+        # os.path.basename(file)[:-3] won't work for file names like *.nc.1
         fname_out = os.path.abspath(os.path.join(os.path.dirname(fname_out), os.path.basename(file)[:-3] + '_t1.nc'))
         
         try:
