@@ -19,13 +19,13 @@ def regrid_tier1(fname_in,fname_out,ref_date=None,doi_link=None):
 
     Parameters
     ----------
-    fname_in  : path to input CROCO file(s) (required = True)
+    fname_in  : path to input CROCO file(s). Can include wildcards *. (required = True) 
     fname_out : path to output tier 1 netcdf file (required = True)
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     doi_link  : doi link in string (required = False)
     '''
 
-    os.makedirs(os.path.dirname(fname_out), exist_ok=True)
+    os.makedirs(os.path.dirname(fname_out), exist_ok=True) # WON'T BE NEEDED
 
     if ref_date is None:
         ref_date = datetime(2000,1,1,0,0)
@@ -476,8 +476,8 @@ def regrid_tier3(fname_in, fname_out, ref_date=None, doi_link=None, spacing=None
             print(f"Error: {e}")
 
 if __name__ == "__main__":
-    fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
-    fname_out = '/home/g.rautenbach/Data/models/sa_southeast/'
+    fname_in = '/mnt/c/Users/GilesF/Downloads/croco_avg_Y2009M03.nc'
+    fname_out = '/mnt/c/Users/GilesF/Downloads/'
     doi = '10.15493/SOMISANA.26032025'
     ref_date=datetime(2000,1,1)
 
