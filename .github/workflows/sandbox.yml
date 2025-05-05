@@ -22,7 +22,7 @@ jobs:
             --user $(id -u):$(id -g) \
             --rm \
             -v /home/somisana/ops/testing-hycom-download/20250505_00/downloaded_data/HYCOM:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_main:latest \
+            ghcr.io/saeon/somisana-croco_cli_testing-hycom-download:latest \
             download_hycom \
             --domain 23,24,-37,-36 \
             --depths 0,5 \
