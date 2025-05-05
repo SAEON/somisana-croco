@@ -16,6 +16,7 @@ jobs:
     needs: [build_cli]
     steps:
       - name: Download HYCOM
+        shell: bash
         run: |
           docker run \
             --user $(id -u):$(id -g) \
@@ -30,4 +31,4 @@ jobs:
             --fdays 5 \
             --savedir '/tmp/' \
             --pad True && echo "Download completed" || echo "Download failed"
-          shell: bash
+
