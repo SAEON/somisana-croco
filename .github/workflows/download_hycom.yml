@@ -73,7 +73,6 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          # on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/HYCOM/*.nc # This is commented because the file integrity are checked in the python function. If the files are corrupted, then thy are removed, otherwise there is no point for removing the files. 
           command: |
             docker run \
               --user $(id -u):$(id -g) \

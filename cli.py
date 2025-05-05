@@ -180,8 +180,11 @@ def main():
     parser_download_hycom.add_argument('--workers', required=False,
                                        default=None,
                                        help='Number of parallel downloads - usually the number of variables, can be less but not more.')
+    parser_download_hycom.add_argument('--pad', required=False,
+                                       default=False,
+                                       help='Pad all time-dependent variables in the dataset by one timestep at the start and end. At the start, we download and extra day and at the end we copy the last timestep (Default is False). This is used operationally for our forecast models.')
     def download_hycom_handler(args):
-        download_hycom(args.variables,args.domain, args.depths, args.run_date, args.hdays, args.fdays, args.savedir, args.workers)
+        download_hycom(args.variables,args.domain, args.depths, args.run_date, args.hdays, args.fdays, args.savedir, args.workers, args.pad)
     parser_download_hycom.set_defaults(func=download_hycom_handler)
     
     # ------------------
