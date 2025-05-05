@@ -213,9 +213,9 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
         
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         variable.to_netcdf(save_path, 'w')
+        os.chmod(save_path, 0o775)
         ds.close()
         print('We have downloaded the file and now we are going to validate it.')
-
         if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
             print(f'File written to {save_path} and validation was successful.')        
         else:
@@ -352,7 +352,6 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
                     files_success = True
                     for file_path in files:
                         var_name = os.path.basename(file_path).replace('hycom_', '').replace('.nc', '')
-                        subprocess.call(["chmod", "-R", "775", file_path])
                         if var_name in variables:
                             try:
                                 if not validate_download(file_path, var_name, start_date, end_date):
