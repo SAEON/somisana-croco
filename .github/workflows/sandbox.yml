@@ -29,4 +29,5 @@ jobs:
             --hdays 5 \
             --fdays 5 \
             --savedir '/tmp/' \
-            --pad True
+            --pad True && echo "Download completed" || echo "Download failed"
+          shell: bash
