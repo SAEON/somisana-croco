@@ -213,6 +213,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
         
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         variable.to_netcdf(save_path, 'w')
+        subprocess.call(["chmod", "-R", "775", save_path])
         ds.close()
         
         if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
@@ -366,6 +367,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
                         print('')
                         print("All variables are present. Creating the combined netCDF file.")
                         ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
+                        
                         if pad: ds = pad_time_step(ds)
 
                         outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
