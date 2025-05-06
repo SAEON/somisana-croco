@@ -39,7 +39,7 @@ jobs:
               --entrypoint bash \
               -v /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM:/data \
               ghcr.io/saeon/somisana-croco_cli_testing-hycom-download:latest \
-              -c 'mkdir -p /data/writable_tmp && export TMPDIR=/data/writable_tmp && echo "Using TMPDIR=$TMPDIR" && download_hycom \
+              -c 'mkdir -p /data/writable_tmp && export TMPDIR=/data/writable_tmp && echo "Using TMPDIR=$TMPDIR" && python cli.py download_hycom \
                 --domain 23,24,-37,-36 \
                 --depths 0,5 \
                 --run_date "2025-05-06 00:00:00" \
