@@ -17,10 +17,10 @@ jobs:
     steps:
       - name: Clean and create HYCOM directory with correct permissions
         run: |
-          sudo rm -rf /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
-          sudo mkdir -p /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
-          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
-          sudo chmod -R 775 /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
+          sudo rm -rf /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+          sudo mkdir -p /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+          sudo chmod -R 775 /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
 
       - name: Download HYCOM
         uses: nick-fields/retry@master
@@ -37,13 +37,12 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               --entrypoint bash \
-              -v /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM:/data \
-              ghcr.io/saeon/somisana-croco_cli_testing-hycom-download:latest \
-              -c 'mkdir -p /data/writable_tmp && export TMPDIR=/data/writable_tmp && echo "Using TMPDIR=$TMPDIR" && python cli.py download_hycom \
+              -v /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_main:latest \
+              -c 'python cli.py download_hycom \
                 --domain 23,24,-37,-36 \
-                --depths 0,5 \
                 --run_date "2025-05-06 00:00:00" \
                 --hdays 5 \
                 --fdays 5 \
-                --savedir "/data/writable_tmp" \
+                --savedir "/tmp" \
                 --pad True && echo "Download completed" || echo "Download failed"'
