@@ -36,13 +36,13 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               --entrypoint bash \
-              -v /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM:/tmp \
+              -v /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM:/data \
               ghcr.io/saeon/somisana-croco_cli_testing-hycom-download:latest \
-              -c 'mkdir -p /tmp/writable_tmp && export TMPDIR=/tmp/writable_tmp && echo "Using TMPDIR=$TMPDIR" && download_hycom \
+              -c 'mkdir -p /data/writable_tmp && export TMPDIR=/data/writable_tmp && echo "Using TMPDIR=$TMPDIR" && download_hycom \
                 --domain 23,24,-37,-36 \
                 --depths 0,5 \
                 --run_date "2025-05-06 00:00:00" \
                 --hdays 5 \
                 --fdays 5 \
-                --savedir "/tmp/writable_tmp" \
+                --savedir "/data/writable_tmp" \
                 --pad True && echo "Download completed" || echo "Download failed"'
