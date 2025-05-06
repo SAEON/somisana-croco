@@ -284,6 +284,8 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
     OUTPUT:
     NetCDF file containing the most recent HYCOM forcast run.
     """
+    import tempfile
+    print("Temp dir in use:", tempfile.gettempdir())
     # We add an additional day to ensure that it exceeds the model run time. 
     # We also pad the dataset at the end, but instead of downloading it, we copy the last timestep.
     if pad: hdays = hdays + 1
