@@ -38,11 +38,11 @@ jobs:
               --entrypoint bash \
               -v /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM:/tmp \
               ghcr.io/saeon/somisana-croco_cli_testing-hycom-download:latest \
-              -c 'mkdir -p /tmp/tmpdir && export TMPDIR=/tmp/tmpdir && echo "Using TMPDIR=$TMPDIR" && download_hycom \
+              -c 'mkdir -p /tmp/writable_tmp && export TMPDIR=/tmp/writable_tmp && echo "Using TMPDIR=$TMPDIR" && download_hycom \
                 --domain 23,24,-37,-36 \
                 --depths 0,5 \
                 --run_date "2025-05-06 00:00:00" \
                 --hdays 5 \
                 --fdays 5 \
-                --savedir "/tmp/" \
+                --savedir "/tmp/writable_tmp" \
                 --pad True && echo "Download completed" || echo "Download failed"'
