@@ -211,11 +211,12 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
 
         variable = variable.sel(time=time_range)
         
+        print('Now we write the file to a netcdf')
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         variable.to_netcdf(save_path, 'w')
         os.chmod(save_path, 0o775)
         ds.close()
-        print('We have downloaded the file and now we are going to validate it.')
+        
         if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
             print(f'File written to {save_path} and validation was successful.')        
         else:

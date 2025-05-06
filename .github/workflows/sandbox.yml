@@ -18,9 +18,9 @@ jobs:
       - name: create the HYCOM directory
         run: |
           sudo rm -rf /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
-          mkdir -p /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
-          chown -R :runners /home/somisana/testing-hycom-download/20250506_00/downloaded_data/HYCOM
-          chmod -R 774 /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
+          sudo mkdir -p /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
+          sudo chown -R :runners /home/somisana/testing-hycom-download/20250506_00/downloaded_data/HYCOM
+          sudo chmod -R 774 /home/somisana/ops/testing-hycom-download/20250506_00/downloaded_data/HYCOM
       - name: Download HYCOM
         uses: nick-fields/retry@master
         with:
