@@ -188,22 +188,18 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     try:
         print('')
         print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
-        print('Loading in the netcdf and subsetting spatially.')
         ds = xr.open_dataset(metadata[var]["url"],
                              drop_variables=vars_to_drop,
                              decode_times=False,
                              engine="netcdf4").sel(lat=lat_range,
-                                                   lon=lon_range).load()
+                                                   lon=lon_range)
                                                    
-        print('Decoding the time...')                                          
         if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
         
         variable = ds[metadata[var]["vars"][0]]
         
-        print('Subsetting along depth')
         if variable.ndim == 4: variable = variable.sel(depth=depth_range)
         
-        print('Resample daily')
         if run_date.hour == 0: 
             variable = variable.resample(time='1D').mean()
         elif run_date.hour == 12: 
@@ -211,13 +207,10 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
         else: 
             print(f'Invalid run date: {run_date.hour}')
         
-        print('Subsetting along time.')
         variable = variable.sel(time=time_range)
         
-        print('Writing to the netcdf file')
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         variable.to_netcdf(save_path, 'w')
-        os.chmod(save_path, 0o775)
         ds.close()
         
         if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
@@ -290,16 +283,44 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
     
-    # This function creates a metadata dictionary which comtains information about the variables 
+    # This block of code is possibly not necessary, but its a nice to have feature.
+    # It looks at the requested variables and the files in the save directory. 
+    # If some of the variables are already there, they are removed from the list of the requested variables to download. 
+    # This avoids having to redownload files that already exists. 
+    # The integrity of these files are also checked to ensure they are good, otherwise they are redownloaded.
+    files = glob(os.path.join(save_dir, 'hycom_*.nc'))
+    # Extract variable names from the filenames
+    existing_vars = [os.path.basename(f).replace('hycom_', '').replace('.nc', '') for f in files]
+    print('')
+    print(f'Requested variables that has already been downloaded: {existing_vars}')
+    # Find missing variables
+    missing_vars = [var for var in variables if var not in existing_vars]
+    for file_path in files:
+        var_name = os.path.basename(file_path).replace('hycom_', '').replace('.nc', '')
+        if var_name in variables:
+            try:
+                # Run validation
+                if not validate_download(file_path, var_name, start_date, end_date):
+                    print('')
+                    print(f"Validation failed for {file_path}. Marking as missing.") 
+                    os.remove(file_path)
+                    missing_vars.append(var_name)
+            except Exception as e:
+                print(f"Error validating {file_path}: {e}. Marking as missing.")
+                missing_vars.append(var_name)
+    # Print missing variables list
+    print(f'Variables that still needs to be downloaded: {missing_vars}')
+    
+    # This function creates a metadata dictionary which comtains information about the variables. 
     # we are intersted in downloading
-    var_metadata = update_var_list(variables)
+    var_metadata = update_var_list(missing_vars)
     
     # Testing the connection to the Thredds server where the HYCOM analysis is stored.
     server_url = "http://tds.hycom.org/thredds/dodsC/"
     if is_server_reachable(server_url):
         try:
             # We loop through the variable list and download using the download function
-            for var in variables:
+            for var in missing_vars:
                 download_var(var, var_metadata, domain, depths, save_dir, run_date, hdays, fdays)
             # We count the number of files in the save directory and if it mathces the number of 
             # variables that was specified, we constructy the final HYCOM file. 
