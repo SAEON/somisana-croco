@@ -193,7 +193,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
                              drop_variables=vars_to_drop,
                              decode_times=False,
                              engine="netcdf4").sel(lat=lat_range,
-                                                   lon=lon_range)
+                                                   lon=lon_range).load()
                                                    
         print('Decoding the time...')                                          
         if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
@@ -284,8 +284,6 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
     OUTPUT:
     NetCDF file containing the most recent HYCOM forcast run.
     """
-    import tempfile
-    print("Temp dir in use:", tempfile.gettempdir())
     # We add an additional day to ensure that it exceeds the model run time. 
     # We also pad the dataset at the end, but instead of downloading it, we copy the last timestep.
     if pad: hdays = hdays + 1
