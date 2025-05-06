@@ -188,28 +188,33 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     try:
         print('')
         print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
+        print('Loading in the netcdf and subsetting spatially.')
         ds = xr.open_dataset(metadata[var]["url"],
                              drop_variables=vars_to_drop,
                              decode_times=False,
                              engine="netcdf4").sel(lat=lat_range,
                                                    lon=lon_range)
-
+                                                   
+        print('Decoding the time...')                                          
         if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
-            
+        
         variable = ds[metadata[var]["vars"][0]]
-
+        
+        print('Subsetting along depth')
         if variable.ndim == 4: variable = variable.sel(depth=depth_range)
-
+        
+        print('Resample daily')
         if run_date.hour == 0: 
             variable = variable.resample(time='1D').mean()
         elif run_date.hour == 12: 
             variable = variable.resample(time='1D',offset='12h').mean()
         else: 
             print(f'Invalid run date: {run_date.hour}')
-
+        
+        print('Subsetting along time.')
         variable = variable.sel(time=time_range)
         
-        print('Now we write the file to a netcdf')
+        print('Writing to the netcdf file')
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         variable.to_netcdf(save_path, 'w')
         os.chmod(save_path, 0o775)
