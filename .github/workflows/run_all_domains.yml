@@ -122,7 +122,6 @@ jobs:
   # must be less than the number of forecast days in the SAWS forcing file. The SAWS files contain 3 days of 
   # forecast data, but since it takes 12 hours to get to us, we can only run our model for 2.5 days. We however
   # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
-  # 2025-05-02: SAWS now only provides data 4 days into the past, so we're also reducing HDAYS to 3.5 (4 doesn't work since CROCO inputs need to more than cover the time model time)
   run_sa_west_saws:
     needs: [run_sa_southeast_gfs]
     if: ${{ inputs.SAWS_OK == '1' }}
@@ -139,7 +138,7 @@ jobs:
       BLK: SAWS
       TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
-      HDAYS: 3.5
+      HDAYS: 5
       FDAYS: 2.45
 
   postprocess_sa_west_saws:
@@ -158,7 +157,7 @@ jobs:
       BLK: SAWS
       TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
-      HDAYS: 3.5
+      HDAYS: 5
       FDAYS: 2.45
 
   run_sa_southeast_saws:
@@ -177,7 +176,7 @@ jobs:
       BLK: SAWS
       TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
-      HDAYS: 3.5
+      HDAYS: 5
       FDAYS: 2.45
   
   postprocess_sa_southeast_saws:
@@ -196,5 +195,5 @@ jobs:
       BLK: SAWS
       TIDE_FRC: TPXO10
       OGCM: ${{ inputs.OGCM }}
-      HDAYS: 3.5
+      HDAYS: 5
       FDAYS: 2.45
