@@ -18,7 +18,6 @@ from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
 from download.cmems import download_glorys, download_cmems_monthly, download_mercator
 from download.gfs import download_gfs_atm
 from download.hycom import download_hycom
-from crocotools_py.regridding_cfc import regrid1_cf_compliant,regrid2_cf_compliant,regrid3_cf_compliant
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
