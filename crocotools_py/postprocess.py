@@ -1475,3 +1475,116 @@ def get_section(fname,
         ds.to_netcdf(nc_out)
     
     return ds
+
+
+def get_section_uv(fname,
+                   section_start,
+                   section_end,
+                   grdname=None,
+                   time=slice(None),
+                   level=slice(None),
+                   ref_date=None,
+                   res=None,
+                   nc_out=None,
+                   ):
+    
+    """
+    Extract a vertical section from a CROCO output file(s) 
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    Inputs:
+    see get_var() for a description of some of the inputs. In addition to the get_var inputs there is:
+    section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
+    section_end = End points of transect (list; eg. section_end = [lon1, lat1])
+    res = Horizontal resolution of the section in meters (eg. res = 300). Default is None in which case 
+         it takes the smallest grid size as the resolution. 
+    ...
+           
+    
+    Returns:
+    - ds, an xarray dataset containing the section data for the variable
+    """
+    
+    # if the gridname is not provided, we use the fname for the gridname 
+    if grdname is None:
+        grdname = fname
+    
+    # Define the start and end points of the transect
+    lon0,lat0 = section_start[0],section_start[1]
+    lon1,lat1 = section_end[0],section_end[1]
+    
+    # extract the data for the defined subdomain which covers the section extents
+    subdomain = [lon0,lon1,lat0,lat1]
+    ds = get_uv(fname,
+                 grdname=grdname,
+                 time=time,
+                 level=level,
+                 subdomain=subdomain,
+                 ref_date=ref_date)
+    
+    # if the grid resolution is not provided, we use the smallest grid size as the resolution. 
+    if res is None:
+        dy_min=np.min(1/get_grd_var(grdname, 'pn').values[:])
+        dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
+        res = min(dy_min,dx_min)
+    
+    # Make the transect on which the interpolation will take place    
+    section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
+    
+    # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
+    
+    # Interpolate the variable along the line
+    print('interpolating along the section...')
+    ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
+    
+    # add the section distance to the ds
+    ds["distance"] = xr.DataArray(
+        section_dist, dims=("points",),
+        coords={"points": ds.coords["points"]},
+        name="distance_along_section",
+        attrs={
+            "units": "meter",
+            "standard_name": "distance",
+        })
+    
+    if nc_out is not None:
+        print('')
+        print(f'File saved to: {nc_out}')
+        print('')
+        ds.to_netcdf(nc_out)
+    
+    return ds
+    
+if __name__ == '__main__':
+    # import cartopy.crs as ccrs
+    # import cartopy.feature as cfeature
+    # import matplotlib.pyplot as plt
+    # import xarray as xr
+    
+    fname         = '~/Data/models/sa_southeast/croco_avg.nc'
+    section_start = [25.0,-34.25]
+    section_end   = [26,-34.45]
+    ref_date      = datetime(2000,1,1,0,0)
+    savename      = '~/Data/models/sa_southeast/section_uv.nc'
+    
+    # ds=xr.open_dataset(fname)
+    # lonr,latr,maskr=ds['lon_rho'][:].values,ds['lat_rho'][:].values,ds['mask_rho'][:].values
+    # temp=ds['temp'][0,-1,:,:]
+    # ds.close()
+    
+    # plt.close()
+    # plt.pcolor(lonr,latr,temp*maskr/maskr)
+    # plt.plot(section_start[0],section_start[1],'ro')
+    # plt.plot(section_end[0],section_end[1],'ro')
+    # plt.show()
+    
+    ds = get_section_uv(fname,
+                   section_start,section_end,
+                   ref_date=ref_date,
+                   nc_out=savename)
+    
+    #ds = xr.open_dataset('~/Data/models/sa_southeast/')
+    #print(f'ds: {ds}')
+    
