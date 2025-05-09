@@ -161,7 +161,7 @@ jobs:
     secrets: inherit
 
   run_hycom_domains:
-    needs: [envs,prep_domains,download_surface,download_hycom,make_tide_frc,run_mercator_domains] 
+    needs: [envs,prep_domains,download_surface,download_hycom,make_tide_frc] 
     if: ${{ always() }} # execute even if there was an error with the mercator runs
     uses: ./.github/workflows/run_all_domains.yml
     with:
