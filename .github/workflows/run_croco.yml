@@ -241,7 +241,22 @@ jobs:
           #    -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
           #
           # We are preferring to rather run CROCO directly on the server due to issues with resource management
-          cd ${{ env.CONFIG_DIR }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
+          cd ${{ env.CONFIG_DIR }}
+          DOMAIN="${{ inputs.DOMAIN }}"
+          OGCM="${{ inputs.OGCM }}"
+          if [[ "$DOMAIN" == "sa_southeast_01" && "$OGCM" == "MERCATOR" ]]; then
+            CPU_LIST="7-30"
+          elif [[ "$DOMAIN" == "sa_west_02" && "$OGCM" == "MERCATOR" ]]; then
+            CPU_LIST="31-60"
+          elif [[ "$DOMAIN" == "sa_southeast_01" && "$OGCM" == "HYCOM" ]]; then
+            CPU_LIST="67-90"
+          elif [[ "$DOMAIN" == "sa_west_02" && "$OGCM" == "HYCOM" ]]; then
+            CPU_LIST="91-120"
+          else
+            echo "Error: Unsupported DOMAIN/OGCM combination: $DOMAIN / $OGCM"
+            exit 1
+          fi
+          taskset -c $CPU_LIST ./run_croco_frcst.bash ${{ env.RUN_NAME }}
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
