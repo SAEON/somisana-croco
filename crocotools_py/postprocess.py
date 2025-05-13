@@ -867,7 +867,6 @@ def get_var(fname,var_str,
         print('making the output dataset for get_var()...')
         var_data, zeta_data, h_data = dask.compute(da, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
-        ds_out['s_rho'].attrs.pop('formula_terms', None)
 
     # remove singleton dimensions
     ds_out = ds_out.squeeze()

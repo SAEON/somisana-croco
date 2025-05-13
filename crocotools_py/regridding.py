@@ -3,7 +3,7 @@ import numpy as np
 import xarray as xr
 import os,sys
 from datetime import datetime
-import pandas as pd
+#import pandas as pd
 import matplotlib.path as mplPath
 from dask import delayed
 import dask.array as da
@@ -11,7 +11,7 @@ from scipy.interpolate import griddata
 from glob import glob
 import subprocess
 import dask
-import dask.array as da
+#import dask.array as da
 import re
 
 def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
@@ -79,9 +79,11 @@ def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
                 }
        
         parts = os.path.split(file)[1].split('.')
-
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t1.' + ".".join(parts[1:])))
         
+        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t1.' + ".".join(parts[1:])))
+
+        # If the file already exists, we remove it to avoid permission errors.
+        if os.path.exists(fname_out): os.remove(fname_out)        
         ds_all.to_netcdf(fname_out, encoding=encoding, mode="w")
         
         subprocess.call(["chmod", "-R", "775", fname_out])
@@ -163,6 +165,8 @@ def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
 
         fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t2.' + ".".join(parts[1:])))
         
+        # If the file already exists, we remove it to avoid permission errors.
+        if os.path.exists(fname_out): os.remove(fname_out)        
         ds_all.to_netcdf(fname_out, encoding=encoding, mode="w")
         
         subprocess.call(["chmod", "-R", "775", fname_out])
@@ -449,6 +453,9 @@ def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
         rest = ".".join(parts[1:])
         base = re.sub(r"_t\d+$", "", base)
         fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), f"{base}{'_t3'}.{rest}"))
+        
+        # If the file already exists, we remove it to avoid permission errors.
+        if os.path.exists(fname_out): os.remove(fname_out)        
         
         print("Generating NetCDF data")
         write_op = data_out.to_netcdf(
