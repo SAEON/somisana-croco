@@ -1,12 +1,9 @@
 import xarray as xr
 import cftime
 import pandas as pd
-import os,sys
-from datetime import datetime, timedelta
-import subprocess
+import os
+from datetime import timedelta
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 import requests
 from glob import glob
 
@@ -187,81 +184,83 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     time_range = slice(start_date, end_date)
     
     variable=None
-    download_false=False
-    timeout = 3600
-    start_time = time.time()
-    while download_false is not True:
-        try:
-            print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
-            ds = xr.open_dataset(metadata[var]["url"],
-                                 drop_variables=vars_to_drop,
-                                 decode_times=False,
-                                 engine="netcdf4").sel(lat=lat_range,
-                                                       lon=lon_range)
+    
+    try:
+        print('')
+        print(f'Connecting to {metadata[var]["url"]} to subset and download {metadata[var]["vars"][0]}.')
+        ds = xr.open_dataset(metadata[var]["url"],
+                             drop_variables=vars_to_drop,
+                             decode_times=False,
+                             engine="netcdf4").sel(lat=lat_range,
+                                                   lon=lon_range)
+                                                   
+        if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
+        
+        variable = ds[metadata[var]["vars"][0]]
+        
+        if variable.ndim == 4: variable = variable.sel(depth=depth_range)
+        
+        if run_date.hour == 0: 
+            variable = variable.resample(time='1D').mean()
+        elif run_date.hour == 12: 
+            variable = variable.resample(time='1D',offset='12h').mean()
+        else: 
+            print(f'Invalid run date: {run_date.hour}')
+        
+        variable = variable.sel(time=time_range)
+        
+        save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
+        variable.to_netcdf(save_path, 'w')
+        ds.close()
+        
+        if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
+            print(f'File written to {save_path} and validation was successful.')        
+        else:
+            print(f"File {save_path} validation failed and retrying the download")
 
-            if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
-                
-            variable = ds[metadata[var]["vars"][0]]
+    except Exception as e:
+        print(f"Error: {e}")
 
-            if variable.ndim == 4: variable = variable.sel(depth=depth_range)
+    finally:
+        # Explicitly delete large variables to free up memory
+        del variable
 
-            if run_date.hour == 0:
-                variable = variable.resample(time='1D').mean()
-            elif run_date.hour == 12:
-                variable = variable.resample(time='1D',offset='12h').mean()
-            else:
-                print(f'Invalid run date: {run_date.hour}')
+def pad_time_step(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Pad all time-dependent variables in an xarray.Dataset by one timestep at the end,
+    duplicating the last time step's data and inferring the time delta.
+    """
+    # Infer time and padded time
+    time = ds['time']
+    last_time = pd.to_datetime(time[-1].values)
+    time_diff = pd.to_timedelta(time.diff('time').mean().values)
+    padded_time = np.datetime64(last_time + time_diff, 'ns')
+    new_time = np.append(time.values, padded_time)
 
-            variable = variable.sel(time=time_range)
-            
-            save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
-            variable.to_netcdf(save_path, 'w')
-            ds.close()
-            
-            if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
-                print(f'File written to {save_path} and validation was successful.')
-                download_false=True
-            
-            else:
-                print(f"File {save_path} validation failed and retrying the download")
+    # Pad all time-dependent variables
+    padded_vars = {}
+    for var_name, da in ds.data_vars.items():
+        if 'time' in da.dims:
+            new_slice = da.isel(time=-1).expand_dims(time=[padded_time])
+            new_slice[:] = da.isel(time=-1)
+            da_padded = xr.concat([da, new_slice], dim='time')
+            da_padded = da_padded.assign_coords(time=('time', new_time))
+            padded_vars[var_name] = da_padded
+        else:
+            padded_vars[var_name] = da
 
-            if time.time() - start_time > timeout:
-                print("Timeout reached.")
-                break
+    # Rebuild dataset excluding old time coord
+    ds_padded = xr.Dataset(padded_vars, coords={k: v for k, v in ds.coords.items() if k != 'time'})
+    
+    # Assign the new time coordinate
+    ds_padded = ds_padded.assign_coords(time=('time', new_time))
+    
+    return ds_padded
 
-            time.sleep(5)  # Wait a bit before checking again
-
-        except Exception as e:
-            print(f"Error: {e}")
-
-        finally:
-            # Explicitly delete large variables to free up memory
-            del variable
-
-def download_vars_parallel(variables, domain, depths, run_date, hdays, fdays, workers, save_dir):
-    var_metadata = update_var_list(variables)
-    success = True
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_to_var = {
-            executor.submit(download_var, var, var_metadata, domain, depths, save_dir, run_date, hdays, fdays): var
-            for var, metadata in var_metadata.items()
-        }
-
-        for future in as_completed(future_to_var):
-            var = future_to_var[future]
-            try:
-                future.result()
-                print(f"Download succeeded for {var}")
-            except Exception as e:
-                print(f"Download failed for {var}: {e}")
-                success = False
-
-    return success
-
-def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, workers=None):
+def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,pad=False):
     """
     Downloads the HYCOM analysis in daily outputs using xarrray opendap.
-    This function does check the integrity of the file. If the file is corrupt the download retries - max retries is 3.
+    This function does check the integrity of the file/s. 
 
     INPUTS:
     variables: List of variables to download (e.g. ['salinity', 'water_temp', 'surface_el', 'water_u', 'water_v'])
@@ -271,32 +270,31 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
     hdays    : Days to hindcast (e.g. hdays=5).
     fdays    : Days to forecast (e.g. fdays=5).
     save_dir : Directory to save the downloaded data (eg. save_dir='/path/and/directory/to/save/').
-    workers  : It is the number of variables to download in parallel. Default is None, in which cases it downloads all the variables in paralell.
-               To note, the number of workers cannot exceed the number of variables.
+    pad      : Pad all time-dependent variables in the dataset by one timestep at the start and end. 
+               At the start, we download and extra day and at the end we copy the last timestep (Default is False).
+               This is used operationally for our forecast models. 
 
     OUTPUT:
     NetCDF file containing the most recent HYCOM forcast run.
     """
     # We add an additional day to ensure that it exceeds the model run time. 
-    hdays, fdays = hdays+1, fdays+1
+    # We also pad the dataset at the end, but instead of downloading it, we copy the last timestep.
+    if pad: hdays = hdays + 1
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
-
-    if workers is None:
-        workers=1
-    else:
-        pass
-
+    
+    # This block of code is possibly not necessary, but its a nice to have feature.
+    # It looks at the requested variables and the files in the save directory. 
+    # If some of the variables are already there, they are removed from the list of the requested variables to download. 
+    # This avoids having to redownload files that already exists. 
+    # The integrity of these files are also checked to ensure they are good, otherwise they are redownloaded.
     files = glob(os.path.join(save_dir, 'hycom_*.nc'))
-
     # Extract variable names from the filenames
     existing_vars = [os.path.basename(f).replace('hycom_', '').replace('.nc', '') for f in files]
     print('')
-    print(f'existing_vars: {existing_vars}')
-    
+    print(f'Requested variables that has already been downloaded: {existing_vars}')
     # Find missing variables
     missing_vars = [var for var in variables if var not in existing_vars]
-    
     for file_path in files:
         var_name = os.path.basename(file_path).replace('hycom_', '').replace('.nc', '')
         if var_name in variables:
@@ -310,27 +308,54 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
             except Exception as e:
                 print(f"Error validating {file_path}: {e}. Marking as missing.")
                 missing_vars.append(var_name)
-
     # Print missing variables list
-    print(f'Missing variables to download: {missing_vars}')
-    print('')
+    print(f'Variables that still needs to be downloaded: {missing_vars}')
+    
+    # This function creates a metadata dictionary which comtains information about the variables. 
+    # we are intersted in downloading
+    var_metadata = update_var_list(missing_vars)
+    
+    # Testing the connection to the Thredds server where the HYCOM analysis is stored.
     server_url = "http://tds.hycom.org/thredds/dodsC/"
     if is_server_reachable(server_url):
         try:
-            if download_vars_parallel(missing_vars, domain, depths, run_date, hdays, fdays, workers, save_dir):
-                nvar_files = len([os.path.basename(f).replace('hycom_', '').replace('.nc', '') for f in glob(os.path.join(save_dir, 'hycom_*.nc'))])
-                if nvar_files==len(variables):
+            # We loop through the variable list and download using the download function
+            for var in missing_vars:
+                download_var(var, var_metadata, domain, depths, save_dir, run_date, hdays, fdays)
+            # We count the number of files in the save directory and if it mathces the number of 
+            # variables that was specified, we constructy the final HYCOM file. 
+            nvar_files = len([os.path.basename(f).replace('hycom_', '').replace('.nc', '') for f in glob(os.path.join(save_dir, 'hycom_*.nc'))])
+            if nvar_files==len(variables):
+                # Run validation again for all files to ensure they are the correct.
+                files = glob(os.path.join(save_dir, 'hycom_*.nc'))
+                files_success = True
+                for file_path in files:
+                    var_name = os.path.basename(file_path).replace('hycom_', '').replace('.nc', '')
+                    if var_name in variables:
+                        try:
+                            if not validate_download(file_path, var_name, start_date, end_date):
+                                print('')
+                                print(f"Validation failed for {file_path}. Removing file.")
+                                files_success = False
+                                os.remove(file_path)
+                        except Exception as e:
+                            print(f"Error validating {file_path}: {e}.")
+                
+                # If all the files in the variable list passed validation then 
+                # we construct the final merged HYCOM file
+                if files_success:
                     print('')
-                    print("All variables are present. Creating the combined netCDF file.")
+                    print("All variables are present and passed the validation test.")
+                    print("Creating the combined netCDF file...")
                     ds = xr.open_mfdataset(os.path.join(save_dir, 'hycom_*.nc'))
+                    if pad: ds = pad_time_step(ds)
                     outfile = os.path.abspath(os.path.join(save_dir, f"HYCOM_{run_date.strftime('%Y%m%d_%H')}.nc"))
-                    if os.path.exists(outfile):
-                        os.remove(outfile)
+                    if os.path.exists(outfile): os.remove(outfile)
                     ds.to_netcdf(outfile, 'w')
-                    subprocess.call(["chmod", "-R", "775", outfile])
+                    os.chmod(outfile, 0o775)
                     print('')
                     print('created: ', outfile)
-                    print('')
+
         except Exception as e:
             print('')
             print(f"Failed to download dataset: {e}")
@@ -339,11 +364,11 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, 
         print(f"Server {server_url} is not reachable.")
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2025-04-23 00:00:00')
+    run_date = pd.to_datetime('2025-05-06 00:00:00')
     hdays = 5
     fdays = 5
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
     domain = [23,24,-37,-36]
     depths = [0,5]
     save_dir = '/home/g.rautenbach/Projects/somisana-croco/DATASETS_CROCOTOOLS/HYCOM/'
-    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir)
+    download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir, pad=True)
