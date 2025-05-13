@@ -857,14 +857,18 @@ def get_var(fname,var_str,
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels...')
         depths_da = get_depths(ds).squeeze() * mask
+        depths = change_attrs(vars,depths_da,'depth')
         print('making the output dataset for get_var()...')
-        var_data, depth_data, zeta_data, h_data = dask.compute(da, depths_da, zeta, h)
+        var_data, depth_data, zeta_data, h_data = dask.compute(da, depths, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
+        ds_out['depth'].attrs['positive'] = 'up'
+        ds_out['s_rho'].attrs.pop('formula_terms', None)
     else:
         print('making the output dataset for get_var()...')
         var_data, zeta_data, h_data = dask.compute(da, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
-    
+        ds_out['s_rho'].attrs.pop('formula_terms', None)
+
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
     
