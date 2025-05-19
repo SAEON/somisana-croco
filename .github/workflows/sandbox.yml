@@ -40,7 +40,7 @@ jobs:
               -v /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM:/tmp \
               ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
               -c 'python cli.py download_hycom \
-                --domain 11,36,-39,-25 \
+                --domain 23,24,-37,-36 \
                 --run_date "2025-05-06 00:00:00" \
                 --hdays 5 \
                 --fdays 5 \

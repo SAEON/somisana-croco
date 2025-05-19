@@ -185,7 +185,10 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         combined=combined.sel(time=slice(start_date, end_date))
         combined.to_netcdf(save_path)
-
+        print(f'save_path: {save_path}')
+        print(f'metadata[var]["vars"][0] : {metadata[var]["vars"][0]}')
+        print(f'start_date : {start_date}')
+        print(f'end_date : {end_date - timedelta(days=1)}')
         if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date - timedelta(days=1)):
             print(f"Final file written to {save_path} and validated successfully.")
         else:
@@ -253,7 +256,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
     """
     # We add an additional day to ensure that it exceeds the model run time. 
     # We also pad the dataset at the end, but instead of downloading it, we copy the last timestep.
-    if pad: hdays,fdays = hdays + 1,fdays
+    if pad: hdays,fdays = hdays + 1, fdays
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
     
@@ -307,6 +310,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
                     var_name = os.path.basename(file_path).replace('hycom_', '').replace('.nc', '')
                     if var_name in variables:
                         try:
+                            print(start_date, end_date)
                             if not validate_download(file_path, var_name, start_date, end_date):
                                 print('')
                                 print(f"Validation failed for {file_path}. Removing file.")
