@@ -41,7 +41,7 @@ jobs:
               ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
               -c 'python cli.py download_hycom \
                 --domain 23,24,-37,-36 \
-                --run_date "2025-05-06 00:00:00" \
+                --run_date "2025-05-19 00:00:00" \
                 --hdays 5 \
                 --fdays 5 \
                 --savedir "/tmp" \
