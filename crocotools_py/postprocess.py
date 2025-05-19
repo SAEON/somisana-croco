@@ -1,13 +1,12 @@
 import numpy as np
-from datetime import timedelta
 import xarray as xr
 import dask
 from datetime import timedelta, datetime
 from glob import glob
-from crocotools_py.update_attrs import *
+from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
 
-def change_attrs(vars,da,var_str):
-    meta = getattr(vars, var_str)
+def change_attrs(attrs,da,var_str):
+    meta = getattr(attrs, var_str)
     da.attrs['long_name'] = meta.long_name
     da.attrs['units'] = meta.units
     da.attrs['standard_name'] = meta.standard_name
@@ -733,7 +732,7 @@ def get_var(fname,var_str,
     '''
     
     # We load in out variable class to assign CF-Compliant attributes
-    vars = ModelOriginalVectors()
+    attrs = CROCO_Attrs()
 
     print('extracting the data from croco file(s) - ' + var_str)
 
@@ -809,7 +808,7 @@ def get_var(fname,var_str,
                                   dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
 
        
-        da = change_attrs(vars,da_rho,var_str)
+        da = change_attrs(attrs,da_rho,var_str)
    
     # Do vertical interpolations if needed
     if not var_is_2d and not isinstance(level,slice):
@@ -828,36 +827,34 @@ def get_var(fname,var_str,
     # Masking
     print('applying the mask - ' + var_str)
     if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.Dataset):
-            _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
-                                    eta_rho=eta_rho,
-                                    xi_rho=xi_rho)
+        _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
+                                eta_rho=eta_rho,
+                                xi_rho=xi_rho)
+        mask[np.isnan(mask)]=0
     else:
         mask=1
 
-
-    mask[np.isnan(mask)]=0
-
     da = da.squeeze() * mask
-    da = change_attrs(vars,da,var_str)
+    da = change_attrs(attrs,da,var_str)
    
     zeta = zeta.squeeze() * mask
-    zeta = change_attrs(vars,zeta,'zeta')
+    zeta = change_attrs(attrs,zeta,'zeta')
 
     h = h.squeeze() * mask
-    h = change_attrs(vars,h,'h')
+    h = change_attrs(attrs,h,'h')
 
     da_mask = xr.DataArray(mask,
                            coords={'eta_rho': ds['eta_rho'].values,
                                    'xi_rho' : ds['xi_rho'].values},
                            dims=['eta_rho', 'xi_rho'])
 
-    mask = change_attrs(vars,da_mask,'mask')
+    mask = change_attrs(attrs,da_mask,'mask')
 
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels...')
         depths_da = get_depths(ds).squeeze() * mask
-        depths = change_attrs(vars,depths_da,'depth')
+        depths = change_attrs(attrs,depths_da,'depth')
         print('making the output dataset for get_var()...')
         var_data, depth_data, zeta_data, h_data = dask.compute(da, depths, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
@@ -906,7 +903,7 @@ def get_uv(fname,
     returns xarray dataarrays for both u and v data
     
     '''
-    vars = ModelRotatedVectors()
+    attrs = CROCO_Attrs_RotatedVectors()
 
     u=get_var(fname,var_u,
               grdname=grdname,
@@ -956,8 +953,8 @@ def get_uv(fname,
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
 
-    u_out = change_attrs(vars,u_out,var_u)
-    v_out = change_attrs(vars,v_out,var_v)
+    u_out = change_attrs(attrs,u_out,var_u)
+    v_out = change_attrs(attrs,v_out,var_v)
 
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset

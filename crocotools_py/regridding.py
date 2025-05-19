@@ -14,7 +14,7 @@ import dask
 #import dask.array as da
 import re
 
-def regrid_tier1(fname_in, dir_out,ref_date=datetime(2000,1,1,0,0),doi_link=None):
+def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0),doi_link=None):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -25,6 +25,7 @@ def regrid_tier1(fname_in, dir_out,ref_date=datetime(2000,1,1,0,0),doi_link=None
     ----------
     fname_in  : path to input CROCO file(s). Can include wildcards *. (required = True) 
     dir_out   : path to output directory (required = True)
+    grdname   : optional name of your croco grid file (only needed if the grid info is not in fname)
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     doi_link  : doi link in string (required = False)
     '''
@@ -49,9 +50,9 @@ def regrid_tier1(fname_in, dir_out,ref_date=datetime(2000,1,1,0,0),doi_link=None
         print('Opening: ', file)
         print("Extracting the model output variables we need")
     
-        ds_temp = post.get_var(file, "temp", ref_date=ref_date)
-        ds_salt = post.get_var(file, "salt", ref_date=ref_date)
-        ds_uv   = post.get_uv(file,ref_date=ref_date)
+        ds_temp = post.get_var(file, "temp", grdname=grdname, ref_date=ref_date)
+        ds_salt = post.get_var(file, "salt", grdname=grdname, ref_date=ref_date)
+        ds_uv   = post.get_uv(file, grdname=grdname, ref_date=ref_date)
        
         ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
         
@@ -69,6 +70,7 @@ def regrid_tier1(fname_in, dir_out,ref_date=datetime(2000,1,1,0,0),doi_link=None
                 "v": {"dtype": "float32"},
                 "depth": {"dtype": "float32"},
                 "h": {"dtype": "float32"},
+                "mask": {"dtype": "float32"},
                 "lon_rho": {"dtype": "float32"},
                 "lat_rho": {"dtype": "float32"},
                 "time": {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -94,7 +96,7 @@ def regrid_tier1(fname_in, dir_out,ref_date=datetime(2000,1,1,0,0),doi_link=None
 
         print(f'Created: {fname_out}')
 
-def regrid_tier2(fname_in,dir_out, ref_date=datetime(2000,1,1), doi_link=None, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]):
+def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), doi_link=None, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -104,6 +106,7 @@ def regrid_tier2(fname_in,dir_out, ref_date=datetime(2000,1,1), doi_link=None, d
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True).
     dir_out   : path to output directory (required = True).
+    grdname   : optional name of your croco grid file (only needed if the grid info is not in fname)
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1).
     depths    : list of depths to extract (in metres, negative down, required = False).
                 If not specified depth = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000].
@@ -130,9 +133,9 @@ def regrid_tier2(fname_in,dir_out, ref_date=datetime(2000,1,1), doi_link=None, d
         print(f'Opening: {file}')
         print("Extracting the model output variables we need")
     
-        ds_temp = post.get_var(file, "temp", ref_date=ref_date, level=depths)
-        ds_salt = post.get_var(file, "salt", ref_date=ref_date, level=depths)
-        ds_uv = post.get_uv(file, ref_date=ref_date, level=depths)
+        ds_temp = post.get_var(file, "temp", grdname=grdname, ref_date=ref_date, level=depths)
+        ds_salt = post.get_var(file, "salt", grdname=grdname, ref_date=ref_date, level=depths)
+        ds_uv = post.get_uv(file, grdname=grdname, ref_date=ref_date, level=depths)
         
         ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
         
@@ -150,6 +153,7 @@ def regrid_tier2(fname_in,dir_out, ref_date=datetime(2000,1,1), doi_link=None, d
                 "v": {"dtype": "float32"},
                 "depth": {"dtype": "float32"},
                 "h": {"dtype": "float32"},
+                "mask": {"dtype": "float32"},
                 "lon_rho": {"dtype": "float32"},
                 "lat_rho": {"dtype": "float32"},
                 "time": {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
