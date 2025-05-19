@@ -321,8 +321,9 @@ def hlev_xarray(var, z, depth):
         depth = xr.DataArray(depth, dims="depth")
         
     # Add attributes to the depth coordinate
-    depth.attrs["long_name"] = "water depth from free surface"
-    depth.attrs["units"] = "meters"
+    depth.attrs["long_name"] = "Depth"
+    depth.attrs["units"] = "m"
+    depth.attrs["standard_name"] = "depth"
     depth.attrs["positive"] = "up"
     
     # Determine the nearest vertical levels where z brackets each depth
@@ -572,12 +573,12 @@ def get_lonlatmask(fname,type='r',
                    eta_rho=slice(None),
                    xi_rho=slice(None)):
     
-    lon = get_grd_var(fname,'lon_rho',eta_rho=eta_rho,xi_rho=xi_rho).values
-    lat = get_grd_var(fname,'lat_rho',eta_rho=eta_rho,xi_rho=xi_rho).values
-    mask = get_grd_var(fname,'mask_rho',eta_rho=eta_rho,xi_rho=xi_rho).values
+    lon = get_grd_var(fname,'lon_rho',eta_rho=eta_rho,xi_rho=xi_rho)
+    lat = get_grd_var(fname,'lat_rho',eta_rho=eta_rho,xi_rho=xi_rho)
+    mask = get_grd_var(fname,'mask_rho',eta_rho=eta_rho,xi_rho=xi_rho)
     
-    mask[np.where(mask == 0)] = np.nan
-    [Mp,Lp]=mask.shape;
+    mask = mask.where(mask != 0, np.nan)
+    [Mp,Lp]=mask.shape
     
     # croco output files don't have lon_u,lat_u, mask_u written to them.
     # We could get these from the grid file but I'm rather computing them
@@ -807,7 +808,6 @@ def get_var(fname,var_str,
                                                  'xi_rho': ds['xi_rho'].values},
                                   dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
 
-       
         da = change_attrs(attrs,da_rho,var_str)
    
     # Do vertical interpolations if needed
@@ -826,14 +826,15 @@ def get_var(fname,var_str,
         
     # Masking
     print('applying the mask - ' + var_str)
-    if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.Dataset):
-        _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
-                                eta_rho=eta_rho,
-                                xi_rho=xi_rho)
-        mask[np.isnan(mask)]=0
-    else:
-        mask=1
-
+    lon_rho,lat_rho,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
+                            eta_rho=eta_rho,
+                            xi_rho=xi_rho)
+    
+    if not 'lon_rho' in da.coords: # add lon,lat as coords if not already there (e.g. if the input is a surface only file)
+        da = da.assign_coords(lon_rho=lon_rho)
+        da = da.assign_coords(lat_rho=lat_rho)
+    if 'lon_rho' in zeta.coords: zeta = zeta.drop_vars(["lon_rho", "lat_rho"]) # edge case where a grid file is specified but the grid variables are also in the croco output file - this avoids conflict when merging the dataarrays later
+    
     da = da.squeeze() * mask
     da = change_attrs(attrs,da,var_str)
    
@@ -843,22 +844,15 @@ def get_var(fname,var_str,
     h = h.squeeze() * mask
     h = change_attrs(attrs,h,'h')
 
-    da_mask = xr.DataArray(mask,
-                           coords={'eta_rho': ds['eta_rho'].values,
-                                   'xi_rho' : ds['xi_rho'].values},
-                           dims=['eta_rho', 'xi_rho'])
-
-    mask = change_attrs(attrs,da_mask,'mask')
+    mask = change_attrs(attrs,mask,'mask')
 
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels...')
-        depths_da = get_depths(ds).squeeze() * mask
-        depths = change_attrs(attrs,depths_da,'depth')
+        depths = get_depths(ds).squeeze() * mask
         print('making the output dataset for get_var()...')
         var_data, depth_data, zeta_data, h_data = dask.compute(da, depths, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
-        ds_out['depth'].attrs['positive'] = 'up'
         ds_out['s_rho'].attrs.pop('formula_terms', None)
     else:
         print('making the output dataset for get_var()...')

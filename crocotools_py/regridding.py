@@ -54,7 +54,7 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
         ds_salt = post.get_var(file, "salt", grdname=grdname, ref_date=ref_date)
         ds_uv   = post.get_uv(file, grdname=grdname, ref_date=ref_date)
        
-        ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
+        ds_all = xr.merge([ds_temp,ds_salt,ds_uv],compat='override')
         
         ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier1 function"
         ds_all.attrs["source"] = file
@@ -68,7 +68,6 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
                 "salt": {"dtype": "float32"},
                 "u": {"dtype": "float32"},
                 "v": {"dtype": "float32"},
-                "depth": {"dtype": "float32"},
                 "h": {"dtype": "float32"},
                 "mask": {"dtype": "float32"},
                 "lon_rho": {"dtype": "float32"},
@@ -77,6 +76,9 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
                          "calendar": "standard",
                          "dtype": "i4"},
                 }
+        
+        if 'depth' in ds_all.variables: # allow for both cases where depth is or isn't in the dataset  (e.g. if a surface file is used)
+            encoding['depth'] = {"dtype": "float32"}
       
         # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
         basename = os.path.basename(file)
@@ -137,7 +139,7 @@ def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), do
         ds_salt = post.get_var(file, "salt", grdname=grdname, ref_date=ref_date, level=depths)
         ds_uv = post.get_uv(file, grdname=grdname, ref_date=ref_date, level=depths)
         
-        ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
+        ds_all = xr.merge([ds_temp,ds_salt,ds_uv],compat='override')
         
         ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier2 function"
         ds_all.attrs["source"] = file

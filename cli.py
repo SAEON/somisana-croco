@@ -266,7 +266,7 @@ def main():
             help='tier 1 regridding of a raw CROCO output file: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> adds a depth variable providing the depths of each sigma level at each time-step')
     parser_regrid_tier1.add_argument('--fname', required=True, type=str, help='input native CROCO filename - can include wildcards (*) to process multiple files in a single command')
     parser_regrid_tier1.add_argument('--grdname', required=False, type=str,
-                                     help='optional option to provide a separate grid file (if grid vars arent in your output file)')
+                                     help='optional input to provide a separate grid file (if grid vars arent in your output files)')
     parser_regrid_tier1.add_argument('--dir_out', required=True, help='tier 1 output directory')
     parser_regrid_tier1.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
@@ -283,7 +283,7 @@ def main():
             help='tier 2 regridding of a raw CROCO output file: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> regrids the sigma levels to the user defined constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
     parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input native CROCO filename - can include wildcards (*) to process multiple files in a single command')
     parser_regrid_tier2.add_argument('--grdname', required=False, type=str,
-                                     help='optional option to provide a separate grid file (if grid vars arent in your output file)')
+                                     help='optional input to provide a separate grid file (if grid vars arent in your output files)')
     parser_regrid_tier2.add_argument('--dir_out', required=True, help='tier 2 output directory')
     parser_regrid_tier2.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
