@@ -14,7 +14,7 @@ import dask
 #import dask.array as da
 import re
 
-def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
+def regrid_tier1(fname_in, dir_out,ref_date=datetime(2000,1,1,0,0),doi_link=None):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -28,8 +28,6 @@ def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
     ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
     doi_link  : doi link in string (required = False)
     '''
-    if ref_date is None:
-        ref_date = datetime(2000,1,1,0,0)
     
     if type(fname_in) == str:
         if fname_in.find('*') < 0: 
@@ -57,8 +55,8 @@ def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
        
         ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
         
-        ds_all.attrs["title"] = "Model Outputs Regridded Tier 1"
-        ds_all.attrs["source"] = "CROCO Model"
+        ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier1 function"
+        ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         ds_all.attrs["conventions"] = "CF-1.8"
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
@@ -77,10 +75,14 @@ def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
                          "calendar": "standard",
                          "dtype": "i4"},
                 }
-       
-        parts = os.path.split(file)[1].split('.')
+      
+        # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
+        basename = os.path.basename(file)
+        match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
+        basename_no_extension = basename[:match.start()]
+        extension = match.group(0)
         
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t1.' + ".".join(parts[1:])))
+        fname_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_t1' + extension))
 
         # If the file already exists, we remove it to avoid permission errors.
         if os.path.exists(fname_out): os.remove(fname_out)        
@@ -92,7 +94,7 @@ def regrid_tier1(fname_in, dir_out,ref_date=None,doi_link=None):
 
         print(f'Created: {fname_out}')
 
-def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
+def regrid_tier2(fname_in,dir_out, ref_date=datetime(2000,1,1), doi_link=None, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -122,12 +124,6 @@ def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
     else:
         print('Error: unkown input format. Input variable fname_in needs to be str or list.')
         sys.exit()
-
-    if depths is None:
-        depths = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]
-
-    if ref_date is None:
-        ref_date = datetime(2000,1,1)
    
     for file in fname_in:
         print('')
@@ -140,8 +136,8 @@ def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
         
         ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
         
-        ds_all.attrs["title"] = "Model Outputs Regridded Tier 2"
-        ds_all.attrs["source"] = "CROCO Model"
+        ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier2 function"
+        ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         ds_all.attrs["conventions"] = "CF-1.8"
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
@@ -161,9 +157,13 @@ def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
                          "dtype": "i4"},
                 }
 
-        parts = os.path.split(file)[1].split('.')
-
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), parts[0] + '_t2.' + ".".join(parts[1:])))
+        # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
+        basename = os.path.basename(file)
+        match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
+        basename_no_extension = basename[:match.start()]
+        extension = match.group(0)
+        
+        fname_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_t2' + extension))
         
         # If the file already exists, we remove it to avoid permission errors.
         if os.path.exists(fname_out): os.remove(fname_out)        
@@ -173,7 +173,7 @@ def regrid_tier2(fname_in,dir_out, ref_date=None, doi_link=None, depths=None):
         
         print(f'Created: {fname_out}')
 
-def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
+def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, spacing=0.01):
     '''
     tier 3 regridding of a CROCO output:
       -> takes the output of regrid-tier2 as input and
@@ -187,7 +187,7 @@ def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True)
     dir_out   : path to output directory (required = True)
-    ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
+    ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1).
     spacing   : constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output (type: str or float). 
                 If None, the default is 0.01.
     doi_link  : doi link in string (required = False)
@@ -211,12 +211,6 @@ def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
     else:
         print('Error: unkown input format. Input variable fname_in needs to be str or list.')
         sys.exit()
-
-    if spacing is None: spacing = 0.01
-    
-    if type(spacing) is str: spacing = float(spacing)
-
-    if ref_date is None: ref_date = datetime(2000,1,1)
 
     for file in fname_in:
         print('')
@@ -413,9 +407,9 @@ def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
                 ),
             },
         )
-
-        data_out.attrs["title"] = "Model Outputs Regridded Tier 3"
-        data_out.attrs["source"] = "CROCO Model"
+        
+        data_out.attrs["title"] = "Regridded CROCO output created by the regrid_tier3 function"
+        data_out.attrs["source"] = file
         data_out.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         data_out.attrs["conventions"] = "CF-1.8"
         if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
@@ -447,12 +441,14 @@ def regrid_tier3(fname_in, dir_out, ref_date=None, doi_link=None, spacing=None):
         encoding['longitude'] = {"dtype": "float32"}
         encoding['depth'] = {"dtype": "float32"}
         
-        # I think it might be cleaner if we have a function here that does all of this. 
-        parts = os.path.split(file)[1].split('.')
-        base = parts[0]
-        rest = ".".join(parts[1:])
-        base = re.sub(r"_t\d+$", "", base)
-        fname_out = os.path.abspath(os.path.join(os.path.dirname(dir_out), f"{base}{'_t3'}.{rest}"))
+        # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
+        basename = os.path.basename(file)
+        match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
+        basename_no_extension = basename[:match.start()]
+        extension = match.group(0)
+        basename_no_extension = basename_no_extension.replace('_t2', '_t3')
+        
+        fname_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + extension))
         
         # If the file already exists, we remove it to avoid permission errors.
         if os.path.exists(fname_out): os.remove(fname_out)        
