@@ -13,18 +13,36 @@ jobs:
   # Download hycom 
   download_hycom:
     runs-on: mims1
+    needs: [build_cli]
     steps:
-      - name: Download HYCOM
+      - name: Clean and create HYCOM directory with correct permissions
         run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v /home/somisana/ops/main/20250317_00/downloaded_data/HYCOM:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_main:latest \
-            download_hycom \
-            --domain 23,24,-37,-36 \
-            --run_date '2025-04-23 00:00:00' \
-            --hdays 5 \
-            --fdays 5 \
-            --savedir '/tmp/' && echo "Download completed" || echo "Download failed"
+          sudo rm -rf /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+          sudo mkdir -p /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+          sudo chmod -R 775 /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM
+
+      - name: Download HYCOM
+        uses: nick-fields/retry@master
+        with:
+          timeout_minutes: 60
+          retry_wait_seconds: 300
+          max_attempts: 3
+          retry_on: any
+          warning_on_retry: true
           shell: bash
+          continue_on_error: false
+          command: |
+            docker run \
+              --user $(id -u):$(id -g) \
+              --rm \
+              --entrypoint bash \
+              -v /home/somisana/ops/main/20250506_00/downloaded_data/HYCOM:/tmp \
+              ghcr.io/saeon/somisana-croco_cli_main:latest \
+              -c 'python cli.py download_hycom \
+                --domain 11,36,-39,-25 \
+                --run_date "2025-05-06 00:00:00" \
+                --hdays 5 \
+                --fdays 5 \
+                --savedir "/tmp" \
+                --pad True && echo "Download completed" || echo "Download failed"'

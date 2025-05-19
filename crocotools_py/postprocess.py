@@ -1,9 +1,17 @@
 import numpy as np
-from datetime import timedelta
 import xarray as xr
 import dask
 from datetime import timedelta, datetime
 from glob import glob
+from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
+
+def change_attrs(attrs,da,var_str):
+    meta = getattr(attrs, var_str)
+    da.attrs['long_name'] = meta.long_name
+    da.attrs['units'] = meta.units
+    da.attrs['standard_name'] = meta.standard_name
+    
+    return da
 
 def u2rho(u):
     """
@@ -723,6 +731,9 @@ def get_var(fname,var_str,
         Retruns an xarray dataset object of the requested data
     '''
     
+    # We load in out variable class to assign CF-Compliant attributes
+    attrs = CROCO_Attrs()
+
     print('extracting the data from croco file(s) - ' + var_str)
 
     # Get an xarray dataset for the grid
@@ -795,12 +806,10 @@ def get_var(fname,var_str,
                                                  'eta_rho': ds['eta_rho'].values, 
                                                  'xi_rho': ds['xi_rho'].values},
                                   dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
-            
-        # add back the original variable attributes
-        da_rho.attrs = da.attrs
-        # update da to be the data on the rho grid
-        da = da_rho.copy()
-    
+
+       
+        da = change_attrs(attrs,da_rho,var_str)
+   
     # Do vertical interpolations if needed
     if not var_is_2d and not isinstance(level,slice):
         if np.mean(np.atleast_1d(level)) < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
@@ -818,30 +827,44 @@ def get_var(fname,var_str,
     # Masking
     print('applying the mask - ' + var_str)
     if isinstance(eta_rho,slice) and isinstance(xi_rho,slice) and not isinstance(fname, xr.Dataset):
-            _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
-                                    eta_rho=eta_rho,
-                                    xi_rho=xi_rho)
+        _,_,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
+                                eta_rho=eta_rho,
+                                xi_rho=xi_rho)
+        mask[np.isnan(mask)]=0
     else:
         mask=1
-    da_masked=da.squeeze()*mask
-    # masking throws away the attributes, so let's keep those
-    da_masked.attrs = da.attrs
-    da = da_masked.copy()
-    
+
+    da = da.squeeze() * mask
+    da = change_attrs(attrs,da,var_str)
+   
+    zeta = zeta.squeeze() * mask
+    zeta = change_attrs(attrs,zeta,'zeta')
+
+    h = h.squeeze() * mask
+    h = change_attrs(attrs,h,'h')
+
+    da_mask = xr.DataArray(mask,
+                           coords={'eta_rho': ds['eta_rho'].values,
+                                   'xi_rho' : ds['xi_rho'].values},
+                           dims=['eta_rho', 'xi_rho'])
+
+    mask = change_attrs(attrs,da_mask,'mask')
+
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
         print('computing depths of sigma levels...')
-        depths_da = get_depths(ds).squeeze()
+        depths_da = get_depths(ds).squeeze() * mask
+        depths = change_attrs(attrs,depths_da,'depth')
         print('making the output dataset for get_var()...')
-        var_data, depth_data, zeta_data, h_data = dask.compute(da, depths_da, zeta, h)
-        ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data})
-        #ds_out = xr.Dataset({var_str: da.compute(), 'depth': depths_da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
+        var_data, depth_data, zeta_data, h_data = dask.compute(da, depths, zeta, h)
+        ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
+        ds_out['depth'].attrs['positive'] = 'up'
+        ds_out['s_rho'].attrs.pop('formula_terms', None)
     else:
         print('making the output dataset for get_var()...')
         var_data, zeta_data, h_data = dask.compute(da, zeta, h)
-        ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data})
-        #ds_out = xr.Dataset({var_str: da.compute(), 'zeta': zeta.compute(), 'h': h.compute()})
-    
+        ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
+
     # remove singleton dimensions
     ds_out = ds_out.squeeze()
     
@@ -880,7 +903,8 @@ def get_uv(fname,
     returns xarray dataarrays for both u and v data
     
     '''
-    
+    attrs = CROCO_Attrs_RotatedVectors()
+
     u=get_var(fname,var_u,
               grdname=grdname,
               time=time,
@@ -928,55 +952,10 @@ def get_uv(fname,
     # although 'angle' is 2D, numpy and xarray are clever enough for this to work even if u_rho and v_rho are 3D or 4D
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
-    
-    # add attributes for u_out, v_out - now east,north components
-    # Define a dictionary of the attributes for potential variables
-    attributes = {
-        'u': {
-            'long_name': 'Eastward component of baroclinic velocity',
-            'units': 'meters per second',
-            'standard_name': 'baroclinic_eastward_sea_water_velocity'
-        },
-        'sustr': {
-            'long_name': 'Eastward component of surface stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'surface_eastward_stress'
-        },
-        'bustr': {
-            'long_name': 'Eastward component of bottom stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'bottom_eastward_stress'
-        },
-        'ubar': {
-            'long_name': 'Eastward component of barotropic velocity',
-            'units': 'meters per second',
-            'standard_name': 'barotropic_eastward_sea_water_velocity'
-        },
-        'v': {
-            'long_name': 'Northward component of baroclinic velocity',
-            'units': 'meters per second',
-            'standard_name': 'baroclinic_northward_sea_water_velocity'
-        },
-        'svstr': {
-            'long_name': 'Northward component of surface stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'surface_northward_stress'
-        },
-        'bvstr': {
-            'long_name': 'Northward component of bottom stress',
-            'units': 'Newton per meter squared',
-            'standard_name': 'bottom_northward_stress'
-        },
-        'vbar': {
-            'long_name': 'Northward component of barotropic velocity',
-            'units': 'meters per second',
-            'standard_name': 'barotropic_northward_sea_water_velocity'
-        }
-    }
-    
-    u_out.attrs = attributes[var_u]
-    v_out.attrs = attributes[var_v]
-    
+
+    u_out = change_attrs(attrs,u_out,var_u)
+    v_out = change_attrs(attrs,v_out,var_v)
+
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
     # then overwrite var_u and add var_v
@@ -1475,3 +1454,8 @@ def get_section(fname,
         ds.to_netcdf(nc_out)
     
     return ds
+
+#if __name__ == "__main__":
+#    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
+#    ref_date=datetime(2000,1,1)
+#    ds_temp = get_var(file, "temp", ref_date=ref_date)
