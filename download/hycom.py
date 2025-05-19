@@ -10,27 +10,6 @@ from pathlib import Path
 import tempfile
 import sys
 
-def progressbar(it, prefix="", size=60, file=sys.stdout, github_actions_mode=False):
-    count = len(it)
-    def show(j):
-        if github_actions_mode:
-            # Print a new line for every update
-            percent = (j / count) * 100
-            print(f"{prefix} {percent:6.2f}% ({j}/{count})")
-        else:
-            # Normal dynamic bar (ignored by GitHub Actions)
-            x = int(size * j / count)
-            file.write(f"{prefix}[{'#' * x}{'.' * (size - x)}] {percent:6.2f}% ({j}/{count})\r")
-            file.flush()
-    show(0)
-    for i, item in enumerate(it):
-        yield item
-        show(i + 1)
-    if not github_actions_mode:
-        file.write("\n")
-        file.flush()
-
-
 def is_server_reachable(url):
     try:
         response = requests.get(url, timeout=5, stream=True)  # Get headers only
@@ -172,37 +151,36 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
                                                    lon=lon_range)
                                                    
         if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
-        time_values = ds['time'].sel(time=slice(start_date, None)).values
+        
+        variable = ds[metadata[var]["vars"][0]].sel(time=slice(start_date,None))
+                
+        if variable.ndim == 4: variable = variable.sel(depth=depth_range)
+
+        if run_date.hour == 0:
+            variable = variable.resample(time='1D').mean()
+        elif run_date.hour == 12:
+            variable = variable.resample(time='1D', offset='12h').mean()
+        else:
+            print(f'Invalid run date: {run_date.hour}')
+        
         tmp_dir = Path(tempfile.mkdtemp())
         time_slices = []
-        for t in progressbar(time_values,f'Downloading {metadata[var]["vars"][0]}: ', 40, github_actions_mode=True):
+
+        for t in range(variable.time.values.size):
             try:
-                variable = ds[metadata[var]["vars"][0]]
-
-                if variable.ndim == 4:
-                    variable = variable.sel(depth=depth_range)
-
                 # Save temporary file
-                time_str = pd.to_datetime(t).strftime("%Y%m%dT%H%M%S")
+                time_str = pd.to_datetime(variable.time.values[t]).strftime("%Y-%m-%d")
                 tmp_file = tmp_dir / f"{metadata[var]['vars'][0]}_{time_str}.nc"
-                variable.to_netcdf(tmp_file)
+                v=variable[t]
+                v.to_netcdf(tmp_file)
                 time_slices.append(tmp_file)
-
             except Exception as e:
                 print(f"Failed to download time {t}: {e}")
-
+        
         # Combine time slices
         datasets = [xr.open_dataset(f) for f in time_slices]
         combined = xr.concat(datasets, dim="time")
         combined = combined.sortby('time')
-
-        # Resample if needed
-        if run_date.hour == 0:
-            combined = combined.resample(time='1D').mean()
-        elif run_date.hour == 12:
-            combined = combined.resample(time='1D', offset='12h').mean()
-        else:
-            print(f'Invalid run date: {run_date.hour}')
 
         save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
         combined=combined.sel(time=slice(start_date, end_date))
@@ -212,7 +190,7 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
             print(f"Final file written to {save_path} and validated successfully.")
         else:
             print(f"Validation failed for final file {save_path}.")
-
+            
     except Exception as e:
         print(f"Error during processing: {e}")
 
@@ -360,7 +338,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
         print(f"Server {server_url} is not reachable.")
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2025-05-16 00:00:00')
+    run_date = pd.to_datetime('2025-05-19 00:00:00')
     hdays = 5
     fdays = 5
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
