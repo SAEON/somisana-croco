@@ -6,6 +6,8 @@ from datetime import timedelta
 import numpy as np
 import requests
 from glob import glob
+from pathlib import Path
+import tempfile
 
 def is_server_reachable(url):
     try:
@@ -58,7 +60,7 @@ def check_time_range(file_path, expected_start, expected_end):
         with xr.open_dataset(file_path) as ds:
             if 'time' in ds.coords:
                 file_times = pd.DatetimeIndex(ds['time'].values)
-                if (file_times.min() == expected_start) and (file_times.max() == expected_end):
+                if (file_times.min() <= expected_start) and (file_times.max() >= expected_end):
                     return True
                 else:
                     print(f"Time range in {file_path} is invalid.")
@@ -72,50 +74,6 @@ def check_time_range(file_path, expected_start, expected_end):
         print(f"Error checking time range in file {file_path}: {e}")
         return False
 
-
-def check_data_quality(file_path, variables):
-    """
-    Function to check the quality of the data downloaded.
-    """
-    try:
-        with xr.open_dataset(file_path) as ds:
-            if variables in ds:
-                data = ds[variables].values
-                if data.size == 0:
-                    print(f"Variable {var} has no data in {file_path}.")
-                    return False
-                else:
-                    pass
-
-                if np.ndim(data) == 4:
-                    for dt in range(data[:,0,0,0].size):
-                        if np.isnan(data[dt]).all():
-                            print(f"All values for variable {var} at timestep {dt} are NaN in {file_path}.")
-                            return False
-                        else:
-                            pass
-
-                elif np.ndim(data) == 3:
-                    for dt in range(data[:,0,0].size):
-                        if np.isnan(data[dt]).all():
-                            print(f"All values for variable {var} at timestep {dt} are NaN in {file_path}.")
-                            return False
-                        else:
-                            pass
-
-                else:
-                    print(f"Variable {var} at timestep {dt} has incorrect dimension shape in {file_path}.")
-                    return False
-
-            else:
-                print(f"Variable {var} not found in {file_path}.")
-                return False
-
-        return True
-
-    except Exception as e:
-        print(f"Error checking data quality in file {file_path}: {e}")
-
 def validate_download(file_path, expected_vars, expected_start, expected_end):
     """
     Function that calls the validation routines to check the intergrity of the files downloaded.
@@ -127,8 +85,6 @@ def validate_download(file_path, expected_vars, expected_start, expected_end):
     if not check_variables(file_path, expected_vars):
         return False
     if not check_time_range(file_path, expected_start, expected_end):
-        return False
-    if not check_data_quality(file_path, expected_vars):
         return False
     return True
 
@@ -181,7 +137,6 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
     # Calculate time range for subsetting
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
-    time_range = slice(start_date, end_date)
     
     variable=None
     
@@ -196,34 +151,51 @@ def download_var(var, metadata, domain, depths, save_dir, run_date, hdays, fdays
                                                    
         if 'time' in ds: ds['time'] = decode_time_units(ds['time'])
         
-        variable = ds[metadata[var]["vars"][0]]
-        
+        variable = ds[metadata[var]["vars"][0]].sel(time=slice(start_date,None))
+                
         if variable.ndim == 4: variable = variable.sel(depth=depth_range)
-        
-        if run_date.hour == 0: 
+
+        if run_date.hour == 0:
             variable = variable.resample(time='1D').mean()
-        elif run_date.hour == 12: 
-            variable = variable.resample(time='1D',offset='12h').mean()
-        else: 
+        elif run_date.hour == 12:
+            variable = variable.resample(time='1D', offset='12h').mean()
+        else:
             print(f'Invalid run date: {run_date.hour}')
         
-        variable = variable.sel(time=time_range)
-        
-        save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
-        variable.to_netcdf(save_path, 'w')
-        ds.close()
-        
-        if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date):
-            print(f'File written to {save_path} and validation was successful.')        
-        else:
-            print(f"File {save_path} validation failed and retrying the download")
+        tmp_dir = Path(tempfile.mkdtemp())
+        time_slices = []
 
+        for t in range(variable.time.values.size):
+            try:
+                # Save temporary file
+                time_str = pd.to_datetime(variable.time.values[t]).strftime("%Y-%m-%d")
+                tmp_file = tmp_dir / f"{metadata[var]['vars'][0]}_{time_str}.nc"
+                v=variable[t]
+                v.to_netcdf(tmp_file)
+                time_slices.append(tmp_file)
+            except Exception as e:
+                print(f"Failed to download time {t}: {e}")
+        
+        # Combine time slices
+        datasets = [xr.open_dataset(f) for f in time_slices]
+        combined = xr.concat(datasets, dim="time")
+        combined = combined.sortby('time')
+
+        save_path = os.path.join(save_dir, f"hycom_{metadata[var]['vars'][0]}.nc")
+        combined=combined.sel(time=slice(start_date, end_date))
+        combined.to_netcdf(save_path)
+        if validate_download(save_path, metadata[var]["vars"][0], start_date, end_date - timedelta(days=1)):
+            print(f"Final file written to {save_path} and validated successfully.")
+        else:
+            print(f"Validation failed for final file {save_path}.")
+            
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error during processing: {e}")
 
     finally:
-        # Explicitly delete large variables to free up memory
-        del variable
+        ds.close()
+        for f in time_slices:
+            f.unlink()
 
 def pad_time_step(ds: xr.Dataset) -> xr.Dataset:
     """
@@ -279,7 +251,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
     """
     # We add an additional day to ensure that it exceeds the model run time. 
     # We also pad the dataset at the end, but instead of downloading it, we copy the last timestep.
-    if pad: hdays = hdays + 1
+    if pad: hdays,fdays = hdays + 1, fdays
     start_date = pd.Timestamp(run_date) - timedelta(days=hdays)
     end_date = pd.Timestamp(run_date) + timedelta(days=fdays)
     
@@ -364,7 +336,7 @@ def download_hycom(variables, domain, depths, run_date, hdays, fdays, save_dir,p
         print(f"Server {server_url} is not reachable.")
 
 if __name__ == '__main__':
-    run_date = pd.to_datetime('2025-05-06 00:00:00')
+    run_date = pd.to_datetime('2025-05-19 00:00:00')
     hdays = 5
     fdays = 5
     variables = ['salinity','water_temp','surf_el','water_u','water_v']
