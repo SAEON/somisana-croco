@@ -17,10 +17,10 @@ jobs:
     steps:
       - name: Clean and create HYCOM directory with correct permissions
         run: |
-          sudo rm -rf /home/somisana/ops/update-hycom-download/20250516_00/downloaded_data/HYCOM
-          sudo mkdir -p /home/somisana/ops/update-hycom-download/20250516_00/downloaded_data/HYCOM
-          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/update-hycom-download/20250516_00/downloaded_data/HYCOM
-          sudo chmod -R 775 /home/somisana/ops/update-hycom-download/20250516_00/downloaded_data/HYCOM
+          sudo rm -rf /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+          sudo mkdir -p /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+          sudo chmod -R 775 /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
 
       - name: Download HYCOM
         uses: nick-fields/retry@master
@@ -37,7 +37,7 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               --entrypoint bash \
-              -v /home/somisana/ops/update-hycom-download/20250516_00/downloaded_data/HYCOM:/tmp \
+              -v /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM:/tmp \
               ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
               -c 'python cli.py download_hycom \
                 --domain 11,36,-39,-25 \
