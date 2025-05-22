@@ -78,8 +78,8 @@ jobs:
             docker run \
               --rm \
               -v /home/giles/mercator_download:/tmp/download \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              download_mercator \
+              ghcr.io/saeon/somisana-download_main:latest \
+              download_mercator_ops \
                 --usrname ${{ secrets.COPERNICUS_USERNAME }} \
                 --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
                 --domain 11,36,-39,-25 \
@@ -99,7 +99,7 @@ jobs:
             --rm \
             --entrypoint /bin/bash \
             -v /home/giles/mercator_download/:/mnt/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            ghcr.io/saeon/somisana-download_main:latest \
               -c "rm -f /mnt/tmp/*nc"
 
   move_mercator:
@@ -143,8 +143,8 @@ jobs:
 #              --user $(id -u):$(id -g) \
 #              --rm \
 #              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
-#              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-#              download_mercator \
+#              ghcr.io/saeon/somisana-download_main:latest \
+#              download_mercator_ops \
 #                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
 #                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
 #                --domain 11,36,-39,-25 \

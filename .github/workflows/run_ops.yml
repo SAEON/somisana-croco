@@ -23,6 +23,13 @@ jobs:
     with:
       IMAGE_ID: cli
 
+  pull-download-image-mims1:
+    runs-on: mims1
+    steps:
+      - name: pull latest download docker image to mims server
+        run: |
+          docker pull ghcr.io/saeon/somisana-download_main:latest
+  
   # set some environment variables
   envs:
     runs-on: ubuntu-latest
