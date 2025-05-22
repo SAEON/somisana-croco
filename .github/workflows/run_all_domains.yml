@@ -46,7 +46,6 @@ jobs:
   run_sa_west_gfs:
     needs: [make_bry_ini]
     uses: ./.github/workflows/run_croco.yml
-    continue-on-error: true
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -65,7 +64,6 @@ jobs:
   postprocess_sa_west_gfs:
     needs: [run_sa_west_gfs]
     uses: ./.github/workflows/postprocess_croco.yml
-    continue-on-error: true
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -83,8 +81,8 @@ jobs:
 
   run_sa_southeast_gfs:
     needs: [run_sa_west_gfs]
+    if: always() # ensure this runs even if previous runs failed
     uses: ./.github/workflows/run_croco.yml
-    continue-on-error: true
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -103,7 +101,6 @@ jobs:
   postprocess_sa_southeast_gfs:
     needs: [run_sa_southeast_gfs]
     uses: ./.github/workflows/postprocess_croco.yml
-    continue-on-error: true
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -127,9 +124,8 @@ jobs:
   # set FDAYS to 2.45 (just over 1 hour less), otherwise CROCO will run out of forcing data in the final hour of the run.
   run_sa_west_saws:
     needs: [run_sa_southeast_gfs]
-    if: ${{ inputs.SAWS_OK == '1' }}
+    if: ${{ always() && inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/run_croco.yml
-    continue-on-error: true     
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -149,7 +145,6 @@ jobs:
     needs: [run_sa_west_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/postprocess_croco.yml
-    continue-on-error: true   
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -167,9 +162,8 @@ jobs:
 
   run_sa_southeast_saws:
     needs: [run_sa_west_saws]
-    if: ${{ inputs.SAWS_OK == '1' }}
+    if: ${{ always() && inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/run_croco.yml
-    continue-on-error: true   
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
@@ -189,7 +183,6 @@ jobs:
     needs: [run_sa_southeast_saws]
     if: ${{ inputs.SAWS_OK == '1' }}
     uses: ./.github/workflows/postprocess_croco.yml
-    continue-on-error: true   
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
