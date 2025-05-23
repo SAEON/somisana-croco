@@ -78,7 +78,7 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-download_${{ inputs.BRANCH_REF }}:latest \
+              ghcr.io/saeon/somisana-download_main:latest \
               download_hycom \
                 --domain 11,36,-39,-25 \
                 --run_date ${{ steps.format_date.outputs.value }} \
