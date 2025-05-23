@@ -60,6 +60,7 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
         ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         ds_all.attrs["conventions"] = "CF-1.8"
+        ds_all.attrs['references'] = 'Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA) - https://somisana.ac.za/'
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
         encoding = {
@@ -145,6 +146,7 @@ def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), do
         ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         ds_all.attrs["conventions"] = "CF-1.8"
+        ds_all.attrs['references'] = 'Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA) - https://somisana.ac.za/'
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
         encoding = {
@@ -418,6 +420,7 @@ def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, 
         data_out.attrs["source"] = file
         data_out.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         data_out.attrs["conventions"] = "CF-1.8"
+        data_out.attrs['references'] = 'Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA) - https://somisana.ac.za/'
         if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
         # Explicitly set chunk sizes of some dimensions

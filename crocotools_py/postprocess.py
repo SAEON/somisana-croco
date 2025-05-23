@@ -737,17 +737,23 @@ def get_var(fname,var_str,
 
     print('extracting the data from croco file(s) - ' + var_str)
 
-    # Get an xarray dataset for the grid
-    if grdname is None:
-        grdname = fname
-    ds_grd = get_ds(grdname) 
-    
     # Get an xarray dataset of the croco file(s)
     if isinstance(fname, xr.Dataset): # handles the case of using an already extracted dataset as input
         ds = fname.copy()
     else:
         ds = get_ds(fname,var_str)
     
+    # Write grid dimensions and variables to dataset
+    if grdname is not None:
+        ds_grd = get_ds(grdname)
+        ds['lon_rho'] = ds_grd['lon_rho']
+        ds['lat_rho'] = ds_grd['lat_rho']
+        ds['eta_rho'] = ds_grd['eta_rho']
+        ds['xi_rho'] = ds_grd['xi_rho']
+        ds['h'] = ds_grd['h']
+        ds['mask_rho'] = ds_grd['mask_rho']
+        ds_grd.close()
+
     # get the time as a list of datetimes
     time_dt = get_time(ds, ref_date)
     ds = ds.assign_coords(time=time_dt)
@@ -768,12 +774,6 @@ def get_var(fname,var_str,
                        eta_v=eta_v,
                        missing_dims='ignore' # handle case where input is a previously extracted dataset
                        )
-    ds_grd = ds_grd.isel(eta_rho=eta_rho,
-                       xi_rho=xi_rho,
-                       xi_u=xi_u,
-                       eta_v=eta_v,
-                       missing_dims='ignore' # handle case where input is a previously extracted dataset
-                       )
     
     # get dataarrays of the data we want
     da = ds[var_str]
@@ -781,7 +781,7 @@ def get_var(fname,var_str,
         var_is_2d=False
     else:
         var_is_2d=True
-    h = ds_grd['h']
+    h = ds['h']
     zeta = ds['zeta']
     
     # regrid u/v vector components onto the rho grid if needed
@@ -796,17 +796,23 @@ def get_var(fname,var_str,
         # now that u/v data is on the rho grid
         if var_is_2d:
             da_rho = xr.DataArray(data_rho, 
-                                  coords={'time': ds['time'].values,
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values},
-                                  dims=['time', 'eta_rho', 'xi_rho'])
+                                  coords={
+                                      'time': ds['time'].values,
+                                      'eta_rho': ds['eta_rho'].values,
+                                      'xi_rho': ds['xi_rho'].values
+                                      },
+                                  dims=['time', 'eta_rho', 'xi_rho']
+                                  )
         else:
             da_rho = xr.DataArray(data_rho, 
-                                  coords={'time': ds['time'].values, 
-                                                 's_rho': ds['s_rho'].values, 
-                                                 'eta_rho': ds['eta_rho'].values, 
-                                                 'xi_rho': ds['xi_rho'].values},
-                                  dims=['time', 's_rho', 'eta_rho', 'xi_rho'])
+                                  coords={
+                                      'time': ds['time'].values,
+                                      's_rho': ds['s_rho'].values,
+                                      'eta_rho': ds['eta_rho'].values,
+                                      'xi_rho': ds['xi_rho'].values,
+                                      },
+                                  dims=['time', 's_rho', 'eta_rho', 'xi_rho']
+                                  )
 
         da = change_attrs(attrs,da_rho,var_str)
    
@@ -827,8 +833,8 @@ def get_var(fname,var_str,
     # Masking
     print('applying the mask - ' + var_str)
     lon_rho,lat_rho,mask=get_lonlatmask(grdname,type='r', # u and v vars are already regridded to the rho grid so we can safely specify type='r' here
-                            eta_rho=eta_rho,
-                            xi_rho=xi_rho)
+                                        eta_rho=eta_rho,
+                                        xi_rho=xi_rho)
     
     if not 'lon_rho' in da.coords: # add lon,lat as coords if not already there (e.g. if the input is a surface only file)
         da = da.assign_coords(lon_rho=lon_rho)
@@ -845,6 +851,9 @@ def get_var(fname,var_str,
     h = change_attrs(attrs,h,'h')
 
     mask = change_attrs(attrs,mask,'mask')
+
+    da['eta_rho'] = change_attrs(attrs,da.eta_rho,'eta_rho')
+    da['xi_rho']  = change_attrs(attrs,da.xi_rho,'xi_rho')
 
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
@@ -867,7 +876,6 @@ def get_var(fname,var_str,
         ds_out.to_netcdf(nc_out)
     
     ds.close()
-    ds_grd.close()
     
     return ds_out
 
