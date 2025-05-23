@@ -15,6 +15,8 @@ class VariableMetadata:
 
 class CROCO_Attrs_RotatedVectors:
     def __init__(self):
+        self.xi_rho = VariableMetadata('x-dimension of the grid', '1', 'x_grid_index')
+        self.eta_rho= VariableMetadata('y-dimension of the grid', '1', 'y_grid_index')
         self.lon_rho= VariableMetadata('Longitude', 'degrees_east', 'longitude')
         self.lat_rho= VariableMetadata('Latitude', 'degrees_north', 'latitude')
         self.zeta   = VariableMetadata('Sea Surface Elevation', 'm', 'sea_surface_elevation')
@@ -34,6 +36,8 @@ class CROCO_Attrs_RotatedVectors:
 
 class CROCO_Attrs:
     def __init__(self):
+        self.xi_rho = VariableMetadata('x-dimension of the grid', '1', 'x_grid_index')
+        self.eta_rho= VariableMetadata('y-dimension of the grid', '1', 'y_grid_index')
         self.lon_rho= VariableMetadata('Longitude', 'degrees_east', 'longitude')
         self.lat_rho= VariableMetadata('Latitude', 'degrees_north', 'latitude')       
         self.zeta   = VariableMetadata('Sea Surface Elevation', 'm', 'sea_surface_elevation')
