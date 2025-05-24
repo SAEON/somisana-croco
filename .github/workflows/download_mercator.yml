@@ -73,7 +73,6 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: sudo rm -f /home/giles/mercator_download/*nc
           command: |
             docker run \
               --rm \
