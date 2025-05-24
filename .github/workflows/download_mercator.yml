@@ -101,7 +101,7 @@ jobs:
 #            ghcr.io/saeon/somisana-download_main:latest \
 #              -c "rm -f /mnt/tmp/*nc"
 
-  move_mercator:
+  download_mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files,download_mercator_saeon]
     if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
@@ -125,7 +125,6 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
- see comments in mercator_saeon job as to why this download is commented here
       - name: download MERCATOR
         uses: nick-fields/retry@master
         with:
@@ -154,7 +153,7 @@ jobs:
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    needs: [move_mercator]
+    needs: [download_mercator]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}
