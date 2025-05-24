@@ -103,7 +103,8 @@ jobs:
 
   download_mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
-    needs: [check_files,download_mercator_saeon]
+    #needs: [check_files,download_mercator_saeon]
+    needs: [check_files]
     if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
     steps:
       - name: create the MERCATOR directory
