@@ -45,81 +45,21 @@ jobs:
             echo "value=0" >> $GITHUB_OUTPUT
           fi
 
-#  download_mercator_saeon:
-#    # we have had an issue with downloading from copernicus specifically on the mims network
-#    # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli at the time of testing
-#    # so for now we are just downloading on the saeon-apps server, and moving to the shared
-#    # samba mount which is accessible on from both the saeon and mimms servers
-#    # we can come back to this when we have the server issue sorted (or if later versions of 
-#    # the copernicusmarine tool works better on this network)
-#    # then this job can be deleted and the commented download step in the mercator job can be used
-#    runs-on: saeonapps
-#    needs: [check_files]
-#    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
-#    steps:
-#      - name: Format RUN_DATE
-#        id: format_date
-#        run: |
-#          run_date=${{ inputs.RUN_DATE }}
-#          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
-#          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-#      - name: download MERCATOR
-#        uses: nick-fields/retry@master
-#        with:
-#          timeout_minutes: 60 # Script is considered failed if this limit is reached
-#          retry_wait_seconds: 300 # Wait 5 minutes and try again
-#          max_attempts: 3
-#          retry_on: any
-#          warning_on_retry: true
-#          shell: bash
-#          continue_on_error: false
-#          command: |
-#            docker run \
-#              --rm \
-#              -v /home/giles/mercator_download:/tmp/download \
-#              ghcr.io/saeon/somisana-download_main:latest \
-#              download_mercator_ops \
-#                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
-#                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
-#                --domain 11,36,-39,-25 \
-#                --run_date ${{ steps.format_date.outputs.value }} \
-#                --hdays ${{ inputs.HDAYS }} \
-#                --fdays ${{ inputs.FDAYS }} \
-#                --outputDir '/tmp/download'
-#            # copy to a shared dir
-#            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
-#      - name: clean up files on saeonapps
-#        run: |
-#          # this is a terrible hack I know...
-#          # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
-#          # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
-#          # so I'm using the cli docker image to remove the files it originally created
-#          docker run \
-#            --rm \
-#            --entrypoint /bin/bash \
-#            -v /home/giles/mercator_download/:/mnt/tmp \
-#            ghcr.io/saeon/somisana-download_main:latest \
-#              -c "rm -f /mnt/tmp/*nc"
-
-  download_mercator:
-    runs-on: ${{ inputs.RUNNER_NAME }}
-    #needs: [check_files,download_mercator_saeon]
+  download_mercator_saeon:
+    # we have had an issue with downloading from copernicus specifically on the mims network
+    # it seems this is something idiosyncratic to the mims network and the copernicusmarine cli at the time of testing
+    # so for now we are just downloading on the saeon-apps server, and moving to the shared
+    # samba mount which is accessible on from both the saeon and mimms servers
+    # we can come back to this when we have the server issue sorted (or if later versions of 
+    # the copernicusmarine tool works better on this network)
+    # then this job can be deleted and the commented download step in the mercator job can be used
+    runs-on: saeonapps
     needs: [check_files]
-    if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
     steps:
-      - name: create the MERCATOR directory
+      - name: pull latest download docker image to the saeon-apps server
         run: |
-          if [ ! -d "${{ env.DATA_DIR }}/MERCATOR" ]; then
-            mkdir -p ${{ env.DATA_DIR }}/MERCATOR
-            chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
-            chmod -R 774 ${{ env.DATA_DIR }}/MERCATOR
-          fi
-#      - name: move downloaded file from the shared mount
-#        # we only need this since we have the workaround of downloading on saeonapps
-#        # so this essentially replaces the commented download code below
-#        run: |
-#          # We need to use sudo in the line below because the mounted dir is owned by root
-#          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
+          docker pull ghcr.io/saeon/somisana-download_main:latest
       - name: Format RUN_DATE
         id: format_date
         run: |
@@ -131,17 +71,15 @@ jobs:
         with:
           timeout_minutes: 60 # Script is considered failed if this limit is reached
           retry_wait_seconds: 300 # Wait 5 minutes and try again
-          max_attempts: 10
+          max_attempts: 3
           retry_on: any
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
-          command: >-
+          command: |
             docker run \
-              --user $(id -u):$(id -g) \
               --rm \
-              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
+              -v /home/giles/mercator_download:/tmp/download \
               ghcr.io/saeon/somisana-download_main:latest \
               download_mercator_ops \
                 --usrname ${{ secrets.COPERNICUS_USERNAME }} \
@@ -150,7 +88,71 @@ jobs:
                 --run_date ${{ steps.format_date.outputs.value }} \
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
-                --outputDir '/tmp'
+                --outputDir '/tmp/download'
+            # copy to a shared dir
+            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
+      - name: clean up files on saeonapps
+        run: |
+          # this is a terrible hack I know...
+          # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
+          # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
+          # so I'm using the cli docker image to remove the files it originally created
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v /home/giles/mercator_download/:/mnt/tmp \
+            ghcr.io/saeon/somisana-download_main:latest \
+              -c "rm -f /mnt/tmp/*nc"
+
+  download_mercator:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    needs: [check_files,download_mercator_saeon]
+    if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
+    steps:
+      - name: create the MERCATOR directory
+        run: |
+          if [ ! -d "${{ env.DATA_DIR }}/MERCATOR" ]; then
+            mkdir -p ${{ env.DATA_DIR }}/MERCATOR
+            chown -R :runners ${{ env.DATA_DIR }}/MERCATOR
+            chmod -R 774 ${{ env.DATA_DIR }}/MERCATOR
+          fi
+      - name: move downloaded file from the shared mount
+        # we only need this since we have the workaround of downloading on saeonapps
+        # so this essentially replaces the commented download code below
+        run: |
+          # We need to use sudo in the line below because the mounted dir is owned by root
+          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
+#      - name: Format RUN_DATE
+#        id: format_date
+#        run: |
+#          run_date=${{ inputs.RUN_DATE }}
+#          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
+#          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+#      - name: download MERCATOR
+#        uses: nick-fields/retry@master
+#        with:
+#          timeout_minutes: 60 # Script is considered failed if this limit is reached
+#          retry_wait_seconds: 300 # Wait 5 minutes and try again
+#          max_attempts: 10
+#          retry_on: any
+#          warning_on_retry: true
+#          shell: bash
+#          continue_on_error: false
+#          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+#          command: >-
+#            docker run \
+#              --user $(id -u):$(id -g) \
+#              --rm \
+#              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
+#              ghcr.io/saeon/somisana-download_main:latest \
+#              download_mercator_ops \
+#                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
+#                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
+#                --domain 11,36,-39,-25 \
+#                --run_date ${{ steps.format_date.outputs.value }} \
+#                --hdays ${{ inputs.HDAYS }} \
+#                --fdays ${{ inputs.FDAYS }} \
+#                --outputDir '/tmp'
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
