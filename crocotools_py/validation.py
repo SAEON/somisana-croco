@@ -25,9 +25,13 @@ def statistics(model_data,data_obs_model_timeaxis):
     # Convert xarray DataArrays to numpy arrays        
     model_data = model_data.values
     insitu_data = data_obs_model_timeaxis.values   
-
+    
+    print(f'model_data:{model_data}')
+    print(f'insitu_data:{insitu_data}')
+          
     # Find rows where all values are not NaN in insitu_data & Filter both model_data and insitu_data using the non-NaN indices
     non_nan_indices = ~np.isnan(insitu_data)
+    print(f'non_nan_indices: {non_nan_indices}')
     model_data = model_data[non_nan_indices]
     insitu_data = insitu_data[non_nan_indices]
     
@@ -47,6 +51,12 @@ def statistics(model_data,data_obs_model_timeaxis):
     model_min_value = np.min(model_data) if len(model_data) > 0 else np.nan # This handles the cases where min is calculated from an empty dataset
     model_max_value = np.max(model_data) if len(model_data) > 0 else np.nan # This handles the cases where max is calculated from an empty dataset
     model_total_bias = np.mean(np.abs(model_data - insitu_data))
+    
+    print(f'insitu_correlation:{insitu_correlation}')
+    print(f'insitu_rmse,:{insitu_rmse}')
+    print(f'insitu_mean_diff,:{insitu_mean_diff}') 
+     # , insitu_min_value, insitu_max_value,
+            # model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias')
     
     return (insitu_correlation, insitu_rmse, insitu_mean_diff, insitu_min_value, insitu_max_value,
             model_correlation, model_rmse, model_mean_diff, model_min_value, model_max_value, model_total_bias)
@@ -78,6 +88,10 @@ def obs_2_model_timeaxis(ds_obs, ds_mod):
     ds_obs_model_timeaxis = ds_obs.groupby_bins("time", bin_edges, labels=model_time.values).mean(skipna=True)
     
     ds_obs_model_timeaxis = ds_obs_model_timeaxis.rename({"time_bins": "time"})
+        
+    print('________')
+    print(f'ds_obs_model_timeaxis:{ds_obs_model_timeaxis}')
+    print('________')
     
     return ds_obs_model_timeaxis
 
@@ -150,9 +164,17 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
             - j_shifted         :optional user inputs if the z level of the model does not match the input lat depth
             - time_lims         :limits are computed based on the length of the insitu data that matches model span
     """
-
+    print(f'fname: {fname}')
+    print(f'fname_obs: {fname_obs}')
+    print(f'output_path: {output_path}')
+    print(f'var: {var}')
+    print(f'depth: {depth}')
+    print(f'i_shifted: {i_shifted}')
+    print(f'ref_date: {ref_date}')
+    print(f'lon_extract: {lon_extract}')
+    
     # Load the NetCDF dataset
-    ds_obs = xr.open_dataset(fname_obs)
+    ds_obs = xr.open_dataset(fname_obs).sel(depth=abs(depth))
     
     # Some observations have a different time format, that makes tem compatible
     ds_obs['time'] = ds_obs['time'].astype('datetime64[ns]') 
@@ -166,15 +188,12 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
     
         
     # The following if statement handles the u,v grid. The else part handles the rho grid points computation. 
-    if var=='u' or var=='v':
+    # if var=='u' or var=='v':
+    if (var != 'temp') or (var != 'salt'):
         long_obs, lat_obs = extract_lat_lon(ds_obs)
         model_data = post.get_ts_uv(fname, long_obs, lat_obs, ref_date, 
                         i_shift=0, j_shift=0, 
-                        time_lims=slice(None),
-                        depths=depth,
-                        default_to_bottom=False,
-                        write_nc=False,
-                        fname_nc='ts_uv.nc'
+                        level=depth,
                         )
         
         da_obs_u = ds_obs.u
@@ -192,10 +211,10 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
         longitude = ds_obs.lon.values
         latitude = ds_obs.lat.values
 
-        depth_levels = insitu_u_orig.depth.values
+        # depth_levels = insitu_u_orig.depth.values
         
         # Assuming the number of depth levels is `n_depth_levels`
-        n_depth_levels = len(depth_levels)
+        n_depth_levels = len([depth]) #len(depth_levels)
         
         # Initialize empty arrays for each statistical measure. This will append on the for loop runs.
         insitu_correlation_u = np.empty(n_depth_levels)
@@ -224,99 +243,150 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
         model_max_value_v = np.empty(n_depth_levels)
         model_total_bias_v = np.empty(n_depth_levels)  
         
+        print(f'model_data: {model_data}')
         # Loop through depth levels
-        for idx_depth, depth_level in enumerate(depth_levels):
-            model_data_depth = model_data[var][:, idx_depth]
-            obs_data_depth = insitu_u_orig[:, idx_depth]
+        print([depth])
+        if len(depth) == 1:
+            model_data_depth = model_data[var][:]
+            obs_data_depth = insitu_u_orig[:]
                         
-            (insitu_correlation_u[idx_depth], insitu_rmse_u[idx_depth], insitu_mean_diff_u[idx_depth],
-             insitu_min_value_u[idx_depth], insitu_max_value_u[idx_depth],
-             model_correlation_u[idx_depth], model_rmse_u[idx_depth], model_mean_diff_u[idx_depth],
-             model_min_value_u[idx_depth], model_max_value_u[idx_depth], model_total_bias_u[idx_depth]
+            (insitu_correlation_u, insitu_rmse_u, insitu_mean_diff_u,
+             insitu_min_value_u, insitu_max_value_u,
+             model_correlation_u, model_rmse_u, model_mean_diff_u,
+             model_min_value_u, model_max_value_u, model_total_bias_u
              ) = statistics(model_data_depth, obs_data_depth)
         
         # Loop through depth levels
         # for idx_depth, depth_level in enumerate(depth_levels):
-            model_data_depth = model_data[var][:, idx_depth]
-            obs_data_depth = insitu_v_orig[:, idx_depth]
+            model_data_depth = model_data[var][:]
+            obs_data_depth = insitu_v_orig[:]
                         
-            (insitu_correlation_v[idx_depth], insitu_rmse_v[idx_depth], insitu_mean_diff_v[idx_depth],
-             insitu_min_value_v[idx_depth], insitu_max_value_v[idx_depth],
-             model_correlation_v[idx_depth], model_rmse_v[idx_depth], model_mean_diff_v[idx_depth],
-             model_min_value_v[idx_depth], model_max_value_v[idx_depth], model_total_bias_v[idx_depth]
+            (insitu_correlation_v, insitu_rmse_v, insitu_mean_diff_v,
+             insitu_min_value_v, insitu_max_value_v,
+             model_correlation_v, model_rmse_v, model_mean_diff_v,
+             model_min_value_v, model_max_value_v, model_total_bias_v
              ) = statistics(model_data_depth, obs_data_depth)
+        
+        else:
+            for idx_depth, depth_level in enumerate([depth]):
+                print('')
+                print(f'model_data[var][:, idx_depth]: {model_data[var][:, idx_depth]}')
+                print('')
+                model_data_depth = model_data[var][:, idx_depth]
+                obs_data_depth = insitu_u_orig[:, idx_depth]
+                            
+                (insitu_correlation_u[idx_depth], insitu_rmse_u[idx_depth], insitu_mean_diff_u[idx_depth],
+                 insitu_min_value_u[idx_depth], insitu_max_value_u[idx_depth],
+                 model_correlation_u[idx_depth], model_rmse_u[idx_depth], model_mean_diff_u[idx_depth],
+                 model_min_value_u[idx_depth], model_max_value_u[idx_depth], model_total_bias_u[idx_depth]
+                 ) = statistics(model_data_depth, obs_data_depth)
+            
+            # Loop through depth levels
+            # for idx_depth, depth_level in enumerate(depth_levels):
+                model_data_depth = model_data[var][:, idx_depth]
+                obs_data_depth = insitu_v_orig[:, idx_depth]
+                            
+                (insitu_correlation_v[idx_depth], insitu_rmse_v[idx_depth], insitu_mean_diff_v[idx_depth],
+                 insitu_min_value_v[idx_depth], insitu_max_value_v[idx_depth],
+                 model_correlation_v[idx_depth], model_rmse_v[idx_depth], model_mean_diff_v[idx_depth],
+                 model_min_value_v[idx_depth], model_max_value_v[idx_depth], model_total_bias_v[idx_depth]
+                 ) = statistics(model_data_depth, obs_data_depth)
 
         # model_data = model_data[var].values
         insitu_data = insitu_u_orig.values
-        depth = np.arange(insitu_data.shape[1])
+        # depth = insitu_data.shape #np.arange(insitu_data.shape)
         
         # Create a new time array based on the insitu data timeseries
         time = insitu_u_orig.time.values
         
-        eta_rho = insitu_u_orig.eta_rho.values
-        xi_rho  = insitu_u_orig.xi_rho.values
-        lon_rho = insitu_u_orig.lon_rho.values
-        lat_rho = insitu_u_orig.lat_rho.values
+        # eta_rho = insitu_u_orig.eta_rho.values
+        # xi_rho  = insitu_u_orig.xi_rho.values
+        # lon_rho = insitu_u_orig.lon_rho.values
+        # lat_rho = insitu_u_orig.lat_rho.values
+        
+        eta_rho = model_data.eta_rho.values
+        xi_rho  = model_data.xi_rho.values
+        lon_rho = model_data.lon_rho.values
+        lat_rho = model_data.lat_rho.values
+        
+        print(f'time: {time}')
+        print(f'depth: {depth}')
+        print(f'eta_rho: {eta_rho}')
+        print(f'xi_rho: {xi_rho}')
+        print(f'lon_rho: {lon_rho}')
+        print(f'lat_rho: {lat_rho}')
 
-        # Create xarray DataArrays for the entire dataset  
-        model_da = xr.DataArray(model_data[var].values, dims=("time", "depth"), coords={"time": time, "depth": depth,"eta_rho":eta_rho,"xi_rho":xi_rho , "lon_rho":lon_rho,"lat_rho":lat_rho})
-        insitu_da = xr.DataArray(insitu_data, dims=("time", "depth"), coords={"time": time, "depth": depth,"eta_rho":eta_rho,"xi_rho":xi_rho , "lon_rho":lon_rho,"lat_rho":lat_rho})
+        # # Create xarray DataArrays for the entire dataset  
+        # model_da = xr.DataArray(model_data[var].values, 
+        #                         dims=("time", "depth"), 
+        #                         coords={"time": time, "depth": depth,"eta_rho":eta_rho,"xi_rho":xi_rho , "lon_rho":lon_rho,"lat_rho":lat_rho})
         
-        # Create a Dataset with the DataArrays
-        ds = xr.Dataset({f"insitu_{var}": insitu_da, f"model_{var}": model_da})
         
-        ds = ds.assign_coords({"longitude":longitude})
-        ds = ds.assign_coords({"latitude":latitude})
+        # insitu_da = xr.DataArray(insitu_data, 
+        #                          dims=("time", "depth"), 
+        #                          coords={"time": time, "depth": depth,"eta_rho":eta_rho,"xi_rho":xi_rho , "lon_rho":lon_rho,"lat_rho":lat_rho})
+        
+        # # Create a Dataset with the DataArrays
+        # ds = xr.Dataset({f"insitu_{var}": insitu_da, f"model_{var}": model_da})
+        
+        # ds = ds.assign_coords({"longitude":longitude})
+        # ds = ds.assign_coords({"latitude":latitude})
         
         # #Global attributes        
         # ds.attrs["longitude"] = longitude
         # ds.attrs["latitude"] = latitude   
         # ds.attrs["h"] = model_data.h.values
         
+    
         
-        # # Add statistics as variables to the Dataset
-        # ds["insitu_correlation_u"] = insitu_correlation_u
-        # ds["insitu_rmse_u"] = insitu_rmse_u
-        # ds["insitu_mean_difference_u"] = insitu_mean_diff_u
-        # ds["insitu_min_value_u"] = insitu_min_value_u
-        # ds["insitu_max_value_u"] = insitu_max_value_u
-        
-        # ds["model_correlation_u"] = model_correlation_u
-        # ds["model_rmse_u"] = model_rmse_u
-        # ds["model_mean_difference_u"] = model_mean_diff_u
-        # ds["model_min_value_u"] = model_min_value_u
-        # ds["model_max_value_u"] = model_max_value_u
-        # ds["model_total_bias_u"] = model_total_bias_u
-        
-        # # Add statistics as variables to the Dataset
-        # ds["insitu_correlation_v"] = insitu_correlation_v
-        # ds["insitu_rmse_v"] = insitu_rmse_v
-        # ds["insitu_mean_difference_v"] = insitu_mean_diff_v
-        # ds["insitu_min_value_v"] = insitu_min_value_v
-        # ds["insitu_max_value_v"] = insitu_max_value_v
-        
-        # ds["model_correlation_v"] = model_correlation_v
-        # ds["model_rmse_v"] = model_rmse_v
-        # ds["model_mean_difference_v"] = model_mean_diff_v
-        # ds["model_min_value_v"] = model_min_value_v
-        # ds["model_max_value_v"] = model_max_value_v
-        # ds["model_total_bias_V"] = model_total_bias_v
-        
-
+        # depth = np.array([depth])  # or depth = [-30]
 
         # Create xarray DataArrays for u component
-        depth = np.arange(insitu_u_orig.shape[1])
+        # depth = insitu_u_orig.shape
         time = model_data.time.values
-        insitu_da_u = xr.DataArray(insitu_u_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
-        model_da_u = xr.DataArray(model_u_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        # insitu_da_u = xr.DataArray(insitu_u_orig.values[:,np.newaxis].T, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        # model_da_u = xr.DataArray(model_u_orig[:,np.newaxis].T, dims=("time", "depth"), coords={"time": time, "depth": depth})
+
+        # # insitu_da_u = xr.DataArray(insitu_u_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        # # model_da_u = xr.DataArray(model_u_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+
         
-        # Create xarray DataArrays for v component
-        insitu_da_v = xr.DataArray(insitu_v_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
-        model_da_v = xr.DataArray(model_v_orig, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        # # Create xarray DataArrays for v component
+        # insitu_da_v = xr.DataArray(insitu_v_orig.values[:,np.newaxis].T, dims=("time", "depth"), coords={"time": time, "depth": depth})
+        # model_da_v = xr.DataArray(model_v_orig[:,np.newaxis].T, dims=("time", "depth"), coords={"time": time, "depth": depth})
         
-        # Create a Dataset with the DataArrays for u and v components
-        ds = xr.Dataset({"insitu_u": insitu_da_u, "insitu_v": insitu_da_v, "model_u": model_da_u, "model_v": model_da_v})
+        # # Create a Dataset with the DataArrays for u and v components
+        # ds = xr.Dataset({"insitu_u": insitu_da_u, "insitu_v": insitu_da_v, "model_u": model_da_u, "model_v": model_da_v})
         
+        
+        if np.size(depth)==1:    
+            insitu_da_u = xr.DataArray(insitu_u_orig.values[:, np.newaxis], dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            model_da_u  = xr.DataArray(model_u_orig[:, np.newaxis], dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            
+            insitu_da_v = xr.DataArray(insitu_v_orig.values[:, np.newaxis], dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            model_da_v  = xr.DataArray(model_v_orig[:, np.newaxis], dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            
+            ds = xr.Dataset({
+                "insitu_u": insitu_da_u,
+                "insitu_v": insitu_da_v,
+                "model_u": model_da_u,
+                "model_v": model_da_v
+            })
+        elif np.size(depth)>1:
+            insitu_da_u = xr.DataArray(insitu_u_orig.values, dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            model_da_u  = xr.DataArray(model_u_orig, dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            
+            insitu_da_v = xr.DataArray(insitu_v_orig.values, dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            model_da_v  = xr.DataArray(model_v_orig, dims=("time", "depth"), coords={"time": time, "depth": abs(depth)})
+            
+            ds = xr.Dataset({
+                "insitu_u": insitu_da_u,
+                "insitu_v": insitu_da_v,
+                "model_u": model_da_u,
+                "model_v": model_da_v
+            })        
+
+        print("ds",ds)
         # Calculate seasonal means for insitu_data
         insitu_seasonal_means = {}
         for season, months in {'JFM': [1, 2, 3], 'AMJ': [4, 5, 6], 'JAS': [7, 8, 9], 'OND': [10, 11, 12]}.items():
@@ -373,6 +443,8 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
         ds["model_min_value_v"] = model_min_value_v
         ds["model_max_value_v"] = model_max_value_v
         ds["model_total_bias_V"] = model_total_bias_v
+        
+        print("ds",ds)
         
         # Save the Dataset to a NetCDF file
         ds.to_netcdf(output_path)
