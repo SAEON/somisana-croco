@@ -97,7 +97,7 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier1 \
                 --fname /tmp/output/croco_avg.nc \
-                --fname_out /tmp/postprocess/croco_avg_t1.nc \
+                --dir_out /tmp/postprocess/ \
                 --ref_date '2000-01-01 00:00:00'
       # interpolate data to constant vertical levels (tier 2)
       - name: Tier 2 regridding
@@ -110,7 +110,7 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier2 \
                 --fname /tmp/output/croco_avg.nc \
-                --fname_out /tmp/postprocess/croco_avg_t2.nc \
+                --dir_out /tmp/postprocess/ \
                 --depths 0,-5,-10,-50,-100,-500,-1000
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
@@ -123,7 +123,7 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               regrid_tier3 \
                 --fname /tmp/postprocess/croco_avg_t2.nc \
-                --fname_out /tmp/postprocess/croco_avg_t3.nc \
+                --dir_out /tmp/postprocess/ \
                 --spacing 0.02
         
       # here we can add the extraction of time-series 
