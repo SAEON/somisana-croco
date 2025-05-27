@@ -426,7 +426,7 @@ def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, 
 
         # Explicitly set chunk sizes of some dimensions
         chunksizes = {
-            "time": 24,
+            "time": ds.time.size,
             "depth": 1,
         }
 
