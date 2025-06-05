@@ -79,6 +79,8 @@ jobs:
           HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
           #
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --rm \
             --entrypoint /bin/bash \
             -v ${{ env.RUN_DIR }}:/tmp \
@@ -91,6 +93,8 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
@@ -104,6 +108,8 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
@@ -117,6 +123,8 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
@@ -137,6 +145,8 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -150,6 +160,8 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
@@ -164,6 +176,8 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
+            --memory=10g \
+            --cpus=1 \
             --rm \
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
