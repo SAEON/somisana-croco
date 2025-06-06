@@ -93,7 +93,7 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
-            --memory=10g \
+            --memory=35g \
             --cpus=1 \
             --user $(id -u):$(id -g) \
             --rm \
@@ -108,7 +108,7 @@ jobs:
         continue-on-error: true
         run: |
           docker run \
-            --memory=10g \
+            --memory=35g \
             --cpus=1 \
             --user $(id -u):$(id -g) \
             --rm \
