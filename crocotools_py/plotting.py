@@ -13,6 +13,7 @@ import cartopy.feature as cfeature
 import xarray as xr
 import sys
 import crocotools_py.postprocess as post
+import matplotlib.colors as mcolors
 
 class LandmaskFeature(cfeature.GSHHSFeature):
     """from the OpenDrift code"""
@@ -40,6 +41,11 @@ def plot_land(ax, ocean_color = 'white', land_color = cfeature.COLORS['land'], l
     (from the OpenDrift code)
     lscale = resolution of land feature ('c', 'l', 'i', 'h', 'f', 'auto')
     """
+
+    # fallback in case cfeature.COLORS is broken
+    if land_color is None or not mcolors.is_color_like(land_color):
+        land_color = 'lightgray'  # or 'black', or any valid fallback
+
     land = LandmaskFeature(scale=lscale, facecolor=land_color, globe=globe)
 
     ax.add_feature(land, zorder=2,
@@ -290,6 +296,7 @@ def plot(fname,
     lon = post.get_grd_var(grdname,'lon_rho').values
     lat = post.get_grd_var(grdname,'lat_rho').values
     
+   
     
     if len(time_var)==1:
         data_plt=da_var.values
@@ -311,6 +318,18 @@ def plot(fname,
         vmax = vmin + num_ticks * step
         # Generate the ticks using the rounded step size
         ticks = np.arange(vmin, vmax + step/10, step) # Add a small value to ensure new_vmax is included
+        
+        # === NEW CODE START ===
+        # Handle anomaly plots with symmetric color scale
+        is_anomaly = var.endswith('_anom')
+        if is_anomaly:
+            cmap = 'bwr'
+            abs_vals = np.abs(da_var.values).flatten()
+            abs_vals = abs_vals[~np.isnan(abs_vals)]
+            threshold = np.percentile(abs_vals, 95)
+            vmin, vmax = -threshold, threshold
+            ticks = np.linspace(vmin, vmax, 11)
+        # === NEW CODE END ===
     
     # compute the extents from the grid if not explicitly defined
     if extents is None:
@@ -442,7 +461,28 @@ def plot(fname,
         if mp4_out is not None:
             print('writing '+mp4_out)
             anim.save(mp4_out, writer="ffmpeg")
-
+        
+        # === NEW CODE START ===    
+        # 🔹 NEW BLOCK: Auto-generate anomaly plot if plotting temp
+        if var == 'temp' and 'temp_anom' in ds and gif_out is not None:
+            gif_out_anom = gif_out.replace(".gif", "_anom.gif")  # ✅ more robust
+            print(f'🔁 Also plotting anomaly variable to {gif_out_anom}')
+            plot(
+                fname=fname,
+                var='temp_anom',
+                level=level,
+                cmap='bwr',
+                ref_date=ref_date,
+                gif_out=gif_out_anom,
+                add_vectors=add_vectors,
+                time=time,
+                skip_time=skip_time,
+                grdname=grdname,
+                add_time_label=add_time_label,
+                isobaths=isobaths
+            )
+            # === NEW CODE END ===
+        
 def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk file
         croco_blk_file, # the croco blk file
         var='wspd',
