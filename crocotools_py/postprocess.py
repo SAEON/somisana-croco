@@ -10,12 +10,31 @@ import shutil
 import time
 from dask.diagnostics import ProgressBar
 
-def change_attrs(attrs,da,var_str):
-    meta = getattr(attrs, var_str)
+# def change_attrs(attrs,da,var_str):
+#     meta = getattr(attrs, var_str)
+#     da.attrs['long_name'] = meta.long_name
+#     da.attrs['units'] = meta.units
+#     da.attrs['standard_name'] = meta.standard_name
+    
+#     return da
+
+def change_attrs(attrs, da, var_str):
+    # Handle anomaly variables by falling back to base variable attributes
+    fallback_lookup = {
+        "temp_anom": "temp",
+        "u_anom": "u",
+        "v_anom": "v",
+        "salt_anom": "salt",
+        "zeta_anom": "zeta",
+    }
+
+    meta_var = fallback_lookup.get(var_str, var_str)  # Use fallback if exists
+    meta = getattr(attrs, meta_var)
+
     da.attrs['long_name'] = meta.long_name
     da.attrs['units'] = meta.units
     da.attrs['standard_name'] = meta.standard_name
-    
+
     return da
 
 def u2rho(u):

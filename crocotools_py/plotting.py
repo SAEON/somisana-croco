@@ -44,7 +44,7 @@ def plot_land(ax, ocean_color = 'white', land_color = cfeature.COLORS['land'], l
 
     # fallback in case cfeature.COLORS is broken
     if land_color is None or not mcolors.is_color_like(land_color):
-        land_color = 'lightgray'  # or 'black', or any valid fallback
+        land_color = 'white'  # or 'lightgray', or any valid fallback
 
     land = LandmaskFeature(scale=lscale, facecolor=land_color, globe=globe)
 
@@ -461,27 +461,56 @@ def plot(fname,
         if mp4_out is not None:
             print('writing '+mp4_out)
             anim.save(mp4_out, writer="ffmpeg")
+            
+        # === NEW CODE START ===   
+        # ========== AUTO PLOT FOR temp_anom ==========
+        if var == "temp":
+            if "temp_anom" in ds:
+                from postprocess import CROCO_Attrs
+                CROCO_Attrs.temp_anom = CROCO_Attrs.temp  # Apply temp attrs to temp_anom
+    
+                print("\n Also plotting temp_anom automatically...")
+    
+                # Construct auto gif path if not specified
+                gif_anom_out = gif_out.replace("temp", "temp_anom") if gif_out else None
+    
+                # Call plot recursively to do the anomaly plot
+                plot(
+                    fname=fname,
+                    var="temp_anom",
+                    level=level,
+                    cmap="bwr",
+                    ref_date=ref_date,
+                    gif_out=gif_anom_out,
+                    add_cbar=True,
+                    add_vectors=add_vectors,
+                    grdname=grdname,
+                    extents=extents,
+                    ticks=ticks,
+                    time=time
+                )
+        # === NEW CODE END ===
         
-        # === NEW CODE START ===    
-        # 🔹 NEW BLOCK: Auto-generate anomaly plot if plotting temp
-        if var == 'temp' and 'temp_anom' in ds and gif_out is not None:
-            gif_out_anom = gif_out.replace(".gif", "_anom.gif")  # ✅ more robust
-            print(f'🔁 Also plotting anomaly variable to {gif_out_anom}')
-            plot(
-                fname=fname,
-                var='temp_anom',
-                level=level,
-                cmap='bwr',
-                ref_date=ref_date,
-                gif_out=gif_out_anom,
-                add_vectors=add_vectors,
-                time=time,
-                skip_time=skip_time,
-                grdname=grdname,
-                add_time_label=add_time_label,
-                isobaths=isobaths
-            )
-            # === NEW CODE END ===
+        # # === NEW CODE START ===    
+        # # 🔹 NEW BLOCK: Auto-generate anomaly plot if plotting temp
+        # if var == 'temp' and 'temp_anom' in ds and gif_out is not None:
+        #     gif_out_anom = gif_out.replace(".gif", "_anom.gif")  # ✅ more robust
+        #     print(f'🔁 Also plotting anomaly variable to {gif_out_anom}')
+        #     plot(
+        #         fname=fname,
+        #         var='temp_anom',
+        #         level=level,
+        #         cmap='bwr',
+        #         ref_date=ref_date,
+        #         gif_out=gif_out_anom,
+        #         add_vectors=add_vectors,
+        #         time=time,
+        #         skip_time=skip_time,
+        #         grdname=grdname,
+        #         add_time_label=add_time_label,
+        #         isobaths=isobaths
+        #     )
+        #     # === NEW CODE END ===
         
 def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk file
         croco_blk_file, # the croco blk file
