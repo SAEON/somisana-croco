@@ -57,6 +57,9 @@ jobs:
     needs: [check_files]
     if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
     steps:
+      - name: pull latest download docker image to the saeon-apps server
+        run: |
+          docker pull ghcr.io/saeon/somisana-download_main:latest
       - name: Format RUN_DATE
         id: format_date
         run: |
@@ -73,13 +76,12 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: sudo rm -f /home/giles/mercator_download/*nc
           command: |
             docker run \
               --rm \
               -v /home/giles/mercator_download:/tmp/download \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              download_mercator \
+              ghcr.io/saeon/somisana-download_main:latest \
+              download_mercator_ops \
                 --usrname ${{ secrets.COPERNICUS_USERNAME }} \
                 --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
                 --domain 11,36,-39,-25 \
@@ -99,10 +101,10 @@ jobs:
             --rm \
             --entrypoint /bin/bash \
             -v /home/giles/mercator_download/:/mnt/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            ghcr.io/saeon/somisana-download_main:latest \
               -c "rm -f /mnt/tmp/*nc"
 
-  move_mercator:
+  download_mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files,download_mercator_saeon]
     if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
@@ -126,7 +128,6 @@ jobs:
 #          run_date=${{ inputs.RUN_DATE }}
 #          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
 #          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-# see comments in mercator_saeon job as to why this download is commented here
 #      - name: download MERCATOR
 #        uses: nick-fields/retry@master
 #        with:
@@ -137,14 +138,14 @@ jobs:
 #          warning_on_retry: true
 #          shell: bash
 #          continue_on_error: false
-#          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+#          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
 #          command: >-
 #            docker run \
 #              --user $(id -u):$(id -g) \
 #              --rm \
 #              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
-#              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-#              download_mercator \
+#              ghcr.io/saeon/somisana-download_main:latest \
+#              download_mercator_ops \
 #                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
 #                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
 #                --domain 11,36,-39,-25 \
@@ -155,7 +156,7 @@ jobs:
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    needs: [move_mercator]
+    needs: [download_mercator]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}

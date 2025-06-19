@@ -84,7 +84,7 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               -v ${{ env.DATA_DIR }}/GFS:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              ghcr.io/saeon/somisana-download_main:latest \
               download_gfs_atm \
                 --domain 11,36,-39,-25 \
                 --run_date ${{ steps.format_date.outputs.value }} \
@@ -97,7 +97,7 @@ jobs:
             --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            ghcr.io/saeon/somisana-croco_cli_main:latest \
             reformat_gfs_atm \
               --gfsDir '/tmp/gfsDir' \
               --outputDir '/tmp/gfsDir/for_croco' \

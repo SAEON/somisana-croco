@@ -23,6 +23,13 @@ jobs:
     with:
       IMAGE_ID: cli
 
+  pull-download-image-mims1:
+    runs-on: mims1
+    steps:
+      - name: pull latest download docker image to mims server
+        run: |
+          docker pull ghcr.io/saeon/somisana-download_main:latest
+  
   # set some environment variables
   envs:
     runs-on: ubuntu-latest
@@ -92,7 +99,7 @@ jobs:
 
   # download the surface data we'll need to force the models
   download_surface:
-    needs: [envs, build_cli]
+    needs: [envs, build_cli,pull-download-image-mims1]
     uses: ./.github/workflows/download_surface.yml
     with:
       RUNNER_NAME: mims1
@@ -104,7 +111,7 @@ jobs:
   
   # download the OGCM data we'll need to force the models
   download_mercator:
-    needs: [envs, build_cli]
+    needs: [envs, build_cli,pull-download-image-mims1]
     uses: ./.github/workflows/download_mercator.yml
     with:
       RUNNER_NAME: mims1
@@ -115,7 +122,7 @@ jobs:
     secrets: inherit
 
   download_hycom:
-    needs: [envs, build_cli]
+    needs: [envs, build_cli,pull-download-image-mims1]
     uses: ./.github/workflows/download_hycom.yml
     with:
       RUNNER_NAME: mims1
