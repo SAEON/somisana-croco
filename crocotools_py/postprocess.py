@@ -10,31 +10,12 @@ import shutil
 import time
 from dask.diagnostics import ProgressBar
 
-# def change_attrs(attrs,da,var_str):
-#     meta = getattr(attrs, var_str)
-#     da.attrs['long_name'] = meta.long_name
-#     da.attrs['units'] = meta.units
-#     da.attrs['standard_name'] = meta.standard_name
-    
-#     return da
-
-def change_attrs(attrs, da, var_str):
-    # Handle anomaly variables by falling back to base variable attributes
-    fallback_lookup = {
-        "temp_anom": "temp",
-        "u_anom": "u",
-        "v_anom": "v",
-        "salt_anom": "salt",
-        "zeta_anom": "zeta",
-    }
-
-    meta_var = fallback_lookup.get(var_str, var_str)  # Use fallback if exists
-    meta = getattr(attrs, meta_var)
-
+def change_attrs(attrs,da,var_str):
+    meta = getattr(attrs, var_str)
     da.attrs['long_name'] = meta.long_name
     da.attrs['units'] = meta.units
     da.attrs['standard_name'] = meta.standard_name
-
+    
     return da
 
 def u2rho(u):
@@ -1489,7 +1470,7 @@ def compute_anomaly(climatology_file, high_freq_file,output_dir,ref_hf_str="2000
     output_dir : str
         Directory where the output NetCDF file with anomaly variables will be saved.
     ref_hf_str : str, optional
-        Reference date (e.g., "2000-01-01") used to align the high-frequency time axis.
+        Reference date (e.g., "2000-01-01") used to define the high-frequency time axis.
     varlist : list of str, optional
         List of variables for which anomalies should be computed.
         Default is ["temp", "u", "v", "salt", "zeta"].
@@ -1505,13 +1486,14 @@ def compute_anomaly(climatology_file, high_freq_file,output_dir,ref_hf_str="2000
         - For a single variable (e.g., only "temp"), a fast merge-write is used.
         - For multiple variables, the original file is copied and anomalies are appended individually.
     """
+    import sys 
     start_time = time.time()
     print(" Loading climatology and high-frequency forecast files...")
     ds_clim = xr.open_dataset(climatology_file, chunks={})
     
     # CHECK THAT CLIM FILE HAS 12 TIMESTEPS
-    if "time" not in ds_clim.dims or ds_clim.dims["time"] != 12:
-        raise ValueError("⚠️ ERROR: Provided climatology file does not have 12 time steps. Not a valid monthly climatology.")
+    if "time" not in ds_clim.dims or ds_clim.dims["time"] != 12: #Check if the length is 12 only
+        raise ValueError("ERROR: Provided climatology file does not have 12 time steps. Not a valid monthly climatology.")
     
     ds_hf = xr.open_dataset(high_freq_file, chunks={})
     ref_hf = np.datetime64(ref_hf_str)
@@ -1529,9 +1511,9 @@ def compute_anomaly(climatology_file, high_freq_file,output_dir,ref_hf_str="2000
     cl_shifted_time_extended = pd.to_datetime([time_0] + list(corrected_cl_dates) + [time_13])
     clim_seconds = (cl_shifted_time_extended - ref_hf) / np.timedelta64(1, "s")
 
-    print(" Extending climatology variables")
-    ds_clim_ext = xr.Dataset()
-    for var in varlist:
+    print(" Extending climatology variables") #Did you really have to do this variable by variable
+    ds_clim_ext = xr.Dataset() 
+    for var in varlist: #The reason why I choose to leave this loop over variables here is because it was going to take the same amount of time/energy to the entire Dataset as variables without time dimention would require a specific handle.
         start = ds_clim[var].isel(time=0)
         end = ds_clim[var].isel(time=-1)
         extended = xr.concat([end, ds_clim[var], start], dim="time")
@@ -1549,49 +1531,25 @@ def compute_anomaly(climatology_file, high_freq_file,output_dir,ref_hf_str="2000
         ds_clim_interp = ds_clim_ext.chunk({"time": 14}).interp(time=ds_hf.time, method="linear")
 
     print(" Computing anomalies...")
-    ds_hf_out = xr.Dataset(coords=ds_hf.coords)
+    ds_hf_out = xr.Dataset(coords=ds_hf.coords) #wHY NOT ds_hf; instead of creating a new dataset.
 
     for var in varlist:
         anom = ds_hf[var] - ds_clim_interp[var]
         anom_name = f"{var}_anom"
         ds_hf_out[anom_name] = anom
         print(f" {anom_name} shape: {anom.shape}")
-
-    # CONDITIONAL WRITE LOGIC BASED ON varlist
-    if varlist == ["temp"]:
-        print(" Only 'temp' selected — using fast merge-write...")
-        ds_combined = xr.merge([ds_hf, ds_hf_out])
+        
+    print(" Multiple variables selected — using copy + append method...")
+    fname_new = os.path.join(
+        output_dir,
+        os.path.basename(high_freq_file).replace(".nc", "_with_anomalies_Test2.nc")
+    )
+    shutil.copyfile(high_freq_file, fname_new)
+    print(f" Original HF copied to: {fname_new}")
     
-        output_path = os.path.join(
-            output_dir,
-            os.path.basename(high_freq_file).replace(".nc", "_with_anomalies.nc")
-        )
-    
-        print(f" Saving merged dataset to: {output_path}")
-        with ProgressBar():
-            ds_combined.to_netcdf(output_path, mode="w", compute=True)
-    
-    else:
-        print(" Multiple variables selected — using copy + append method...")
-        fname_new = os.path.join(
-            output_dir,
-            os.path.basename(high_freq_file).replace(".nc", "_with_anomalies.nc")
-        )
-        shutil.copyfile(high_freq_file, fname_new)
-        print(f" Original HF copied to: {fname_new}")
-    
-        print("Appending anomaly variables to copied file...")
-        for var in ds_hf_out.data_vars:
-            print(f"Writing variable: {var}, please wait")
-            with ProgressBar():
-                ds_hf_out[[var]].to_netcdf(fname_new, mode="a", compute=True)
-    
-    # Done
+    print("Writing all anomaly variables at once...")
+    ds_hf_out.to_netcdf(fname_new, mode="a", compute=True)
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds ")
 
 
-#if __name__ == "__main__":
-#    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
-#    ref_date=datetime(2000,1,1)
-#    ds_temp = get_var(file, "temp", ref_date=ref_date)

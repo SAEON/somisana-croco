@@ -12,7 +12,7 @@ import sys, os
 from datetime import datetime, timedelta
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
-from crocotools_py.postprocess import get_ts_multivar
+from crocotools_py.postprocess import get_ts_multivar, compute_anomaly
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 
@@ -207,6 +207,32 @@ def main():
                write_nc=True, # default behaviour in the cli is to write a file
                fname_nc=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
+
+    # ----------------
+    # compute_anomaly
+    # ----------------
+    parser_compute_anomaly=subparsers.add_parser('compute_anomaly', help='Compute anomalies by subtracting monthly climatology from high-frequency CROCO output.')
+    parser_compute_anomaly.add_argument('--climatology_file', required=True, type=str, help='input climatology file')
+    parser_compute_anomaly.add_argument('--high_freq_file', required=True, type=str, help='input high frequency (forecast) file')
+    parser_compute_anomaly.add_argument('--output_dir', required=True, type=str, help='output directory')
+    parser_compute_anomaly.add_argument('--ref_hf_str', type=parse_datetime, 
+                        default=datetime(2000,1,1), 
+                        help='CROCO reference date in format "YYYY-MM-DD"')
+    parser_compute_anomaly.add_argument('--varlist', type=parse_list, 
+                        default=['temp','u','v', 'salt','zeta'],
+                        help='optional list of CROCO variable names')
+    parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_list, 
+                        default=['False'],
+                        help='If True, use a constant climatology (interpolated to the midpoint of the HF time series)
+        instead of interpolating the full climatology to match each HF timestep.')
+    def compute_anomaly_handler(args):
+        compute_anomaly(args.climatology_file, args.high_freq_file, args.output_dir, args.ref_hf_str, 
+               varlist=args.varlist,
+               use_constant_clim=False # default behaviour in the cli is interpolating the full climatology to match each HF timestep, instead of a constant climatology.
+                        )
+    parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
+
+
 
     # ----------------
     # make_tides_fcst
