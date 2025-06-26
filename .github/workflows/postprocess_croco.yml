@@ -86,6 +86,30 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
+      # NK - THIS IS WHERE YOUR MAGIC HAPPENS!
+      - name: Add anomalies to croco file
+        continue-on-error: true
+        run: |
+          # we need to transform the domain name into the equivalent name on the archive mount where the climatology is stored
+          # e.g. sa_west_02 needs to be sa-west
+          domain=${{ inputs.DOMAIN }}
+          domain_mnt="${domain%???}"
+          domain_mnt="${domain_mnt//_/-}"
+          clim_dir=/mnt/ocims-somisana/${domain_mnt}/v1.0/hindcasts/GLORYS-ERA5/climatology
+          docker run \
+            --memory=50g \
+            --cpus=1 \
+            --user $(id -u):$(id -g) \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp/model \
+            -v ${clim_dir}:/tmp/clim \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              compute_anomaly \
+                --fname_clim /tmp/clim/monthly_climatology.nc \
+                --fname_in /tmp/model/output/croco_avg.nc \
+                --fname_anom /tmp/model/postprocess/croco_avg_anom.nc \
+                --ref_date '2000-01-01' \
+                TO BE COMPLETED
       # Regrid CROCO u,v to rho grid,
       # rotate u,v components from grid aligned to east/north aligned and
       # work out depth levels of sigma grid in meters (tier 1)

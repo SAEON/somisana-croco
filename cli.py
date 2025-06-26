@@ -212,11 +212,11 @@ def main():
     # compute_anomaly
     # ----------------
     parser_compute_anomaly=subparsers.add_parser('compute_anomaly', help='Compute anomalies by subtracting monthly climatology from high-frequency CROCO output.')
-    parser_compute_anomaly.add_argument('--climatology_file', required=True, type=str, help='input climatology file')
-    parser_compute_anomaly.add_argument('--high_freq_file', required=True, type=str, help='input high frequency (forecast) file')
-    parser_compute_anomaly.add_argument('--output_dir', required=True, type=str, help='output directory')
-    parser_compute_anomaly.add_argument('--ref_hf_str', type=parse_datetime, 
-                        default=datetime(2000,1,1), 
+    parser_compute_anomaly.add_argument('--fname_clim', required=True, type=str, help='input climatology file')
+    parser_compute_anomaly.add_argument('--fname_in', required=True, type=str, help='input high frequency (forecast) file')
+    parser_compute_anomaly.add_argument('--fname_out', required=True, type=str, help='output directory')
+    parser_compute_anomaly.add_argument('--ref_date', type=str, 
+                        default='2000-01-01', 
                         help='CROCO reference date in format "YYYY-MM-DD"')
     parser_compute_anomaly.add_argument('--varlist', type=parse_list_str, 
                         default=['temp','u','v', 'salt','zeta'],
@@ -225,13 +225,10 @@ def main():
                         default='False',
                         help='If True, use a constant climatology (interpolated to the midpoint of the HF time series) instead of interpolating the full climatology to match each HF timestep.')
     def compute_anomaly_handler(args):
-        compute_anomaly(args.climatology_file, args.high_freq_file, args.output_dir, args.ref_hf_str, 
+        compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, args.ref_hf_str, 
                varlist=args.varlist,
-               use_constant_clim=args.use_constant_clim # default behaviour in the cli is interpolating the full climatology to match each HF timestep, instead of a constant climatology.
-                        )
+               use_constant_clim=args.use_constant_clim)
     parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
-
-
 
     # ----------------
     # make_tides_fcst
