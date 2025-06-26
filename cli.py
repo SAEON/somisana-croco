@@ -218,19 +218,18 @@ def main():
     parser_compute_anomaly.add_argument('--ref_hf_str', type=parse_datetime, 
                         default=datetime(2000,1,1), 
                         help='CROCO reference date in format "YYYY-MM-DD"')
-    parser_compute_anomaly.add_argument('--varlist', type=parse_list, 
+    parser_compute_anomaly.add_argument('--varlist', type=parse_list_str, 
                         default=['temp','u','v', 'salt','zeta'],
                         help='optional list of CROCO variable names')
-    parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_list, 
-                        default=['False'],
-                        help='If True, use a constant climatology (interpolated to the midpoint of the HF time series)
-        instead of interpolating the full climatology to match each HF timestep.')
+    parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_bool, 
+                        default='False',
+                        help='If True, use a constant climatology (interpolated to the midpoint of the HF time series) instead of interpolating the full climatology to match each HF timestep.')
     def compute_anomaly_handler(args):
         compute_anomaly(args.climatology_file, args.high_freq_file, args.output_dir, args.ref_hf_str, 
                varlist=args.varlist,
-               use_constant_clim=False # default behaviour in the cli is interpolating the full climatology to match each HF timestep, instead of a constant climatology.
+               use_constant_clim=args.use_constant_clim # default behaviour in the cli is interpolating the full climatology to match each HF timestep, instead of a constant climatology.
                         )
-    parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
+    parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
 
 
 
