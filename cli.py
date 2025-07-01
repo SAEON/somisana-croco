@@ -108,6 +108,9 @@ def main():
     parser_crocplot.add_argument('--ref_date', type=parse_datetime, 
                         default=datetime(2000,1,1,0,0,0), 
                         help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_crocplot.add_argument('--add_vectors', type=parse_bool, 
+                        default='True',
+                        help='If True, current vectors are added to the plot')
     def crocplot_handler(args):
         # a lot of the crocplot inputs are hard coded below but could be made configurable in future
         # there are also other potential optional inputs to this function which we aren't specifying here
@@ -121,7 +124,7 @@ def main():
                       extents = None,
                       ref_date = args.ref_date,
                       cbar_label=args.cbar_label,
-                      add_vectors = True,
+                      add_vectors = args.add_vectors,
                       skip_time = args.skip_time,
                       isobaths=args.isobaths,
                       gif_out=args.gif_out,
