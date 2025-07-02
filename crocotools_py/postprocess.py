@@ -1453,6 +1453,7 @@ def get_section(fname,
     
     return ds
 
+
 def compute_anomaly(climatology_file, high_freq_file, output_file,
                     ref_date="2000-01-01",
                     varlist=["temp", "u", "v", "salt", "zeta"],
@@ -1533,7 +1534,7 @@ def compute_anomaly(climatology_file, high_freq_file, output_file,
 
         # Wrap in a DataArray and assign correct metadata
         anom_da = xr.DataArray(
-            data=anom.data,
+            data=anom,
             dims=anom.dims,
             coords=anom.coords,
             name=anom_name
@@ -1541,25 +1542,43 @@ def compute_anomaly(climatology_file, high_freq_file, output_file,
         anom_da = change_attrs(croco_attrs, anom_da, anom_name)
         ds_hf_out[anom_name] = anom_da
         print(f"{anom_name} → shape: {anom.shape}")
+    
+    # # Chunking the output dataset
+    ds_hf_out = ds_hf_out.chunk({"time": 10, "s_rho": 5})  # Adjust based on memory    
+    ds_hf_out["zeta"] = ds_hf["zeta"]
+    ds_hf_out.to_netcdf(output_file, compute=True)
+    
+    # # ds_hf_out = ds_hf_out.chunk({"time": 40, "s_rho": 10}) 
+    # ds_hf_out = ds_hf_out.chunk({
+    # "time": 60,       # 4 chunks time
+    # "s_rho": 10,      # 3 chunks depth
+    # "eta_rho": 224,   # 2 chunks eta
+    # "xi_rho": 65      # 2 chunks xi
+    # })
+    # print("💾 Writing anomaly file with Dask-safe chunked output...")
+    # with ProgressBar():
+    #     ds_hf_out.to_netcdf(output_file, compute=True)
+    # end_time = time.time()
+    # print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
+    
 
-    ds_hf_out.to_netcdf(output_file)
+    # print("Multiple variables selected — using copy + append method...")
+    # fname_new = os.path.join(
+    #     output_file,
+    #     os.path.basename(high_freq_file).replace(".nc", "_with_anomaliesNow.nc")
+    # )
 
-#    print("Multiple variables selected — using copy + append method...")
-#    fname_new = os.path.join(
-#        output_dir,
-#        os.path.basename(high_freq_file).replace(".nc", "_with_anomalies.nc")
-#    )
-#    shutil.copyfile(high_freq_file, fname_new)
-#    print(f"Copied original HF file to: {fname_new}")
-#
-#    # print("Writing all anomaly variables at once...")
-#    # ds_hf_out.to_netcdf(fname_new, mode="a", compute=True)
-#    
-#    print("Writing variables one by one to reduce memory usage...")
-#    for var in ds_hf_out.data_vars:
-#        print(f"Writing {var}...")
-#        ds_hf_out[[var]].to_netcdf(fname_new, mode="a", compute=True)
+    # shutil.copyfile(high_freq_file, fname_new)
+    # print(f"Copied original HF file to: {fname_new}")
+
+    # # print("Writing all anomaly variables at once...")
+    # # ds_hf_out.to_netcdf(fname_new, mode="a", compute=True)
+    
+    # print("Writing variables one by one to reduce memory usage...")
+    # for var in ds_hf_out.data_vars:
+    #     print(f"Writing {var}...")
+    #     ds_hf_out[[var]].to_netcdf(fname_new, mode="a", compute=True)
 
 
-    end_time = time.time()
-    print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
+    # end_time = time.time()
+    # print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
