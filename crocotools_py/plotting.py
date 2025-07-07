@@ -304,19 +304,19 @@ def plot(fname,
     
     
     if ticks is None:
-        # get the range of the data to plot (using 5th and 95th percentiles)
-        vmin = np.nanpercentile(da_var, 1)
-        vmax = np.nanpercentile(da_var, 99)
     
         is_anomaly = var.endswith('_anom')
         num_ticks = 10
     
         if is_anomaly:
+            vmax = np.nanpercentile(abs(da_var), 99)
             # Symmetric color scale around 0
             vmax = round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)
             vmin = -vmax
             cmap = 'bwr'
         else:
+            vmin = np.nanpercentile(da_var, 1)
+            vmax = np.nanpercentile(da_var, 99)
             # Round to two significant figures
             vmin = round(vmin, 2 - int(np.floor(np.log10(abs(vmin)))) - 1)
             vmax = round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)

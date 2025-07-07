@@ -86,7 +86,7 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
-      - name: Add anomalies to croco file
+      - name: Make anomaly file
         continue-on-error: true
         run: |
           # we need to transform the domain name into the equivalent name on the archive mount where the climatology is stored
@@ -268,7 +268,7 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
           # anomaly plots
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.gif ${{ steps.archive_dir.outputs.value }}
           
       - name: clean up
         run: |

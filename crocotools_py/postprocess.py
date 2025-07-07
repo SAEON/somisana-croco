@@ -1511,9 +1511,9 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     if use_constant_clim:
         print("(Using constant climatology based on midpoint of HF time axis)")
         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
-        ds_clim = ds_clim.interp(time=middle_time, method="linear", assume_sorted=True)
+        ds_clim = ds_clim.interp(time=middle_time, method="linear")
     else:
-        ds_clim = ds_clim.interp(time=ds_hf.time, method="linear", assume_sorted=True)
+        ds_clim = ds_clim.interp(time=ds_hf.time, method="linear")
     
     print("Computing anomalies...")
     ds_anom = xr.Dataset(coords=ds_hf.coords)
