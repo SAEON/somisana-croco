@@ -108,6 +108,7 @@ jobs:
                 --fname_in /tmp/model/output/croco_avg.nc \
                 --fname_anom /tmp/model/postprocess/croco_avg_anom.nc \
                 --ref_date '2000-01-01' \
+                --varlist temp,zeta \
                 --use_constant_clim True
       # Regrid CROCO u,v to rho grid,
       # rotate u,v components from grid aligned to east/north aligned and
