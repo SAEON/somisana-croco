@@ -1454,7 +1454,7 @@ def get_section(fname,
     return ds
 
 
-def compute_anomaly(climatology_file, high_freq_file, output_file,
+def compute_anomaly(fname_clim, fname_in, fname_out,
                     ref_date="2000-01-01",
                     varlist=["temp", "u", "v", "salt", "zeta"],
                     use_constant_clim=False):
@@ -1463,109 +1463,85 @@ def compute_anomaly(climatology_file, high_freq_file, output_file,
 
     Parameters:
     -----------
-    climatology_file : str
+    fname_clim : str
         Path to the NetCDF file containing 12 monthly climatology time steps.
-    high_freq_file : str
+    fname_in : str
         Path to the NetCDF file containing high-frequency model output (e.g., hourly).
-    output_file : str
+    fname_out : str
         Path to output NetCDF file containing the anomalies
     ref_date : str, optional
         Reference date (e.g., "2000-01-01") used to define the high-frequency time axis.
     varlist : list of str, optional
         List of variables for which anomalies should be computed.
-    use_constant_clim : bool, optional
-        If True, use a constant climatology (interpolated to midpoint of HF time axis).
+     use_constant_clim : bool, optional
+        If True, use a constant climatology (interpolated to midpoint of HF time axis insted of to the entire HF time axis).
+        This is useful when the high frequency file is very large, but a single climatology value is sufficient
+        An alternative approach to this problem is to chunk the data. This works to speed up the interpolation step
+        but leads to memory issue when trying to write the output (at least I couldn't solve them without bypassing the problem)
 
     Returns:
     --------
     None. Saves output NetCDF with anomaly variables added.
     """
+
     start_time = time.time()
-    print("Loading climatology and high-frequency forecast files...")
-    ds_clim = xr.open_dataset(climatology_file)
-    ds_hf = xr.open_dataset(high_freq_file)
+    print("Loading climatology and high-frequency files...")
+    ds_clim = xr.open_dataset(fname_clim, decode_times=False)
+    ds_clim = ds_clim[varlist] # subset to only the variables we need
+    ds_hf = xr.open_dataset(fname_in, decode_times=False)
     ref_hf = np.datetime64(ref_date)
 
     # Ensure climatology file has 12 time steps
-    if "time" not in ds_clim.dims or ds_clim.dims["time"] != 12:
+    if len(ds_clim.time) != 12:
         raise ValueError("❌ ERROR: Provided climatology file must have exactly 12 monthly time steps.")
 
-    print("Aligning climatology time axis to match HF year...")
+    print("Extending climatology time axis...")
+    start = ds_clim.isel(time=0)
+    end = ds_clim.isel(time=-1)
+    ds_clim = xr.concat([end, ds_clim, start], dim="time")
+    ds_clim = ds_clim.transpose('time', ...) # ensure time is the first dimension
+    
+    print("Set climatology time axis to align with high frequency file...")
     HF_t = ds_hf.time.values.astype("float64")
     hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
     hf_year = pd.to_datetime(hf_dates[0]).year
-
-    corrected_cl_dates = pd.to_datetime([
-        f"{hf_year}-{month:02d}-15 00:30:30" for month in range(1, 13)
-    ])
-    time_0 = corrected_cl_dates[0] - pd.DateOffset(months=1)
-    time_13 = corrected_cl_dates[-1] + pd.DateOffset(months=1)
-    cl_shifted_time_extended = pd.to_datetime([time_0] + list(corrected_cl_dates) + [time_13])
-    clim_seconds = (cl_shifted_time_extended - ref_hf) / np.timedelta64(1, "s")
-
-    print("Extending climatology variables...")
-    #ds_clim_ext = xr.Dataset()
-    #for var in varlist:
-    #    start = ds_clim[var].isel(time=0)
-    #    end = ds_clim[var].isel(time=-1)
-    #    extended = xr.concat([end, ds_clim[var], start], dim="time")
-    #    extended = extended.assign_coords(time=clim_seconds)
-    #    ds_clim_ext[var] = extended
-    start = ds_clim.isel(time=0)
-    end = ds_clim.isel(time=-1)
-    ds_clim_ext = xr.concat([end, ds_clim, start], dim="time")
-    ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
-
-    print("Interpolating climatology to HF time axis...")
+    clim_time = pd.date_range(start=f'{hf_year-1}-12-15', periods=14, freq='MS')
+    clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).to_numpy(dtype=np.float64) # seconds since initialisation i.e. as per the high frequency file
+    ds_clim = ds_clim.assign_coords(time=clim_seconds)
     if use_constant_clim:
-        print("Using constant climatology based on midpoint of HF time axis")
+        print("(Using constant climatology based on midpoint of HF time axis)")
         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
-        ds_clim_interp = ds_clim_ext.interp(time=middle_time, method="linear")
+        ds_clim = ds_clim.interp(time=middle_time, method="linear", assume_sorted=True)
     else:
-        ds_clim_interp = ds_clim_ext.chunk({"time": 14}).interp(time=ds_hf.time, method="linear")
-
+        ds_clim = ds_clim.interp(time=ds_hf.time, method="linear", assume_sorted=True)
+    
     print("Computing anomalies...")
-    ds_hf_out = xr.Dataset(coords=ds_hf.coords)
+    ds_anom = xr.Dataset(coords=ds_hf.coords)
     croco_attrs = CROCO_Attrs()
-
     for var in varlist:
-        anom = ds_hf[var] - ds_clim_interp[var]
+        print(f"{var}")
+        anom = ds_hf[var] - ds_clim[var]
         anom_name = f"{var}_anom"
-
-        # Wrap in a DataArray and assign correct metadata
-        anom_da = xr.DataArray(
-            data=anom,
-            dims=anom.dims,
-            coords=anom.coords,
-            name=anom_name
-        )
-        anom_da = change_attrs(croco_attrs, anom_da, anom_name)
-        ds_hf_out[anom_name] = anom_da
-        print(f"{anom_name} → shape: {anom.shape}")
+        anom = change_attrs(croco_attrs, anom, anom_name)
+        ds_anom[anom_name] = anom
+    ds_hf.close()
+    ds_clim.close()
     
-    # # Chunking the output dataset
-    # ds_hf_out = ds_hf_out.chunk({"time": 10, "s_rho": 5})  # Adjust based on memory    
-    # ds_hf_out["zeta"] = ds_hf["zeta"]
-    # ds_hf_out.to_netcdf(output_file, compute=True)
+    # add variables from ds_hf related to the vertical grid
+    # (this is needed if you want to plot or extract data at specific vertical levels later)
+    add_vars = ['theta_s','theta_b','hc','Vtransform','h','zeta']
+    for add_var in add_vars:
+        if add_var in ds_hf:
+            ds_anom[add_var] = ds_hf[add_var]
+        elif add_var in ds_hf.attrs: # handle 'theta_s' and 'theta_b' which are stored as global attributes not variables
+            ds_anom.attrs[add_var] = ds_hf.attrs[add_var]
     
-
-    print("Multiple variables selected — using copy + append method...")
-    fname_new = os.path.join(
-        output_file,
-        os.path.basename(high_freq_file).replace(".nc", "_with_anomaliesNow.nc")
-    )
-
-    shutil.copyfile(high_freq_file, fname_new)
-    print(f"Copied original HF file to: {fname_new}")
-
-    # print("Writing all anomaly variables at once...")
-    # ds_hf_out.to_netcdf(fname_new, mode="a", compute=True)
-    
-    print("Writing variables one by one to reduce memory usage...")
-    for var in ds_hf_out.data_vars:
-        print(f"Writing {var}...")
-        ds_hf_out[[var]].to_netcdf(fname_new, mode="a", compute=True)
-
+    print("Writing output file...")   
+    encoding = {
+        var: {"dtype": "float32"}
+        for var in ds_anom.data_vars
+    }
+    ds_anom.to_netcdf(fname_out, encoding=encoding, mode='w')
 
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds")

@@ -86,7 +86,6 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_run_main:latest \
             -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
-      # NK - THIS IS WHERE YOUR MAGIC HAPPENS!
       - name: Add anomalies to croco file
         continue-on-error: true
         run: |
@@ -109,7 +108,7 @@ jobs:
                 --fname_in /tmp/model/output/croco_avg.nc \
                 --fname_anom /tmp/model/postprocess/croco_avg_anom.nc \
                 --ref_date '2000-01-01' \
-                TO BE COMPLETED
+                --use_constant_clim True
       # Regrid CROCO u,v to rho grid,
       # rotate u,v components from grid aligned to east/north aligned and
       # work out depth levels of sigma grid in meters (tier 1)
@@ -212,6 +211,22 @@ jobs:
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
+      - name: animate surface temperature anomalies
+        continue-on-error: true
+        run: |
+          docker run \
+            --memory=10g \
+            --cpus=1 \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/postprocess/croco_avg_anom.nc \
+                --gif_out /tmp/postprocess/croco_avg_temp_anom_surf.gif \
+                --skip_time 6 \
+                --ref_date '2000-01-01 00:00:00' \
+                --add_vectors False
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.gif
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
@@ -248,9 +263,12 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
+          # plots of model output
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+          # anomaly plots
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
           
       - name: clean up
         run: |

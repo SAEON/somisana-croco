@@ -225,12 +225,12 @@ def main():
                         default=['temp','u','v', 'salt','zeta'],
                         help='optional list of CROCO variable names')
     parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_bool, 
-                        default='False',
-                        help='If True, use a constant climatology (interpolated to the midpoint of the HF time series) instead of interpolating the full climatology to match each HF timestep.')
+                       default='False',
+                       help='If True, use a constant climatology (interpolated to the midpoint of the HF time series instead of interpolating to the full HF time axis')
     def compute_anomaly_handler(args):
-        compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, args.ref_hf_str, 
-               varlist=args.varlist,
-               use_constant_clim=args.use_constant_clim)
+        compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, 
+                        args.ref_hf_str, varlist=args.varlist,
+                        use_constant_clim=args.use_constant_clim)
     parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
 
     # ----------------
