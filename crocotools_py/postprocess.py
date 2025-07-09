@@ -1502,7 +1502,7 @@ def compute_mhw_category(sst_da, clim_da, min_duration=5):
 
 
 def generate_mhw_outputs(fname_in, fname_clim, ref_date="2000-01-01", fname_out=None):
-    print("🔄 Loading SST data and climatology...")
+    print("Loading SST data and climatology...")
     ds_in = xr.open_dataset(fname_in)
     ds_clim = xr.open_dataset(fname_clim)
 
@@ -1511,14 +1511,14 @@ def generate_mhw_outputs(fname_in, fname_clim, ref_date="2000-01-01", fname_out=
     time_np = ref_date + time_seconds.astype("timedelta64[s]")
     ds_in["time"] = time_np
 
-    print("📈 Interpolating climatology to HF time axis...")
+    print("Interpolating climatology to HF time axis...")
     hf_year = pd.to_datetime(time_np[0]).year
     clim_dates = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
     clim_ext = xr.concat([ds_clim.isel(time=-1), ds_clim, ds_clim.isel(time=0)], dim="time")
     clim_ext["time"] = clim_dates.to_numpy(dtype="datetime64[ns]")
     clim_interp = clim_ext.interp(time=ds_in.time, method="linear")
 
-    print("🔥 Detecting marine heatwaves and categories...")
+    print("Detecting marine heatwaves and categories...")
     with ProgressBar():
         mhw_mask = detect_marine_heatwaves(ds_in["temp"], clim_interp["temp"])
         mhw_cat = compute_mhw_category(ds_in["temp"], clim_interp["temp"])
@@ -1530,17 +1530,12 @@ def generate_mhw_outputs(fname_in, fname_clim, ref_date="2000-01-01", fname_out=
     if fname_out is None:
         fname_out = fname_in.replace(".nc", "-mhw.nc")
 
-    print("💾 Saving to:", fname_out)
+    print("Saving to:", fname_out)
     encoding = {var: {"dtype": "int8" if "category" in var else "bool"} for var in ds_out.data_vars}
     with ProgressBar():
         ds_out.to_netcdf(fname_out, encoding=encoding)
 
-    print("✅ MHW output file generated.")
-
-
-
-
-
+    print("MHW output file generated.")
 
 
 def compute_anomaly(fname_clim, fname_in, fname_out,
@@ -1582,7 +1577,7 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
 
     # Ensure climatology file has 12 time steps
     if len(ds_clim.time) != 12:
-        raise ValueError("❌ ERROR: Provided climatology file must have exactly 12 monthly time steps.")
+        raise ValueError("ERROR: Provided climatology file must have exactly 12 monthly time steps.")
 
     print("Extending climatology time axis...")
     start = ds_clim.isel(time=0)
