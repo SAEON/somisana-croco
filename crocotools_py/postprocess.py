@@ -1454,6 +1454,49 @@ def get_section(fname,
     return ds
 
 
+def detect_marine_heatwaves(sst_da, climatology, min_duration=5):
+    exceedance = sst_da > climatology
+    grouped = exceedance.groupby('time.year')
+    mhw_mask = xr.zeros_like(sst_da, dtype=bool)
+
+    for year, group in grouped:
+        flagged = group.values
+        count = 0
+        for i in range(len(flagged)):
+            if flagged[i]:
+                count += 1
+                if count >= min_duration:
+                    mhw_mask.loc[dict(time=group.time[i - count + 1:i + 1])] = True
+            else:
+                count = 0
+    mhw_mask.name = "temp_mhw_mask"
+    mhw_mask.attrs["long_name"] = "Marine Heatwave Mask"
+    mhw_mask.attrs["standard_name"] = "marine_heatwave_event"
+    mhw_mask.attrs["units"] = "1 (true/false)"
+    return mhw_mask
+
+def compute_mhw_category(sst_da, clim_da, min_duration=5):
+    above_thresh = sst_da > clim_da
+    category = xr.zeros_like(sst_da, dtype="int8")
+
+    excess = sst_da - clim_da
+    intensity = excess / (clim_da - clim_da.mean("time"))
+
+    category = category.where(~above_thresh, 1)
+    category = category.where(intensity < 2, 2)
+    category = category.where(intensity < 3, 3)
+    category = category.where(intensity < 4, 4)
+
+    mhw_mask = detect_marine_heatwaves(sst_da, clim_da, min_duration)
+    category = category.where(mhw_mask, 0)
+
+    category.attrs["long_name"] = "Marine Heatwave Category"
+    category.attrs["standard_name"] = "marine_heatwave_category"
+    category.attrs["units"] = "category (0=none, 1–4=moderate→extreme)"
+    category.name = "temp_mhw_category"
+    return category
+
+
 def compute_anomaly(fname_clim, fname_in, fname_out,
                     ref_date="2000-01-01",
                     varlist=["temp", "u", "v", "salt", "zeta"],
@@ -1529,7 +1572,7 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     
     # add variables from ds_hf related to the vertical grid
     # (this is needed if you want to plot or extract data at specific vertical levels later)
-    add_vars = ['theta_s','theta_b','hc','Vtransform','h','zeta']
+    add_vars = ['theta_s','theta_b','hc','Vtransform','h','zeta','mask_rho']
     for add_var in add_vars:
         if add_var in ds_hf:
             ds_anom[add_var] = ds_hf[add_var]
