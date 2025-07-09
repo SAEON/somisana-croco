@@ -10,6 +10,7 @@ import shutil
 import time
 from dask.diagnostics import ProgressBar
 
+
 def change_attrs(attrs,da,var_str):
     meta = getattr(attrs, var_str)
     da.attrs['long_name'] = meta.long_name
@@ -1454,6 +1455,8 @@ def get_section(fname,
     return ds
 
 
+
+
 def detect_marine_heatwaves(sst_da, climatology, min_duration=5):
     exceedance = sst_da > climatology
     grouped = exceedance.groupby('time.year')
@@ -1469,19 +1472,20 @@ def detect_marine_heatwaves(sst_da, climatology, min_duration=5):
                     mhw_mask.loc[dict(time=group.time[i - count + 1:i + 1])] = True
             else:
                 count = 0
+
     mhw_mask.name = "temp_mhw_mask"
     mhw_mask.attrs["long_name"] = "Marine Heatwave Mask"
     mhw_mask.attrs["standard_name"] = "marine_heatwave_event"
     mhw_mask.attrs["units"] = "1 (true/false)"
     return mhw_mask
 
+
 def compute_mhw_category(sst_da, clim_da, min_duration=5):
     above_thresh = sst_da > clim_da
-    category = xr.zeros_like(sst_da, dtype="int8")
-
     excess = sst_da - clim_da
     intensity = excess / (clim_da - clim_da.mean("time"))
 
+    category = xr.zeros_like(sst_da, dtype="int8")
     category = category.where(~above_thresh, 1)
     category = category.where(intensity < 2, 2)
     category = category.where(intensity < 3, 3)
@@ -1490,11 +1494,53 @@ def compute_mhw_category(sst_da, clim_da, min_duration=5):
     mhw_mask = detect_marine_heatwaves(sst_da, clim_da, min_duration)
     category = category.where(mhw_mask, 0)
 
+    category.name = "temp_mhw_category"
     category.attrs["long_name"] = "Marine Heatwave Category"
     category.attrs["standard_name"] = "marine_heatwave_category"
     category.attrs["units"] = "category (0=none, 1–4=moderate→extreme)"
-    category.name = "temp_mhw_category"
     return category
+
+
+def generate_mhw_outputs(fname_in, fname_clim, ref_date="2000-01-01", fname_out=None):
+    print("🔄 Loading SST data and climatology...")
+    ds_in = xr.open_dataset(fname_in)
+    ds_clim = xr.open_dataset(fname_clim)
+
+    ref_date = np.datetime64(ref_date)
+    time_seconds = ds_in.time.values.astype("float64")
+    time_np = ref_date + time_seconds.astype("timedelta64[s]")
+    ds_in["time"] = time_np
+
+    print("📈 Interpolating climatology to HF time axis...")
+    hf_year = pd.to_datetime(time_np[0]).year
+    clim_dates = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
+    clim_ext = xr.concat([ds_clim.isel(time=-1), ds_clim, ds_clim.isel(time=0)], dim="time")
+    clim_ext["time"] = clim_dates.to_numpy(dtype="datetime64[ns]")
+    clim_interp = clim_ext.interp(time=ds_in.time, method="linear")
+
+    print("🔥 Detecting marine heatwaves and categories...")
+    with ProgressBar():
+        mhw_mask = detect_marine_heatwaves(ds_in["temp"], clim_interp["temp"])
+        mhw_cat = compute_mhw_category(ds_in["temp"], clim_interp["temp"])
+
+    ds_out = xr.Dataset(coords=ds_in.coords)
+    ds_out["temp_mhw_mask"] = mhw_mask
+    ds_out["temp_mhw_category"] = mhw_cat
+
+    if fname_out is None:
+        fname_out = fname_in.replace(".nc", "-mhw.nc")
+
+    print("💾 Saving to:", fname_out)
+    encoding = {var: {"dtype": "int8" if "category" in var else "bool"} for var in ds_out.data_vars}
+    with ProgressBar():
+        ds_out.to_netcdf(fname_out, encoding=encoding)
+
+    print("✅ MHW output file generated.")
+
+
+
+
+
 
 
 def compute_anomaly(fname_clim, fname_in, fname_out,
