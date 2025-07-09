@@ -106,7 +106,7 @@ jobs:
               compute_anomaly \
                 --fname_clim /tmp/clim/monthly_climatology.nc \
                 --fname_in /tmp/model/output/croco_avg.nc \
-                --fname_anom /tmp/model/postprocess/croco_avg_anom.nc \
+                --fname_out /tmp/model/postprocess/croco_avg_anom.nc \
                 --ref_date '2000-01-01' \
                 --varlist temp,zeta \
                 --use_constant_clim True
