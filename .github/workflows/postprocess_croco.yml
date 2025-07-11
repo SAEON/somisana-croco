@@ -312,7 +312,9 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
           # anomaly plots
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.gif ${{ steps.archive_dir.outputs.value }}
-          
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.gif ${{ steps.archive_dir.outputs.value }}
+
       - name: clean up
         run: |
           # the .nc files we previously copied files from elsewhere into the scratch directory are redundant
