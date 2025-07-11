@@ -228,7 +228,49 @@ jobs:
                 --ref_date '2000-01-01 00:00:00' \
                 --add_vectors False
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.gif
+      - name: animate bottom temperature anomalies
+        continue-on-error: true
+        run: |
+          docker run \
+            --memory=10g \
+            --cpus=1 \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg_anom.nc \
+                --level 0 \
+                --gif_out /tmp/postprocess/croco_avg_temp_anom_bot.gif \
+                --skip_time 6 \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.gif
+      - name: animate 100m temperature anomalies
+        continue-on-error: true
+        run: |
+          docker run \
+            --memory=10g \
+            --cpus=1 \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
+                --fname /tmp/output/croco_avg_anom.nc \
+                --level -100 \
+                --gif_out /tmp/postprocess/croco_avg_temp_anom_100m.gif \
+                --skip_time 6 \
+                --ref_date '2000-01-01 00:00:00'
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.gif
+      - name: animate surface temperature anomalies
       - name: ensure permissions
+        continue-on-error: true
+        run: |
+          docker run \
+            --memory=10g \
+            --cpus=1 \
+            --rm \
+            -v ${{ env.RUN_DIR }}:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              crocplot \
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
 
