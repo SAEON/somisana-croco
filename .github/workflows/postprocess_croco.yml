@@ -260,7 +260,6 @@ jobs:
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.gif
-      - name: animate surface temperature anomalies
       - name: ensure permissions
         continue-on-error: true
         run: |
