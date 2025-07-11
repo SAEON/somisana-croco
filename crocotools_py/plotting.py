@@ -290,7 +290,19 @@ def plot(fname,
         
     # get the data we want to 
     print('extracting the data to plot')
-    ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,ref_date=ref_date)
+    # ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,ref_date=ref_date)
+    
+    # If var without _anom is not found, try appending _anom
+    try:
+        ds = post.get_var(fname, var, grdname=grdname, time=time, level=level, ref_date=ref_date)
+    except KeyError as e:
+        if not var.endswith("_anom"):
+            print(f"Variable '{var}' not found, trying with '_anom' suffix")
+            var += "_anom"
+            ds = post.get_var(fname, var, grdname=grdname, time=time, level=level, ref_date=ref_date)
+        else:
+            raise e
+
     da_var=ds[var]
     time_var=np.atleast_1d(ds.time.values)
     lon = post.get_grd_var(grdname,'lon_rho').values

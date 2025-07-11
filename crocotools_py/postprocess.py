@@ -1465,12 +1465,13 @@ def detect_marine_heatwaves(sst_da, climatology, min_duration=5):
     if not np.issubdtype(exceedance.time.dtype, np.datetime64):
         raise ValueError("`time` coordinate must be datetime64[ns].")
 
-    # Group by year using Pandas (robust and compatible)
+    # Group by year using Pandas (robust and compatible) #idea from the 	Hobday et al. (2016)
     exceed_da = exceedance["temp"] if isinstance(exceedance, xr.Dataset) else exceedance
     df = exceed_da.to_dataframe(name="exceed").reset_index()
 
     df["year"] = df["time"].dt.year
 
+    # grouping by year idea comes from Hobday et al. (2016)
     for (yr, grp) in df.groupby("year"):
         grp = grp.sort_values("time")
         exceed_seq = grp["exceed"].values
@@ -1500,7 +1501,8 @@ def compute_mhw_category(sst_da, clim_da, min_duration=5):
 
     excess = sst_da - clim_da
     intensity = excess / (clim_da - clim_da.mean("time"))
-
+    
+    #CAtegorization system taken from Hobday et al. (2018) 
     category = category.where(~above_thresh, 1)
     category = category.where(intensity < 2, 2)
     category = category.where(intensity < 3, 3)
