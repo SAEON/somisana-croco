@@ -238,7 +238,7 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               crocplot \
-                --fname /tmp/output/croco_avg_anom.nc \
+                --fname /tmp/postprocess/croco_avg_anom.nc \
                 --level 0 \
                 --gif_out /tmp/postprocess/croco_avg_temp_anom_bot.gif \
                 --skip_time 6 \
@@ -254,7 +254,7 @@ jobs:
             -v ${{ env.RUN_DIR }}:/tmp \
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               crocplot \
-                --fname /tmp/output/croco_avg_anom.nc \
+                --fname /tmp/postprocess/croco_avg_anom.nc \
                 --level -100 \
                 --gif_out /tmp/postprocess/croco_avg_temp_anom_100m.gif \
                 --skip_time 6 \
