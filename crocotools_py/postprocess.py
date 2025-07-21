@@ -1479,11 +1479,6 @@ def compute_mhw(fname_clim, fname_in, fname_out,
         If True, uses constant climatology value interpolated to midpoint of HF time.
         If False, interpolates across all HF time steps.
     """
-    import xarray as xr
-    import numpy as np
-    import pandas as pd
-    import time
-    from crocotools_py.postprocess import CROCO_Attrs, change_attrs
 
     start_time = time.time()
     print("🔹 Loading climatology and high-frequency files...")
