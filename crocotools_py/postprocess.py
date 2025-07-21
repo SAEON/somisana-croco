@@ -1481,7 +1481,7 @@ def compute_mhw(fname_clim, fname_in, fname_out,
     """
 
     start_time = time.time()
-    print("🔹 Loading climatology and high-frequency files...")
+    print("Loading climatology and high-frequency files...")
     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
     ds_hf = xr.open_dataset(fname_in, decode_times=False)
     ref_hf = np.datetime64(ref_date)
@@ -1493,7 +1493,7 @@ def compute_mhw(fname_clim, fname_in, fname_out,
     if len(ds_clim.time) != 12:
         raise ValueError("Climatology must have exactly 12 time steps (monthly)")
 
-    print("🔹 Extending climatology for time interpolation...")
+    print("Extending climatology for time interpolation...")
     ds_clim = ds_clim.transpose("time", ...)
     start = ds_clim.isel(time=0)
     end = ds_clim.isel(time=-1)
@@ -1504,10 +1504,10 @@ def compute_mhw(fname_clim, fname_in, fname_out,
     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
 
-    print("🔹 Computing 90th percentile threshold from climatology...")
+    print("Computing 90th percentile threshold from climatology...")
     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
 
-    print("🔹 Interpolating threshold to HF time axis...")
+    print("Interpolating threshold to HF time axis...")
     if use_constant_clim:
         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
         clim_interp = clim_p90.expand_dims(time=[middle_time])
@@ -1515,7 +1515,7 @@ def compute_mhw(fname_clim, fname_in, fname_out,
     else:
         clim_interp = clim_p90.expand_dims(time=ds_hf.time)
 
-    print("🔹 Detecting marine heatwaves...")
+    print("Detecting marine heatwaves...")
     mhw_mask = ds_hf["temp"] > clim_interp
     mhw_mask.name = "temp_mhw_mask"
     mhw_mask.attrs.update({
@@ -1524,16 +1524,16 @@ def compute_mhw(fname_clim, fname_in, fname_out,
         "units": "1 (true/false)"
     })
 
-    print("🔹 Computing SST anomaly...")
+    print("Computing SST anomaly...")
     sst_anom = ds_hf["temp"] - clim_interp
     sst_anom.name = "temp_anom"
 
     # Apply CROCO attributes to anomaly
-    print("🔹 Adding CROCO-style attributes to anomaly...")
+    print("Adding CROCO-style attributes to anomaly...")
     croco_attrs = CROCO_Attrs()
     sst_anom = change_attrs(croco_attrs, sst_anom, "temp_anom")
 
-    print("🔹 Preparing output dataset...")
+    print("Preparing output dataset...")
     ds_out = xr.Dataset(coords=ds_hf.coords)
     ds_out["temp"] = ds_hf["temp"]  # Save original SST
     # ds_out["temp"] = ds_hf["temp"].isel(s_rho=-1)  # assuming s_rho is the vertical dim
@@ -1549,12 +1549,12 @@ def compute_mhw(fname_clim, fname_in, fname_out,
         elif var in ds_hf.attrs:
             ds_out.attrs[var] = ds_hf.attrs[var]
 
-    print("💾 Writing output file...")
+    print("Writing output file...")
     encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
     ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
 
-    print(f"✅ Done! Output saved to: {fname_out}")
-    print(f"⏱️ Total time elapsed: {time.time() - start_time:.2f} seconds")
+    print(f"Done! Output saved to: {fname_out}")
+    print(f"Total time elapsed: {time.time() - start_time:.2f} seconds")
 
 
 
