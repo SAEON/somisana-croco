@@ -326,6 +326,7 @@ def plot(fname,
             vmax = round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)
             vmin = -vmax
             cmap = 'bwr'
+            cbar_label = 'temperature anomaly ($\degree$C)'
         else:
             vmin = np.nanpercentile(da_var, 1)
             vmax = np.nanpercentile(da_var, 99)
