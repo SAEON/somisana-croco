@@ -176,10 +176,10 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               crocplot \
                 --fname /tmp/output/croco_avg.nc \
-                --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
+                --mp4_out /tmp/postprocess/croco_avg_temp_surf.mp4 \
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.mp4
       - name: animate bottom temperature and currents
         continue-on-error: true
         run: |
@@ -192,10 +192,10 @@ jobs:
               crocplot \
                 --fname /tmp/output/croco_avg.nc \
                 --level 0 \
-                --gif_out /tmp/postprocess/croco_avg_temp_bot.gif \
+                --mp4_out /tmp/postprocess/croco_avg_temp_bot.mp4 \
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.mp4
       - name: animate 100m temperature and currents
         continue-on-error: true
         run: |
@@ -208,10 +208,10 @@ jobs:
               crocplot \
                 --fname /tmp/output/croco_avg.nc \
                 --level -100 \
-                --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
+                --mp4_out /tmp/postprocess/croco_avg_temp_100m.mp4 \
                 --skip_time 6 \
                 --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4
       - name: animate surface temperature anomalies
         continue-on-error: true
         run: |
@@ -223,11 +223,12 @@ jobs:
             ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
               crocplot \
                 --fname /tmp/postprocess/croco_avg_anom.nc \
-                --gif_out /tmp/postprocess/croco_avg_temp_anom_surf.gif \
+                --mp4_out /tmp/postprocess/croco_avg_temp_anom_surf.mp4 \
                 --skip_time 6 \
+                --var 'temp_anom' \
                 --ref_date '2000-01-01 00:00:00' \
                 --add_vectors False
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.gif
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4
       - name: animate bottom temperature anomalies
         continue-on-error: true
         run: |
@@ -240,10 +241,11 @@ jobs:
               crocplot \
                 --fname /tmp/postprocess/croco_avg_anom.nc \
                 --level 0 \
-                --gif_out /tmp/postprocess/croco_avg_temp_anom_bot.gif \
+                --mp4_out /tmp/postprocess/croco_avg_temp_anom_bot.mp4 \
                 --skip_time 6 \
+                --var 'temp_anom' \
                 --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.gif
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4
       - name: animate 100m temperature anomalies
         continue-on-error: true
         run: |
@@ -256,10 +258,11 @@ jobs:
               crocplot \
                 --fname /tmp/postprocess/croco_avg_anom.nc \
                 --level -100 \
-                --gif_out /tmp/postprocess/croco_avg_temp_anom_100m.gif \
+                --mp4_out /tmp/postprocess/croco_avg_temp_anom_100m.mp4 \
                 --skip_time 6 \
+                --var 'temp_anom' \
                 --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.gif
+          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
@@ -297,13 +300,13 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
           # plots of model output
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.mp4 ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.mp4 ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 ${{ steps.archive_dir.outputs.value }}
           # anomaly plots
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.gif ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.gif ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 ${{ steps.archive_dir.outputs.value }}
 
       - name: clean up
         run: |

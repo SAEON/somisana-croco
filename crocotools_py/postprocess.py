@@ -1535,10 +1535,10 @@ def compute_mhw(fname_clim, fname_in, fname_out,
 
     print("Preparing output dataset...")
     ds_out = xr.Dataset(coords=ds_hf.coords)
-    ds_out["temp"] = ds_hf["temp"]  # Save original SST
+    # ds_out["temp"] = ds_hf["temp"]  # Save original SST
     # ds_out["temp"] = ds_hf["temp"].isel(s_rho=-1)  # assuming s_rho is the vertical dim
     # ds_out["temp"] = ds_out["temp"].expand_dims(dim={"s_rho": [ds_hf.s_rho.values[-1]]})  # add singleton s_rho dimension
-    ds_out["temp_anom"] = sst_anom
+    # ds_out["temp_anom"] = sst_anom
     ds_out["temp_mhw_mask"] = mhw_mask
 
     # Add vertical grid and metadata
@@ -1549,16 +1549,14 @@ def compute_mhw(fname_clim, fname_in, fname_out,
         elif var in ds_hf.attrs:
             ds_out.attrs[var] = ds_hf.attrs[var]
 
-    print("Writing output file...")
-    encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
-    ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+    # print("Writing output file...")
+    # encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+    # ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
 
-    print(f"Done! Output saved to: {fname_out}")
-    print(f"Total time elapsed: {time.time() - start_time:.2f} seconds")
-
-
-
-
+    # print(f"Done! Output saved to: {fname_out}")
+    # print(f"Total time elapsed: {time.time() - start_time:.2f} seconds")
+    
+    return ds_out
 
 
 
