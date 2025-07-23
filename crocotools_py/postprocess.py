@@ -1455,45 +1455,548 @@ def get_section(fname,
     return ds
 
 
-def compute_mhw(fname_clim, fname_in, fname_out,
-                ref_date="2000-01-01",
-                use_constant_clim=False):
-    """
-    Detect marine heatwaves (MHW) using the 90th percentile threshold from monthly climatology.
-    Outputs:
-    - temp_mhw_mask (bool)
-    - temp_anomaly (CROCO-style)
-    - temp (SST) original
+# def compute_mhw(fname_clim, fname_in, fname_out,
+#                 ref_date="2000-01-01",
+#                 use_constant_clim=False):
+#     """
+#     Detect marine heatwaves (MHW) using the 90th percentile threshold from monthly climatology.
+#     Outputs:
+#     - temp_mhw_mask (bool)
+#     - temp_anomaly (CROCO-style)
+#     - temp (SST) original
     
+#     Parameters
+#     ----------
+#     fname_clim : str
+#         Path to the monthly climatology NetCDF file (12 time steps).
+#     fname_in : str
+#         Path to high-frequency CROCO model output NetCDF file (e.g., hourly).
+#     fname_out : str
+#         Output file path for the MHW binary mask and anomaly.
+#     ref_date : str
+#         Reference date used to convert HF time units.
+#     use_constant_clim : bool
+#         If True, uses constant climatology value interpolated to midpoint of HF time.
+#         If False, interpolates across all HF time steps.
+#     """
+
+#     start_time = time.time()
+#     print("Loading climatology and high-frequency files...")
+#     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
+#     ds_hf = xr.open_dataset(fname_in, decode_times=False)
+#     ref_hf = np.datetime64(ref_date)
+
+#     HF_t = ds_hf.time.values.astype("float64")
+#     hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
+#     ds_hf["time"] = hf_dates
+
+#     if len(ds_clim.time) != 12:
+#         raise ValueError("Climatology must have exactly 12 time steps (monthly)")
+
+#     print("Extending climatology for time interpolation...")
+#     ds_clim = ds_clim.transpose("time", ...)
+#     start = ds_clim.isel(time=0)
+#     end = ds_clim.isel(time=-1)
+#     ds_clim_ext = xr.concat([end, ds_clim, start], dim="time")
+
+#     hf_year = pd.to_datetime(hf_dates[0]).year
+#     clim_time = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
+#     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
+#     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
+
+#     print("Computing 90th percentile threshold from climatology...")
+#     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
+
+#     print("Interpolating threshold to HF time axis...")
+#     if use_constant_clim:
+#         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
+#         clim_interp = clim_p90.expand_dims(time=[middle_time])
+#         clim_interp = clim_interp.broadcast_like(ds_hf["temp"])
+#     else:
+#         clim_interp = clim_p90.expand_dims(time=ds_hf.time)
+
+#     print("Detecting marine heatwaves...")
+#     mhw_mask = ds_hf["temp"] > clim_interp
+#     mhw_mask.name = "temp_mhw_mask"
+#     mhw_mask.attrs.update({
+#         "long_name": "Marine Heatwave Binary Mask",
+#         "standard_name": "marine_heatwave_event",
+#         "units": "1 (true/false)"
+#     })
+
+#     print("Computing SST anomaly...")
+#     sst_anom = ds_hf["temp"] - clim_interp
+#     sst_anom.name = "temp_anom"
+
+#     # Apply CROCO attributes to anomaly
+#     print("Adding CROCO-style attributes to anomaly...")
+#     croco_attrs = CROCO_Attrs()
+#     sst_anom = change_attrs(croco_attrs, sst_anom, "temp_anom")
+
+#     print("Preparing output dataset...")
+#     ds_out = xr.Dataset(coords=ds_hf.coords)
+#     # ds_out["temp"] = ds_hf["temp"]  # Save original SST
+#     # ds_out["temp"] = ds_hf["temp"].isel(s_rho=-1)  # assuming s_rho is the vertical dim
+#     # ds_out["temp"] = ds_out["temp"].expand_dims(dim={"s_rho": [ds_hf.s_rho.values[-1]]})  # add singleton s_rho dimension
+#     # ds_out["temp_anom"] = sst_anom
+#     ds_out["temp_mhw_mask"] = mhw_mask
+
+#     # Add vertical grid and metadata
+#     add_vars = ['theta_s', 'theta_b', 'hc', 'Vtransform', 'h', 'zeta', 'mask_rho']
+#     for var in add_vars:
+#         if var in ds_hf:
+#             ds_out[var] = ds_hf[var]
+#         elif var in ds_hf.attrs:
+#             ds_out.attrs[var] = ds_hf.attrs[var]
+
+#     # print("Writing output file...")
+#     # encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+#     # ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+
+#     # print(f"Done! Output saved to: {fname_out}")
+#     # print(f"Total time elapsed: {time.time() - start_time:.2f} seconds")
+    
+#     return ds_out
+
+
+
+
+# def compute_mhw(fname_clim, fname_in, fname_out,
+#                 ref_date="2000-01-01",
+#                 use_constant_clim=False,
+#                 min_duration=5):
+#     """
+#     Detect marine heatwaves (MHW) using the 90th percentile threshold from monthly climatology.
+#     Now includes Hobday-compliant minimum duration filtering.
+
+#     Parameters
+#     ----------
+#     fname_clim : str
+#         Path to the monthly climatology NetCDF file (12 time steps).
+#     fname_in : str
+#         Path to high-frequency CROCO model output NetCDF file (e.g., hourly).
+#     fname_out : str
+#         Output file path for the MHW binary mask and anomaly.
+#     ref_date : str
+#         Reference date used to convert HF time units.
+#     use_constant_clim : bool
+#         If True, uses constant climatology value interpolated to midpoint of HF time.
+#         If False, interpolates across all HF time steps.
+#     min_duration : int
+#         Minimum number of consecutive exceedance days to qualify as MHW (default = 5).
+#     """
+
+#     # import xarray as xr
+#     # import numpy as np
+#     # import pandas as pd
+#     # import time
+
+#     start_time = time.time()
+#     print("🔹 Loading climatology and high-frequency files...")
+#     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
+#     ds_hf = xr.open_dataset(fname_in, decode_times=False)
+#     ref_hf = np.datetime64(ref_date)
+
+#     HF_t = ds_hf.time.values.astype("float64")
+#     hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
+#     ds_hf["time"] = hf_dates
+
+#     if len(ds_clim.time) != 12:
+#         raise ValueError("Climatology must have exactly 12 time steps (monthly)")
+
+#     print("🔹 Extending climatology for time interpolation...")
+#     ds_clim = ds_clim.transpose("time", ...)
+#     start = ds_clim.isel(time=0)
+#     end = ds_clim.isel(time=-1)
+#     ds_clim_ext = xr.concat([end, ds_clim, start], dim="time")
+
+#     hf_year = pd.to_datetime(hf_dates[0]).year
+#     clim_time = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
+#     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
+#     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
+
+#     print("🔹 Computing 90th percentile threshold from climatology...")
+#     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
+
+#     print("🔹 Interpolating threshold to HF time axis...")
+#     if use_constant_clim:
+#         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
+#         clim_interp = clim_p90.expand_dims(time=[middle_time])
+#         clim_interp = clim_interp.broadcast_like(ds_hf["temp"])
+#     else:
+#         clim_interp = clim_p90.expand_dims(time=ds_hf.time)
+
+#     print("🔹 Computing SST anomaly...")
+#     sst_anom = ds_hf["temp"] - clim_interp
+#     sst_anom.name = "temp_anom"
+
+#     print("🔹 Applying minimum duration threshold (Hobday)...")
+#     def detect_events_1d(x):
+#         x = np.array(x, dtype=bool)
+#         out = np.zeros_like(x, dtype=bool)
+#         start = 0
+#         while start < len(x):
+#             if x[start]:
+#                 end = start
+#                 while end < len(x) and x[end]:
+#                     end += 1
+#                 if end - start >= min_duration:
+#                     out[start:end] = True
+#                 start = end
+#             else:
+#                 start += 1
+#         return out
+
+#     exceed = sst_anom > 0
+#     mhw_mask = xr.apply_ufunc(
+#         detect_events_1d,
+#         exceed,
+#         input_core_dims=[["time"]],
+#         output_core_dims=[["time"]],
+#         vectorize=True,
+#         dask="parallelized",
+#         output_dtypes=[bool],
+#     )
+#     mhw_mask.name = "temp_mhw_mask"
+#     mhw_mask.attrs.update({
+#         "long_name": "Marine Heatwave Binary Mask",
+#         "standard_name": "marine_heatwave_event",
+#         "units": "1 (true/false)"
+#     })
+
+#     print("🔹 Adding CROCO-style attributes...")
+#     croco_attrs = CROCO_Attrs()
+#     sst_anom = change_attrs(croco_attrs, sst_anom, "temp_anom")
+#     #mhw_mask = change_attrs(croco_attrs, mhw_mask, "temp_mhw_mask")
+
+#     print("🔹 Preparing output dataset...")
+#     ds_out = xr.Dataset(coords=ds_hf.coords)
+#     ds_out["temp_anom"] = sst_anom
+#     ds_out["temp_mhw_mask"] = mhw_mask
+
+#     add_vars = ['theta_s', 'theta_b', 'hc', 'Vtransform', 'h', 'zeta', 'mask_rho']
+#     for var in add_vars:
+#         if var in ds_hf:
+#             ds_out[var] = ds_hf[var]
+#         elif var in ds_hf.attrs:
+#             ds_out.attrs[var] = ds_hf.attrs[var]
+
+#     print("🔹 Writing output NetCDF file...")
+#     encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+#     ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+
+#     print(f"✅ Done! Output saved to: {fname_out}")
+#     print(f"⏱️ Total time elapsed: {time.time() - start_time:.2f} seconds")
+
+#     return ds_out
+
+
+
+# def compute_mhw(fname_clim, fname_in, fname_out,
+#                 ref_date="2000-01-01",
+#                 use_constant_clim=False,
+#                 min_duration=5):
+#     """
+#     Detect marine heatwaves (MHW) using the 90th percentile threshold from monthly climatology.
+#     Hobday-compliant with minimum duration threshold.
+
+#     Parameters
+#     ----------
+#     fname_clim : str
+#         Path to monthly climatology NetCDF file (12 time steps).
+#     fname_in : str
+#         Path to high-frequency CROCO output (e.g., hourly).
+#     fname_out : str
+#         Output NetCDF file path for MHW mask.
+#     ref_date : str
+#         Reference date for decoding time axis.
+#     use_constant_clim : bool
+#         If True, use constant threshold based on midpoint.
+#     min_duration : int
+#         Minimum event duration in days (default = 5).
+#     """
+#     import xarray as xr
+#     import numpy as np
+#     import pandas as pd
+#     import time
+
+#     start_time = time.time()
+#     print("🔹 Loading climatology and high-frequency files...")
+#     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
+#     ds_hf = xr.open_dataset(fname_in, decode_times=False)
+#     ref_hf = np.datetime64(ref_date)
+
+#     HF_t = ds_hf.time.values.astype("float64")
+#     hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
+#     ds_hf["time"] = hf_dates
+
+#     if len(ds_clim.time) != 12:
+#         raise ValueError("Climatology must have exactly 12 time steps (monthly)")
+
+#     print("🔹 Extending climatology for time interpolation...")
+#     ds_clim = ds_clim.transpose("time", ...)
+#     start = ds_clim.isel(time=0)
+#     end = ds_clim.isel(time=-1)
+#     ds_clim_ext = xr.concat([end, ds_clim, start], dim="time")
+
+#     hf_year = pd.to_datetime(hf_dates[0]).year
+#     clim_time = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
+#     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
+#     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
+
+#     print("🔹 Computing 90th percentile threshold from climatology...")
+#     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
+
+#     print("🔹 Interpolating threshold to HF time axis...")
+#     if use_constant_clim:
+#         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
+#         clim_interp = clim_p90.expand_dims(time=[middle_time])
+#         clim_interp = clim_interp.broadcast_like(ds_hf["temp"])
+#     else:
+#         clim_interp = clim_p90.expand_dims(time=ds_hf.time)
+
+#     print("🔹 Detecting exceedances...")
+#     exceed = ds_hf["temp"] > clim_interp
+
+#     print(f"🔹 Applying minimum duration filter (≥{min_duration} days)...")
+#     def detect_events_1d(x):
+#         x = np.array(x, dtype=bool)
+#         out = np.zeros_like(x, dtype=bool)
+#         start = 0
+#         while start < len(x):
+#             if x[start]:
+#                 end = start
+#                 while end < len(x) and x[end]:
+#                     end += 1
+#                 if end - start >= min_duration:
+#                     out[start:end] = True
+#                 start = end
+#             else:
+#                 start += 1
+#         return out
+
+#     mhw_mask = xr.apply_ufunc(
+#         detect_events_1d,
+#         exceed,
+#         input_core_dims=[["time"]],
+#         output_core_dims=[["time"]],
+#         vectorize=True,
+#         dask="parallelized",
+#         output_dtypes=[bool],
+#     )
+#     mhw_mask.name = "temp_mhw_mask"
+#     mhw_mask.attrs.update({
+#         "long_name": "Marine Heatwave Binary Mask",
+#         "standard_name": "marine_heatwave_event",
+#         "units": "1 (true/false)"
+#     })
+
+#     print("🔹 Preparing output dataset...")
+#     ds_out = xr.Dataset(coords=ds_hf.coords)
+#     ds_out["temp_mhw_mask"] = mhw_mask
+
+#     add_vars = ['theta_s', 'theta_b', 'hc', 'Vtransform', 'h', 'zeta', 'mask_rho']
+#     for var in add_vars:
+#         if var in ds_hf:
+#             ds_out[var] = ds_hf[var]
+#         elif var in ds_hf.attrs:
+#             ds_out.attrs[var] = ds_hf.attrs[var]
+
+#     print("🔹 Writing output NetCDF file...")
+#     encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+#     ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+
+#     print(f"✅ Done! Output saved to: {fname_out}")
+#     print(f"⏱️ Total time elapsed: {time.time() - start_time:.2f} seconds")
+
+#     return ds_out
+
+
+# def compute_mhw(fname_clim, fname_in, fname_out,
+#                 ref_date="2000-01-01",
+#                 use_constant_clim=False,
+#                 min_duration=5):
+#     """
+#     Detect marine heatwaves (MHW) using Hobday et al. (2016) definition.
+
+#     🔹 Uses 90th percentile of monthly climatology
+#     🔹 Aggregates to daily exceedance mask
+#     🔹 Applies Hobday's minimum duration threshold (default: 5 days)
+#     🔹 Broadcasts result back to hourly (if input is hourly)
+
+#     Parameters
+#     ----------
+#     fname_clim : str
+#         Path to monthly SST climatology (12 time steps, one per month)
+#     fname_in : str
+#         Path to high-frequency model SST file (e.g., hourly/daily CROCO output)
+#     fname_out : str
+#         Path to output NetCDF file containing 'temp_mhw_mask'
+#     ref_date : str
+#         Reference date (e.g., "2000-01-01") used to decode time units
+#     use_constant_clim : bool
+#         If True, use constant threshold at midpoint of time period
+#     min_duration : int
+#         Minimum number of **consecutive days** to define MHW (default = 5)
+
+#     Returns
+#     -------
+#     xarray.Dataset
+#         Dataset with 'temp_mhw_mask' (bool), same spatial/temporal coords as input
+#     """
+
+#     start_time = time.time()
+#     print("🔹 Loading climatology and high-frequency files...")
+#     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
+#     ds_hf = xr.open_dataset(fname_in, decode_times=False)
+#     ref_hf = np.datetime64(ref_date)
+
+#     HF_t = ds_hf.time.values.astype("float64")
+#     hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
+#     ds_hf["time"] = hf_dates
+
+#     if len(ds_clim.time) != 12:
+#         raise ValueError("Climatology must have exactly 12 time steps (monthly)")
+
+#     print("🔹 Extending climatology for time interpolation...")
+#     ds_clim = ds_clim.transpose("time", ...)
+#     start = ds_clim.isel(time=0)
+#     end = ds_clim.isel(time=-1)
+#     ds_clim_ext = xr.concat([end, ds_clim, start], dim="time")
+
+#     hf_year = pd.to_datetime(hf_dates[0]).year
+#     clim_time = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
+#     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
+#     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
+
+#     print("🔹 Computing 90th percentile threshold from climatology...")
+#     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
+
+#     print("🔹 Interpolating threshold to HF time axis...")
+#     if use_constant_clim:
+#         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
+#         clim_interp = clim_p90.expand_dims(time=[middle_time])
+#         clim_interp = clim_interp.broadcast_like(ds_hf["temp"])
+#     else:
+#         clim_interp = clim_p90.expand_dims(time=ds_hf.time)
+
+#     print("🔹 Detecting exceedances...")
+#     exceed = ds_hf["temp"] > clim_interp
+
+#     # Detect time resolution (hourly vs daily)
+#     dt_sec = np.median(np.diff(ds_hf.time.values).astype("timedelta64[s]").astype(int))
+#     is_hourly = dt_sec < 86400
+
+#     print("🔹 Aggregating exceedance to daily max for duration filter...")
+#     if is_hourly:
+#         exceed_daily = exceed.resample(time="1D").max()
+#     else:
+#         exceed_daily = exceed
+
+#     print(f"🔹 Applying minimum duration filter (≥{min_duration} days)...")
+#     def detect_events_1d(x):
+#         x = np.array(x, dtype=bool)
+#         out = np.zeros_like(x, dtype=bool)
+#         start = 0
+#         while start < len(x):
+#             if x[start]:
+#                 end = start
+#                 while end < len(x) and x[end]:
+#                     end += 1
+#                 if end - start >= min_duration:
+#                     out[start:end] = True
+#                 start = end
+#             else:
+#                 start += 1
+#         return out
+
+#     mhw_mask_daily = xr.apply_ufunc(
+#         detect_events_1d,
+#         exceed_daily,
+#         input_core_dims=[["time"]],
+#         output_core_dims=[["time"]],
+#         vectorize=True,
+#         dask="parallelized",
+#         output_dtypes=[bool],
+#     )
+
+#     print("🔹 Broadcasting daily MHW mask back to high-frequency resolution...")
+#     if is_hourly:
+#         mhw_mask = mhw_mask_daily.resample(time="1H").ffill()
+#         mhw_mask = mhw_mask.reindex(time=ds_hf.time, method="nearest")
+#     else:
+#         mhw_mask = mhw_mask_daily
+
+#     mhw_mask.name = "temp_mhw_mask"
+#     mhw_mask.attrs.update({
+#         "long_name": "Marine Heatwave Binary Mask",
+#         "standard_name": "marine_heatwave_event",
+#         "units": "1 (true/false)"
+#     })
+
+#     print("🔹 Preparing output dataset...")
+#     ds_out = xr.Dataset(coords=ds_hf.coords)
+#     ds_out["temp_mhw_mask"] = mhw_mask
+
+#     # Add additional metadata and grid info
+#     add_vars = ['theta_s', 'theta_b', 'hc', 'Vtransform', 'h', 'zeta', 'mask_rho']
+#     for var in add_vars:
+#         if var in ds_hf:
+#             ds_out[var] = ds_hf[var]
+#         elif var in ds_hf.attrs:
+#             ds_out.attrs[var] = ds_hf.attrs[var]
+
+#     print("🔹 Writing output NetCDF file...")
+#     encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+#     ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+
+#     print(f"✅ Done! Output saved to: {fname_out}")
+#     print(f"⏱️ Total time elapsed: {time.time() - start_time:.2f} seconds")
+
+#     return ds_out
+
+
+
+
+
+def compute_mhw(fname_clim, fname_in, fname_out,
+                       ref_date="2000-01-01",
+                       use_constant_clim=False,
+                       min_duration_hours=120):
+    """
+    Hobday-compliant MHW detection at hourly resolution.
+    Applies threshold exceedance and filters based on minimum number of **consecutive hours**.
+
     Parameters
     ----------
     fname_clim : str
-        Path to the monthly climatology NetCDF file (12 time steps).
+        Path to monthly SST climatology (12 time steps).
     fname_in : str
-        Path to high-frequency CROCO model output NetCDF file (e.g., hourly).
+        Path to high-frequency (e.g., hourly) CROCO model output.
     fname_out : str
-        Output file path for the MHW binary mask and anomaly.
+        Output NetCDF path with boolean MHW mask.
     ref_date : str
-        Reference date used to convert HF time units.
+        Reference time to decode time units (e.g., "2000-01-01").
     use_constant_clim : bool
-        If True, uses constant climatology value interpolated to midpoint of HF time.
-        If False, interpolates across all HF time steps.
+        If True, use fixed threshold at midpoint of HF time.
+    min_duration_hours : int
+        Minimum number of consecutive hourly exceedances (e.g., 120 = 5 days).
     """
-
     start_time = time.time()
-    print("Loading climatology and high-frequency files...")
+    print("🔹 Loading climatology and high-frequency SST...")
     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
     ds_hf = xr.open_dataset(fname_in, decode_times=False)
     ref_hf = np.datetime64(ref_date)
 
+    # Decode HF time
     HF_t = ds_hf.time.values.astype("float64")
     hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
     ds_hf["time"] = hf_dates
 
     if len(ds_clim.time) != 12:
-        raise ValueError("Climatology must have exactly 12 time steps (monthly)")
+        raise ValueError("Climatology must have exactly 12 monthly time steps.")
 
-    print("Extending climatology for time interpolation...")
+    print("🔹 Extending climatology time axis...")
     ds_clim = ds_clim.transpose("time", ...)
     start = ds_clim.isel(time=0)
     end = ds_clim.isel(time=-1)
@@ -1504,10 +2007,10 @@ def compute_mhw(fname_clim, fname_in, fname_out,
     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
 
-    print("Computing 90th percentile threshold from climatology...")
+    print("🔹 Computing 90th percentile threshold from climatology...")
     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
 
-    print("Interpolating threshold to HF time axis...")
+    print("🔹 Interpolating threshold to HF time axis...")
     if use_constant_clim:
         middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
         clim_interp = clim_p90.expand_dims(time=[middle_time])
@@ -1515,8 +2018,36 @@ def compute_mhw(fname_clim, fname_in, fname_out,
     else:
         clim_interp = clim_p90.expand_dims(time=ds_hf.time)
 
-    print("Detecting marine heatwaves...")
-    mhw_mask = ds_hf["temp"] > clim_interp
+    print("🔹 Detecting hourly exceedances...")
+    exceed = ds_hf["temp"] > clim_interp
+
+    print(f"🔹 Applying minimum duration filter (≥{min_duration_hours} hours)...")
+    def detect_events_hourly(x):
+        x = np.array(x, dtype=bool)
+        out = np.zeros_like(x, dtype=bool)
+        start = 0
+        while start < len(x):
+            if x[start]:
+                end = start
+                while end < len(x) and x[end]:
+                    end += 1
+                if end - start >= min_duration_hours:
+                    out[start:end] = True
+                start = end
+            else:
+                start += 1
+        return out
+
+    mhw_mask = xr.apply_ufunc(
+        detect_events_hourly,
+        exceed,
+        input_core_dims=[["time"]],
+        output_core_dims=[["time"]],
+        vectorize=True,
+        dask="parallelized",
+        output_dtypes=[bool]
+    )
+
     mhw_mask.name = "temp_mhw_mask"
     mhw_mask.attrs.update({
         "long_name": "Marine Heatwave Binary Mask",
@@ -1524,24 +2055,10 @@ def compute_mhw(fname_clim, fname_in, fname_out,
         "units": "1 (true/false)"
     })
 
-    print("Computing SST anomaly...")
-    sst_anom = ds_hf["temp"] - clim_interp
-    sst_anom.name = "temp_anom"
-
-    # Apply CROCO attributes to anomaly
-    print("Adding CROCO-style attributes to anomaly...")
-    croco_attrs = CROCO_Attrs()
-    sst_anom = change_attrs(croco_attrs, sst_anom, "temp_anom")
-
-    print("Preparing output dataset...")
+    print("🔹 Preparing output dataset...")
     ds_out = xr.Dataset(coords=ds_hf.coords)
-    # ds_out["temp"] = ds_hf["temp"]  # Save original SST
-    # ds_out["temp"] = ds_hf["temp"].isel(s_rho=-1)  # assuming s_rho is the vertical dim
-    # ds_out["temp"] = ds_out["temp"].expand_dims(dim={"s_rho": [ds_hf.s_rho.values[-1]]})  # add singleton s_rho dimension
-    # ds_out["temp_anom"] = sst_anom
     ds_out["temp_mhw_mask"] = mhw_mask
 
-    # Add vertical grid and metadata
     add_vars = ['theta_s', 'theta_b', 'hc', 'Vtransform', 'h', 'zeta', 'mask_rho']
     for var in add_vars:
         if var in ds_hf:
@@ -1549,14 +2066,188 @@ def compute_mhw(fname_clim, fname_in, fname_out,
         elif var in ds_hf.attrs:
             ds_out.attrs[var] = ds_hf.attrs[var]
 
-    # print("Writing output file...")
-    # encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
-    # ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+    print("🔹 Writing output NetCDF...")
+    encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+    ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
 
-    # print(f"Done! Output saved to: {fname_out}")
-    # print(f"Total time elapsed: {time.time() - start_time:.2f} seconds")
-    
+    print(f"✅ Done! Output saved to: {fname_out}")
+    print(f"⏱️ Elapsed time: {time.time() - start_time:.2f} seconds")
+
     return ds_out
+
+
+
+
+import xarray as xr
+import numpy as np
+import pandas as pd
+import time
+
+def compute_mhw_daily_sparse(
+    fname_clim,
+    fname_in,
+    fname_out,
+    ref_date="2000-01-01",
+    use_constant_clim=False,
+    min_duration=5
+):
+    """
+    Hobday-compliant Marine Heatwave (MHW) detection using daily mask with sparse back-propagation to hourly.
+    Now includes MHW category classification (Moderate, Strong, Severe, Extreme).
+    
+    Parameters
+    ----------
+    fname_clim : str
+        Path to monthly climatology NetCDF file (12 time steps).
+    fname_in : str
+        Path to high-frequency (e.g., hourly) model SST NetCDF file.
+    fname_out : str
+        Path to output file to write MHW results.
+    ref_date : str
+        Reference time (for decoding time axis).
+    use_constant_clim : bool
+        Use static climatology at midpoint rather than interpolating across full time axis.
+    min_duration : int
+        Minimum duration (in days) to qualify as a marine heatwave.
+    """
+
+    start_time = time.time()
+    print("🔹 Loading data...")
+    ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
+    ds_hf = xr.open_dataset(fname_in, decode_times=False)
+    ref_hf = np.datetime64(ref_date)
+
+    # Decode high-frequency time
+    hf_time = ref_hf + ds_hf.time.values.astype("timedelta64[s]")
+    ds_hf["time"] = hf_time
+
+    # Extend climatology for interpolation
+    ds_clim = ds_clim.transpose("time", ...)
+    start = ds_clim.isel(time=0)
+    end = ds_clim.isel(time=-1)
+    ds_clim_ext = xr.concat([end, ds_clim, start], dim="time")
+
+    hf_year = pd.to_datetime(hf_time[0]).year
+    clim_time = pd.date_range(start=f"{hf_year - 1}-12-15", periods=14, freq="MS")
+    clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
+    ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
+
+    print("🔹 90th percentile threshold...")
+    clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
+
+    print("🔹 Flagging exceedances...")
+    if use_constant_clim:
+        mid_time = ds_hf.time.isel(time=len(ds_hf.time) // 2)
+        clim_interp = clim_p90.expand_dims(time=[mid_time]).broadcast_like(ds_hf["temp"])
+    else:
+        clim_interp = clim_p90.expand_dims(time=ds_hf.time)
+
+    exceed = ds_hf["temp"] > clim_interp
+
+    # Determine time resolution
+    dt_sec = np.median(np.diff(ds_hf.time.values).astype("timedelta64[s]").astype(int))
+    is_hourly = dt_sec < 86400
+
+    print("🔹 Aggregating daily exceedances...")
+    if is_hourly:
+        exceed_daily = exceed.resample(time="1D").max()
+        sst_daily = ds_hf["temp"].resample(time="1D").mean()
+    else:
+        exceed_daily = exceed
+        sst_daily = ds_hf["temp"]
+
+    print(f"🔹 Hobday min duration filter (≥{min_duration} days)...")
+    def hobday_filter(x):
+        x = np.array(x, dtype=bool)
+        out = np.zeros_like(x, dtype=bool)
+        i = 0
+        while i < len(x):
+            if x[i]:
+                j = i
+                while j < len(x) and x[j]:
+                    j += 1
+                if (j - i) >= min_duration:
+                    out[i:j] = True
+                i = j
+            else:
+                i += 1
+        return out
+
+    mhw_mask_daily = xr.apply_ufunc(
+        hobday_filter,
+        exceed_daily,
+        input_core_dims=[["time"]],
+        output_core_dims=[["time"]],
+        vectorize=True,
+        dask="parallelized",
+        output_dtypes=[bool]
+    )
+
+    print("🔹 Sparse assignment of MHW flags to hourly time...")
+    if is_hourly:
+        mhw_mask = mhw_mask_daily.resample(time="1H").ffill()
+        mhw_mask = mhw_mask.reindex(time=ds_hf.time, method="nearest")
+    else:
+        mhw_mask = mhw_mask_daily
+
+    mhw_mask.name = "temp_mhw_mask"
+    mhw_mask.attrs.update({
+        "long_name": "Marine Heatwave Binary Mask",
+        "standard_name": "marine_heatwave_event",
+        "units": "1 (true/false)"
+    })
+
+    print("🔹 Computing MHW categories...")
+
+    # Mean climatology for category thresholds
+    clim_mean = ds_clim_ext.mean(dim="time")
+    delta = clim_p90 - clim_mean
+
+    intensity = sst_daily - clim_p90
+
+    # Initialize category map
+    cat = xr.full_like(intensity, fill_value=np.nan).astype("float32")
+    cat = cat.where(~mhw_mask_daily)  # NaN where not a MHW
+    cat = cat.where((intensity <= delta), 1)  # Moderate
+    cat = cat.where((intensity <= 2 * delta), 2)  # Strong
+    cat = cat.where((intensity <= 3 * delta), 3)  # Severe
+    cat = cat.where((intensity > 3 * delta), 4)  # Extreme
+
+    # Broadcast categories back to hourly
+    if is_hourly:
+        cat_hourly = cat.resample(time="1H").ffill()
+        cat_hourly = cat_hourly.reindex(time=ds_hf.time, method="nearest")
+    else:
+        cat_hourly = cat
+
+    cat_hourly.name = "mhw_category"
+    cat_hourly.attrs.update({
+        "long_name": "MHW Category",
+        "description": "1=Moderate, 2=Strong, 3=Severe, 4=Extreme",
+        "units": "category"
+    })
+
+    print("🔹 Preparing output...")
+    ds_out = xr.Dataset(coords=ds_hf.coords)
+    ds_out["temp_mhw_mask"] = mhw_mask
+    ds_out["mhw_category"] = cat_hourly
+
+    add_vars = ['theta_s', 'theta_b', 'hc', 'Vtransform', 'h', 'zeta', 'mask_rho']
+    for var in add_vars:
+        if var in ds_hf:
+            ds_out[var] = ds_hf[var]
+        elif var in ds_hf.attrs:
+            ds_out.attrs[var] = ds_hf.attrs[var]
+
+    print("🔹 Writing NetCDF...")
+    encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
+    ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
+
+    print(f"✅ Done. Saved to: {fname_out}")
+    print(f"⏱️ Time: {time.time() - start_time:.2f} sec")
+
+    return ds_out
+
 
 
 
