@@ -84,7 +84,7 @@ jobs:
                 --run_date ${{ steps.format_date.outputs.value }} \
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
-                --outputDir '/tmp/' \
+                --outputDir '/tmp/'
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
