@@ -2078,10 +2078,7 @@ def compute_mhw(fname_clim, fname_in, fname_out,
 
 
 
-import xarray as xr
-import numpy as np
-import pandas as pd
-import time
+
 
 def compute_mhw_daily_sparse(
     fname_clim,
@@ -2091,37 +2088,17 @@ def compute_mhw_daily_sparse(
     use_constant_clim=False,
     min_duration=5
 ):
-    """
-    Hobday-compliant Marine Heatwave (MHW) detection using daily mask with sparse back-propagation to hourly.
-    Now includes MHW category classification (Moderate, Strong, Severe, Extreme).
-    
-    Parameters
-    ----------
-    fname_clim : str
-        Path to monthly climatology NetCDF file (12 time steps).
-    fname_in : str
-        Path to high-frequency (e.g., hourly) model SST NetCDF file.
-    fname_out : str
-        Path to output file to write MHW results.
-    ref_date : str
-        Reference time (for decoding time axis).
-    use_constant_clim : bool
-        Use static climatology at midpoint rather than interpolating across full time axis.
-    min_duration : int
-        Minimum duration (in days) to qualify as a marine heatwave.
-    """
-
     start_time = time.time()
-    print("🔹 Loading data...")
+    print(" Loading data...")
     ds_clim = xr.open_dataset(fname_clim, decode_times=False)["temp"]
     ds_hf = xr.open_dataset(fname_in, decode_times=False)
     ref_hf = np.datetime64(ref_date)
 
-    # Decode high-frequency time
+    # Decode time
     hf_time = ref_hf + ds_hf.time.values.astype("timedelta64[s]")
     ds_hf["time"] = hf_time
 
-    # Extend climatology for interpolation
+    # Extend climatology
     ds_clim = ds_clim.transpose("time", ...)
     start = ds_clim.isel(time=0)
     end = ds_clim.isel(time=-1)
@@ -2132,10 +2109,12 @@ def compute_mhw_daily_sparse(
     clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).astype("float64")
     ds_clim_ext = ds_clim_ext.assign_coords(time=clim_seconds)
 
-    print("🔹 90th percentile threshold...")
+    print("Interpolating climatology time...")
     clim_p90 = ds_clim_ext.quantile(0.9, dim="time")
+    clim_mean = ds_clim_ext.mean(dim="time")
+    delta = clim_p90 - clim_mean
 
-    print("🔹 Flagging exceedances...")
+    print("Flagging exceedances...")
     if use_constant_clim:
         mid_time = ds_hf.time.isel(time=len(ds_hf.time) // 2)
         clim_interp = clim_p90.expand_dims(time=[mid_time]).broadcast_like(ds_hf["temp"])
@@ -2144,11 +2123,10 @@ def compute_mhw_daily_sparse(
 
     exceed = ds_hf["temp"] > clim_interp
 
-    # Determine time resolution
     dt_sec = np.median(np.diff(ds_hf.time.values).astype("timedelta64[s]").astype(int))
     is_hourly = dt_sec < 86400
 
-    print("🔹 Aggregating daily exceedances...")
+    print("Aggregating daily exceedances...")
     if is_hourly:
         exceed_daily = exceed.resample(time="1D").max()
         sst_daily = ds_hf["temp"].resample(time="1D").mean()
@@ -2156,7 +2134,7 @@ def compute_mhw_daily_sparse(
         exceed_daily = exceed
         sst_daily = ds_hf["temp"]
 
-    print(f"🔹 Hobday min duration filter (≥{min_duration} days)...")
+    # print(f"\U0001F539 Hobday min duration filter (≥{min_duration} days)...")
     def hobday_filter(x):
         x = np.array(x, dtype=bool)
         out = np.zeros_like(x, dtype=bool)
@@ -2183,7 +2161,7 @@ def compute_mhw_daily_sparse(
         output_dtypes=[bool]
     )
 
-    print("🔹 Sparse assignment of MHW flags to hourly time...")
+    print("Sparse assignment of MHW flags to hourly time...")
     if is_hourly:
         mhw_mask = mhw_mask_daily.resample(time="1H").ffill()
         mhw_mask = mhw_mask.reindex(time=ds_hf.time, method="nearest")
@@ -2197,37 +2175,33 @@ def compute_mhw_daily_sparse(
         "units": "1 (true/false)"
     })
 
-    print("🔹 Computing MHW categories...")
+    print(" Computing MHW categories...")
+    category = xr.full_like(sst_daily, fill_value=0).astype("int8")
 
-    # Mean climatology for category thresholds
-    clim_mean = ds_clim_ext.mean(dim="time")
-    delta = clim_p90 - clim_mean
+    moderate = (sst_daily > clim_p90)
+    strong = (sst_daily > clim_p90 + delta)
+    severe = (sst_daily > clim_p90 + 2 * delta)
+    extreme = (sst_daily > clim_p90 + 3 * delta)
 
-    intensity = sst_daily - clim_p90
+    category = category.where(~mhw_mask_daily, 1)
+    category = category.where(~strong, 2)
+    category = category.where(~severe, 3)
+    category = category.where(~extreme, 4)
 
-    # Initialize category map
-    cat = xr.full_like(intensity, fill_value=np.nan).astype("float32")
-    cat = cat.where(~mhw_mask_daily)  # NaN where not a MHW
-    cat = cat.where((intensity <= delta), 1)  # Moderate
-    cat = cat.where((intensity <= 2 * delta), 2)  # Strong
-    cat = cat.where((intensity <= 3 * delta), 3)  # Severe
-    cat = cat.where((intensity > 3 * delta), 4)  # Extreme
-
-    # Broadcast categories back to hourly
     if is_hourly:
-        cat_hourly = cat.resample(time="1H").ffill()
+        cat_hourly = category.resample(time="1H").ffill()
         cat_hourly = cat_hourly.reindex(time=ds_hf.time, method="nearest")
     else:
-        cat_hourly = cat
+        cat_hourly = category
 
     cat_hourly.name = "mhw_category"
     cat_hourly.attrs.update({
         "long_name": "MHW Category",
-        "description": "1=Moderate, 2=Strong, 3=Severe, 4=Extreme",
+        "description": "0=None, 1=Moderate, 2=Strong, 3=Severe, 4=Extreme",
         "units": "category"
     })
 
-    print("🔹 Preparing output...")
+    print("Preparing output...")
     ds_out = xr.Dataset(coords=ds_hf.coords)
     ds_out["temp_mhw_mask"] = mhw_mask
     ds_out["mhw_category"] = cat_hourly
@@ -2239,14 +2213,19 @@ def compute_mhw_daily_sparse(
         elif var in ds_hf.attrs:
             ds_out.attrs[var] = ds_hf.attrs[var]
 
-    print("🔹 Writing NetCDF...")
+    print("Writing NetCDF...")
     encoding = {var: {"dtype": "float32"} for var in ds_out.data_vars}
     ds_out.to_netcdf(fname_out, encoding=encoding, mode="w")
 
-    print(f"✅ Done. Saved to: {fname_out}")
-    print(f"⏱️ Time: {time.time() - start_time:.2f} sec")
+    # print(f"\u2705 Done. Saved to: {fname_out}")
+    # print(f"\u23F1\ufe0f Time: {time.time() - start_time:.2f} sec")
+    print(f"✅ Done! Output saved to: {fname_out}")
+    print(f"⏱️ Elapsed time: {time.time() - start_time:.2f} seconds")
+
 
     return ds_out
+
+
 
 
 
