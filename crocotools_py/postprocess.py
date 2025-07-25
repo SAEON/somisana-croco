@@ -205,6 +205,28 @@ def rho2v(var_rho):
         var_v=0.5*(var_rho[:,:,0:M,:]+var_rho[:,:,1:Mp,:])
     return var_v
 
+def rho2psi(var_rho):
+    """
+    regrid a variable on the rho grid to the psi-grid
+    """
+    Num_dims=len(var_rho.shape)
+    if Num_dims == 2:        
+        var_psi = 0.25 * (var_rho[:-1, :-1] + 
+                              var_rho[1:, :-1] +
+                              var_rho[:-1, 1:] + 
+                              var_rho[1:, 1:])
+    elif Num_dims == 3:
+        var_psi = 0.25 * (var_rho[:,:-1, :-1] + 
+                              var_rho[:,1:, :-1] +
+                              var_rho[:,:-1, 1:] + 
+                              var_rho[:,1:, 1:])
+    else: # Num_dims == 4:
+        var_psi = 0.25 * (var_rho[:,:,:-1, :-1] + 
+                              var_rho[:,:,1:, :-1] +
+                              var_rho[:,:,:-1, 1:] + 
+                              var_rho[:,:,1:, 1:])
+    return var_psi
+
 def csf(sc, theta_s, theta_b):
     """
     Allows use of theta_b > 0 (July 2009)
