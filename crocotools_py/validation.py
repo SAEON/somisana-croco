@@ -78,9 +78,10 @@ def obs_2_model_timeaxis(ds_obs, ds_mod):
     model_time = ds_mod['time']
     
     # Compute bin edges of the model times
-    midpoints = model_time + (model_time.diff(dim="time") / 2)  # Compute midpoints
+    model_dt = model_time[1] - model_time[0] # we can assume the model timestep is constant 
+    bin_edges = model_time + model_dt/2
     bin_edges = xr.concat(
-        [midpoints[0] - (model_time[1] - model_time[0]), midpoints, midpoints[-1] + (model_time[-1] - model_time[-2])],
+        [bin_edges[0] - model_dt, bin_edges],
         dim="time"
     )
     
