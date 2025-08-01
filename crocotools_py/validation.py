@@ -90,10 +90,6 @@ def obs_2_model_timeaxis(ds_obs, ds_mod):
     
     ds_obs_model_timeaxis = ds_obs_model_timeaxis.rename({"time_bins": "time"})
         
-    print('________')
-    print(f'ds_obs_model_timeaxis:{ds_obs_model_timeaxis}')
-    print('________')
-    
     return ds_obs_model_timeaxis
 
 def extract_lat_lon(ds):
