@@ -242,7 +242,7 @@ def plot(fname,
         ax=None, # allowing for adding to an existing axis
         var='temp', # croco variable to plot
         grdname=None, # option croco grid file (if grid variables arem't in the croco output file)
-        time=slice(None), # see post.get_var() for 'time' format. If a single value, then a plot is made, if two values, then an animation between those times is made
+        time=slice(None), # see post.get_var() for 'time' format. If a single value, then a plot is made, if a slice then an animation between the define slice limits is made
         level=None, # see post.get_var() for 'level' format. Has to be a single value for this function to do a plot
         ticks = None, #np.linspace(12,22,num=11), (gets set automatically if None)
         cmap = 'Spectral_r',

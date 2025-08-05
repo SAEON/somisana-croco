@@ -4,6 +4,7 @@ import dask
 from datetime import timedelta, datetime
 from glob import glob
 from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
+import re
 
 def change_attrs(attrs,da,var_str):
     meta = getattr(attrs, var_str)
@@ -514,57 +515,6 @@ def get_depths(ds):
     
     return depth_da
 
-def find_nearest_time_indx(dt,dts):
-    '''
-    dt : array of datetimes
-    dts : list of datetimes for which we want to return the nearest indices
-    returns corresponding indices
-
-    '''
-    
-    # dts needs to be list, even if it's a single datetime
-    # so the enumerate() loop below will always work
-    if isinstance(dts, datetime):
-        dts = [dts]
-    
-    indx_out = np.zeros_like(dts)
-    for t, dts_t in enumerate(dts):
-        indx_out[t] = np.argmin(np.abs(np.array(dt)-dts_t))
-
-    return indx_out.astype(int)
-
-def get_time(fname,ref_date=None):
-    ''' 
-        fname = CROCO output file (or file pattern to use when opening with open_mfdataset())
-                fname can also be an xarray dataset for enhanced functionality
-        ref_date = reference date for the croco run as a datetime object
-        
-    '''
-    if isinstance(fname, xr.Dataset):
-        ds = fname.copy()
-    else:
-        ds = get_ds(fname)
-
-    time_ds = ds.time.values
-    
-    # convert time from floats to datetimes, if not already converted in the input ds object
-    if all(isinstance(item, float) for item in np.atleast_1d(time_ds)):
-        
-        if ref_date is None:
-            print('ref_date is not defined - using default of 2000-01-01')
-            ref_date=datetime(2000,1,1)
-    
-        # convert 'time_ds' (in seconds since ref_date) to a list of datetimes
-        time_dt = []
-        for t in time_ds:
-            date_now = ref_date + timedelta(seconds=np.float64(t))
-            time_dt.append(date_now)
-    else:
-        time_dt = time_ds.astype('datetime64[s]').astype(datetime)
-    
-    ds.close()
-    return time_dt
-
 def get_grd_var(fname,var_str,
                    eta_rho=slice(None),
                    xi_rho=slice(None)):
@@ -619,34 +569,37 @@ def get_lonlatmask(fname,type='r',
         
     return lon,lat,mask
 
-def time_to_slice(time_croco, time):
-    '''
-    Take the input to get_var, and return a slice object to be used to
-    subset the dataset using ds.isel()
-    see get_var() for how this is used
-    '''
-    # check if time input is(are) datetime object(s), 
-    # in which case convert it/them into the correct time index/indices
-    if isinstance(np.atleast_1d(time)[0],datetime):
-        time = find_nearest_time_indx(time_croco,time)
-        
-    # get the time indices for input to ds.isel()
-    if not isinstance(time,slice):
-        if isinstance(time,int):
-            # make sure time is a slice, even if it's a single integer
-            # this is a hack to make sure we keep the time dimension 
-            # after the ds.isel() step below, even though it's a single index
-            # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
-            time = slice(time,time+1) 
-        elif len(time)==1:
-            # so time is a list with length 1
-            time = slice(time[0],time[0]+1) # this will be a slice with a singe number
+def handle_time(ds,time=slice(None),ref_date=None):
+
+    if 'ocean_time' in ds: # handle the case of ROMS output files
+        ds = ds.rename({'ocean_time': 'time'})
+
+    time_ds = ds.time.values
     
-        elif len(time)==2:
-            # convert the start and end limits into a slice
-            time = slice(time[0],time[1]+1) # +1 to make indices inclusive 
+    # convert time from floats to datetimes, if not already converted in the input ds object
+    if all(isinstance(item, float) for item in np.atleast_1d(time_ds)):
+         
+        if ref_date is None:
+            time_units=ds.time.attrs.get('units', '')
+            if re.match(r'seconds since (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?)', time_units):
+                print('output time(s) defined using time units read from the input file: '+time_units)
+                origin_str = match.group(1)
+                ref_date = datetime.strptime(origin_str, "%Y-%m-%d %H:%M:%S")
+            else:
+                print('ref_date is not defined - using default of 2000-01-01')
+                ref_date=datetime(2000,1,1)
     
-    return time
+        time_dt = [ref_date + timedelta(seconds=s) for s in np.array(time_ds, dtype=np.float64)]
+    else:
+        time_dt = time_ds.astype('datetime64[s]').astype(datetime)
+
+    ds = ds.assign_coords(time=time_dt)
+    if isinstance(time, slice):
+        ds = ds.sel(time=time)
+    else:
+        ds = ds.sel(time=time, method='nearest', drop=False)
+
+    return ds
 
 def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
     '''
@@ -726,10 +679,10 @@ def get_var(fname,var_str,
                 fname can also be a previously extracted xarray dataset for enhanced functionality
         var_str = variable name (string) in the CROCO output file(s)
         grdname = optional name of your croco grid file (only needed if the grid info is not in fname)
-        time = time step indices to extract 
+        time = time(s) to extract 
                If slice(None), then all time-steps are extracted
-               time can be a single integer (starting at zero) or a datetime object, in which case the nearest time index is extracted
-               time can betwo integers/datetimes in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+               time can be a single datetime object, in which case the nearest time index is extracted
+               or it can be slice(dt1,dt2), in which case the range between the two is extracted
                 
         level = vertical level to extract
                 if slice(None), then all sigma levels are extracted, and the depths of the levels are provided as an additional variable
@@ -773,19 +726,16 @@ def get_var(fname,var_str,
         ds['mask_rho'] = ds_grd['mask_rho']
         ds_grd.close()
     
-    # get the time as a list of datetimes
-    time_dt = get_time(ds, ref_date)
-    ds = ds.assign_coords(time=time_dt)
+    # sort out the time dimension based on the inputs
+    ds=handle_time(ds,time=time,ref_date=ref_date)   
     
-    # for each of the input dimensions we check the format of the input 
+    # for each of the spatial input dimensions we check the format of the input 
     # and construct the appropriate slice to extract
-    time = time_to_slice(time_dt, time)
     eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,ds,var_str)
     level_for_isel,level = level_to_slice(level)
     
     # subset the dataset
-    ds = ds.isel(time=time,
-                       s_rho=level_for_isel,
+    ds = ds.isel(s_rho=level_for_isel,
                        s_w=level_for_isel,
                        eta_rho=eta_rho,
                        xi_rho=xi_rho,
