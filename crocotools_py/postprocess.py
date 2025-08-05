@@ -489,8 +489,14 @@ def get_depths(ds):
     
     # get the variables used to calculate the sigma levels
     # CROCO uses these params to determine how to deform the vertical grid
-    theta_s = ds.theta_s
-    theta_b = ds.theta_b
+    if 'theta_s' in ds.variables: # it's a variable in ROMS files
+        theta_s = ds.theta_s.values
+    else: # it's a global attribute in CROCO files
+        theta_s = ds.theta_s
+    if 'theta_b' in ds.variables: # it's a variable in ROMS files
+        theta_b = ds.theta_b.values
+    else: # it's a global attribute in CROCO files
+        theta_b = ds.theta_b
     hc = ds.hc.values
     N = np.shape(ds.s_rho)[0]
     type_coordinate = "rho"
