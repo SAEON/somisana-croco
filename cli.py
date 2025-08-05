@@ -105,9 +105,9 @@ def main():
                          help='the isobaths to add to the figure')
     parser_crocplot.add_argument('--skip_time', required=False, type=int, default=1,
             help='Number of time-steps to skip between frames in the animation')
-    parser_crocplot.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_crocplot.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
     def crocplot_handler(args):
         # a lot of the crocplot inputs are hard coded below but could be made configurable in future
         # there are also other potential optional inputs to this function which we aren't specifying here
@@ -119,7 +119,7 @@ def main():
                       ticks = args.ticks,
                       cmap = 'Spectral_r',
                       extents = None,
-                      ref_date = args.ref_date,
+                      Yorig = args.Yorig,
                       cbar_label=args.cbar_label,
                       add_vectors = True,
                       skip_time = args.skip_time,
@@ -138,12 +138,12 @@ def main():
     parser_regrid_tier1.add_argument('--grdname', required=False, type=str,
                                      help='optional input to provide a separate grid file (if grid vars arent in your output files)')
     parser_regrid_tier1.add_argument('--dir_out', required=True, help='tier 1 output directory')
-    parser_regrid_tier1.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_regrid_tier1.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
     parser_regrid_tier1.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     def regrid_tier1_handler(args):
-        regrid_tier1(args.fname, args.dir_out, args.grdname, args.ref_date, args.doi_link)
+        regrid_tier1(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
     
     # --------------
@@ -155,15 +155,15 @@ def main():
     parser_regrid_tier2.add_argument('--grdname', required=False, type=str,
                                      help='optional input to provide a separate grid file (if grid vars arent in your output files)')
     parser_regrid_tier2.add_argument('--dir_out', required=True, help='tier 2 output directory')
-    parser_regrid_tier2.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_regrid_tier2.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
     parser_regrid_tier2.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
                          default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],  
                          help='list of depths to extract (in metres, negative down)')
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.dir_out, args.grdname, args.ref_date, args.doi_link, depths = args.depths)
+        regrid_tier2(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link, depths = args.depths)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------
@@ -173,14 +173,14 @@ def main():
             help='tier 3 regridding of a CROCO output: takes the output of regrid-tier2 as input and regrids the horizontal grid to a regular grid with a specified grid spacing. Output variables are the same as tier 1 and 2, only horizontal grid is now rectilinear with hz dimensions of longitude,latitude i.e. horizontal grid is no longer curvilinear. The extents of the rectilinear grid are automatically determined using the curvilinear grid extents.')
     parser_regrid_tier3.add_argument('--fname', required=True, type=str, help='input regridded tier2 filename - can include wildcards (*) to process multiple files in a single command')
     parser_regrid_tier3.add_argument('--dir_out', required=True, help='tier 3 output directory')
-    parser_regrid_tier3.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_regrid_tier3.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
     parser_regrid_tier3.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier3.add_argument('--spacing', type=float,default=0.01,
                          help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
     def regrid_tier3_handler(args):
-        regrid_tier3(args.fname, args.dir_out, args.ref_date, args.doi_link, spacing=args.spacing)
+        regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link, spacing=args.spacing)
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
     # ----------------
@@ -190,9 +190,9 @@ def main():
     parser_get_ts_multivar.add_argument('--fname', required=True, type=str, help='input CROCO filename')
     parser_get_ts_multivar.add_argument('--lon', required=True, type=float, help='Longitude of data extraction')
     parser_get_ts_multivar.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
-    parser_get_ts_multivar.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_get_ts_multivar.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
@@ -201,7 +201,7 @@ def main():
                         help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')
     def get_ts_multivar_handler(args):
-        get_ts_multivar(args.fname, args.lon, args.lat, args.ref_date, 
+        get_ts_multivar(args.fname, args.lon, args.lat, Yorig=args.Yorig, 
                vars = args.vars, 
                depths = args.depths,
                write_nc=True, # default behaviour in the cli is to write a file

@@ -575,7 +575,7 @@ def get_lonlatmask(fname,type='r',
         
     return lon,lat,mask
 
-def handle_time(ds,time=slice(None),ref_date=None):
+def handle_time(ds,time=slice(None),Yorig=None):
 
     if 'ocean_time' in ds: # handle the case of ROMS output files
         ds = ds.rename({'ocean_time': 'time'})
@@ -585,16 +585,17 @@ def handle_time(ds,time=slice(None),ref_date=None):
     # convert time from floats to datetimes, if not already converted in the input ds object
     if all(isinstance(item, float) for item in np.atleast_1d(time_ds)):
          
-        if ref_date is None:
+        if Yorig is None:
             time_units=ds.time.attrs.get('units', '')
             if re.match(r'seconds since (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?)', time_units):
                 print('output time(s) defined using time units read from the input file: '+time_units)
                 origin_str = match.group(1)
                 ref_date = datetime.strptime(origin_str, "%Y-%m-%d %H:%M:%S")
             else:
-                print('ref_date is not defined - using default of 2000-01-01')
+                print('Yorig is not defined - using default reference date of 2000-01-01')
                 ref_date=datetime(2000,1,1)
-    
+        else:
+            ref_date = datetime(Yorig,1,1)
         time_dt = [ref_date + timedelta(seconds=s) for s in np.array(time_ds, dtype=np.float64)]
     else:
         time_dt = time_ds.astype('datetime64[s]').astype(datetime)
@@ -677,7 +678,7 @@ def get_var(fname,var_str,
             xi_rho=slice(None),
             xi_u=slice(None),
             subdomain=None,
-            ref_date=None,
+            Yorig=None,
             nc_out=None):
     '''
         extract a variable from a CROCO file
@@ -707,7 +708,7 @@ def get_var(fname,var_str,
               this is only needed for extracting a subset of 'u'
         subdomain = extents used to do a spatial subset, as a list in format [lon0,lon1,lat0,lat1]
               If None, then no subsetting will get done
-        ref_date = reference datetime used in croco runs
+        Yorig = reference origin year used in croco runs - used for creating real times if not provided in the units of the time dimension
         nc_out = option to write a netcdf file from the output dataset
         
         Retruns an xarray dataset object of the requested data
@@ -733,7 +734,7 @@ def get_var(fname,var_str,
         ds_grd.close()
     
     # sort out the time dimension based on the inputs
-    ds=handle_time(ds,time=time,ref_date=ref_date)   
+    ds=handle_time(ds,time=time,Yorig=Yorig)   
     
     # for each of the spatial input dimensions we check the format of the input 
     # and construct the appropriate slice to extract
@@ -857,7 +858,7 @@ def get_uv(fname,
            xi_rho=slice(None),
            xi_u=slice(None),
            subdomain=None,
-           ref_date=None,
+           Yorig=None,
            var_u='u', # could also be sustr, bustr, ubar
            var_v='v', # could also be svstr, bvstr, vbar
            nc_out=None):
@@ -884,7 +885,7 @@ def get_uv(fname,
               xi_rho=xi_rho,
               xi_u=xi_u,
               subdomain=subdomain,
-              ref_date=ref_date)
+              Yorig=Yorig)
     v=get_var(fname,var_v,
               grdname=grdname,
               time=time,
@@ -894,7 +895,7 @@ def get_uv(fname,
               xi_rho=xi_rho,
               xi_u=xi_u,
               subdomain=subdomain,
-              ref_date=ref_date)
+              Yorig=Yorig)
     # get the dataarrays from the datasets
     u_da=u[var_u]
     v_da=v[var_v]
@@ -942,7 +943,7 @@ def get_vort(fname,
              grdname=None,
              time=slice(None),
              level=slice(None),
-             ref_date=None):
+             Yorig=None):
     '''
     extract the relative vorticity from a CROCO output file:
     dv/dx - du/dy
@@ -960,8 +961,8 @@ def get_vort(fname,
     # start by getting u and v
     # and we'll leave them on their native grids for this calc
     # (i.e. intentionally not regridding to the rho grid)
-    u=get_var(fname,'u',grdname=grdname,time=time,level=level,ref_date=ref_date)
-    v=get_var(fname,'v',grdname=grdname,time=time,level=level,ref_date=ref_date)
+    u=get_var(fname,'u',grdname=grdname,time=time,level=level,Yorig=Yorig)
+    v=get_var(fname,'v',grdname=grdname,time=time,level=level,Yorig=Yorig)
     if grdname is None:
         grdname = fname
     pm=get_grd_var(grdname, 'pm') # 1/dx on the rho grid
@@ -1130,7 +1131,8 @@ def find_fractional_eta_xi(grdname,lons,lats):
     return eta_fracs, xi_fracs
 
 
-def get_ts_multivar(fname, lon, lat, ref_date, 
+def get_ts_multivar(fname, lon, lat, 
+                Yorig=None, 
                 grdname=None,
                 vars = ['temp','salt'],
                 i_shift=0, j_shift=0, 
@@ -1152,14 +1154,16 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     # Initialize an empty list to store datasets
     all_datasets = []
     for var in vars:
-        ds_var = get_ts(fname, var, lon, lat, ref_date, 
+        ds_var = get_ts(fname, var, lon, lat, 
+                        Yorig=Yorig, 
                         grdname=grdname,
                         i_shift=i_shift, j_shift=j_shift, 
                         time=time,
                         level=level)
         all_datasets.append(ds_var)
     # add u,v
-    ds_uv = get_ts_uv(fname, lon, lat, ref_date, 
+    ds_uv = get_ts_uv(fname, lon, lat,  
+                    Yorig=Yorig, 
                     grdname=grdname,
                     i_shift=i_shift, j_shift=j_shift, 
                     time=time,
@@ -1175,7 +1179,8 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     
     return ds_all
 
-def get_ts(fname, var_str, lon, lat, ref_date,
+def get_ts(fname, var_str, lon, lat, 
+                Yorig=None,
                 grdname=None,
                 i_shift=0, j_shift=0,
                 time=slice(None),
@@ -1218,12 +1223,13 @@ def get_ts(fname, var_str, lon, lat, ref_date,
                           level=level,
                           eta_rho=j,
                           xi_rho=i,
-                          ref_date=ref_date,
+                          Yorig=Yorig,
                           nc_out=nc_out)
         
     return ds
 
-def get_ts_uv(fname, lon, lat, ref_date, 
+def get_ts_uv(fname, lon, lat, 
+                Yorig=None, 
                 grdname=None,
                 i_shift=0, j_shift=0, 
                 time=slice(None),
@@ -1278,7 +1284,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
                 xi_u=i_u,
                 var_u=var_u,
                 var_v=var_v,
-                ref_date=ref_date
+                Yorig=Yorig
                 )
     
     # pull out the middle data point from our 3x3 block of rho grid points
@@ -1348,7 +1354,7 @@ def get_section(fname,
                 grdname=None,
                 time=slice(None),
                 level=slice(None),
-                ref_date=None,
+                Yorig=None,
                 res=None,
                 nc_out=None,
                 ):
@@ -1384,7 +1390,7 @@ def get_section(fname,
                  time=time,
                  level=level,
                  subdomain=subdomain,
-                 ref_date=ref_date)
+                 Yorig=Yorig)
     
     # if the grid resolution is not provided, we use the smallest grid size as the resolution. 
     if res is None:
@@ -1428,5 +1434,5 @@ def get_section(fname,
 
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
-#    ref_date=datetime(2000,1,1)
-#    ds_temp = get_var(file, "temp", ref_date=ref_date)
+#    Yorig=2000
+#    ds_temp = get_var(file, "temp", Yorig=Yorig)
