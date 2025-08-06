@@ -716,7 +716,6 @@ def get_var(fname,var_str,
     
     print('')
     print('  Running get_var() for ' + var_str)
-    print('')
 
     # Get an xarray dataset of the croco file(s)
     if isinstance(fname, xr.Dataset): # handles the case of using an already extracted dataset as input
@@ -846,7 +845,6 @@ def get_var(fname,var_str,
     if nc_out is not None:
         print('')
         print('    writing the netcdf file: {nc_out}')
-        print('')
         ds_out.to_netcdf(nc_out)
     
     ds.close()
@@ -880,10 +878,6 @@ def get_uv(fname,
     
     '''
 
-    print('')
-    print('Running get_uv() for ' + var_u + 'and ' + var_v)
-    print('')
-    
     u=get_var(fname,var_u,
               grdname=grdname,
               time=time,
@@ -915,6 +909,7 @@ def get_uv(fname,
     # -------------------
     # Rotate the vectors
     # -------------------
+    print('')
     print('  rotating u/v vector components to be east/north components ('+ var_u + ',' + var_v + ')...')
     # grid angle
     if grdname is None:
@@ -944,7 +939,6 @@ def get_uv(fname,
     if nc_out is not None:
         print('')
         print('  writing the netcdf file: {nc_out}')
-        print('')
         ds_out.to_netcdf(nc_out)
     
     return ds_out
@@ -1186,7 +1180,6 @@ def get_ts_multivar(fname, lon, lat,
     if nc_out is not None:
         print('')
         print('  writing the netcdf file: {nc_out}')
-        print('')
         ds_all.to_netcdf(nc_out)
     
     return ds_all
@@ -1306,7 +1299,6 @@ def get_ts_uv(fname, lon, lat,
     if nc_out is not None:
         print('')
         print('writing the netcdf file: {nc_out}')
-        print('')
         ds.to_netcdf(nc_out)
     
     return ds
@@ -1389,6 +1381,7 @@ def get_section(fname,
     - ds, an xarray dataset containing the section data for the variable
     """
     
+    print('')
     print('Running get_section() for ' + var_str)
     
     # if the gridname is not provided, we use the fname for the gridname 
@@ -1418,10 +1411,12 @@ def get_section(fname,
     section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
     
     # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('')
     print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
     eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
     
     # Interpolate the variable along the line
+    print('')
     print('  interpolating along the section...')
     ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
     # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
@@ -1443,7 +1438,6 @@ def get_section(fname,
     if nc_out is not None:
         print('')
         print('  writing the netcdf file: {nc_out}')
-        print('')
         ds.to_netcdf(nc_out)
     
     return ds
