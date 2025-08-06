@@ -102,7 +102,7 @@ jobs:
               regrid_tier1 \
                 --fname /tmp/output/croco_avg.nc \
                 --dir_out /tmp/postprocess/ \
-                --ref_date '2000-01-01 00:00:00'
+                --Yorig 2000
       # interpolate data to constant vertical levels (tier 2)
       - name: Tier 2 regridding
         continue-on-error: true
@@ -154,7 +154,7 @@ jobs:
                 --fname /tmp/output/croco_avg.nc \
                 --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
                 --skip_time 6 \
-                --ref_date '2000-01-01 00:00:00'
+                --Yorig 2000
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
       - name: animate bottom temperature and currents
         continue-on-error: true
@@ -170,7 +170,7 @@ jobs:
                 --level 0 \
                 --gif_out /tmp/postprocess/croco_avg_temp_bot.gif \
                 --skip_time 6 \
-                --ref_date '2000-01-01 00:00:00'
+                --Yorig 2000
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif
       - name: animate 100m temperature and currents
         continue-on-error: true
@@ -186,7 +186,7 @@ jobs:
                 --level -100 \
                 --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
                 --skip_time 6 \
-                --ref_date '2000-01-01 00:00:00'
+                --Yorig 2000
           sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
       - name: ensure permissions
         run: |
