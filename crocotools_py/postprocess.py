@@ -586,7 +586,8 @@ def handle_time(ds,time=slice(None),Yorig=None):
          
         if Yorig is None:
             time_units=ds.time.attrs.get('units', '')
-            if re.match(r'seconds since (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?)', time_units):
+            match = re.match(r'seconds since (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?)', time_units)
+            if match:
                 print('    using time units read from the input file(s): '+time_units)
                 origin_str = match.group(1)
                 ref_date = datetime.strptime(origin_str, "%Y-%m-%d %H:%M:%S")
