@@ -26,7 +26,7 @@ jobs:
           docker pull ghcr.io/saeon/somisana-download_main:latest
       - name: pull latest somisana-croco docker image to server
         run: |
-          docker pull ghcr.io/saeon/somisana-download_${{ inputs.BRANCH_REF }}:latest
+          docker pull ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest
   
   cleanup:
     uses: ./.github/workflows/cleanup.yml 
