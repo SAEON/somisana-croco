@@ -844,7 +844,7 @@ def get_var(fname,var_str,
     
     if nc_out is not None:
         print('')
-        print('    writing the netcdf file: {nc_out}')
+        print(f'    writing the netcdf file: {nc_out}')
         ds_out.to_netcdf(nc_out)
     
     ds.close()
@@ -938,7 +938,7 @@ def get_uv(fname,
     
     if nc_out is not None:
         print('')
-        print('  writing the netcdf file: {nc_out}')
+        print(f'  writing the netcdf file: {nc_out}')
         ds_out.to_netcdf(nc_out)
     
     return ds_out
@@ -1179,7 +1179,7 @@ def get_ts_multivar(fname, lon, lat,
     
     if nc_out is not None:
         print('')
-        print('  writing the netcdf file: {nc_out}')
+        print(f'  writing the netcdf file: {nc_out}')
         ds_all.to_netcdf(nc_out)
     
     return ds_all
@@ -1298,7 +1298,7 @@ def get_ts_uv(fname, lon, lat,
     
     if nc_out is not None:
         print('')
-        print('writing the netcdf file: {nc_out}')
+        print(f'writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
     
     return ds
@@ -1437,7 +1437,7 @@ def get_section(fname,
     
     if nc_out is not None:
         print('')
-        print('  writing the netcdf file: {nc_out}')
+        print(f'  writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
     
     return ds
