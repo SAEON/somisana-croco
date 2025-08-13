@@ -60,6 +60,7 @@ jobs:
         id: make_ini_ogcm_file
         run: |
           docker run \
+            --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
             -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
@@ -75,6 +76,7 @@ jobs:
         id: make_ogcm_file
         run: |
           docker run \
+            --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
             -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
