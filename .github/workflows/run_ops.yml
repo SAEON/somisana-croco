@@ -62,14 +62,14 @@ jobs:
   # by adding new configurable inputs to run_ops_server.yml 
   #
  
-  run_ops_mims1:
-    needs: [envs,build_cli]
-    uses: ./.github/workflows/run_ops_server.yml 
-    with:
-      RUNNER_NAME: mims1
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-    secrets: inherit
+#  run_ops_mims1:
+#    needs: [envs,build_cli]
+#    uses: ./.github/workflows/run_ops_server.yml 
+#    with:
+#      RUNNER_NAME: mims1
+#      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
+#      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
+#    secrets: inherit
  
   run_ops_mims3:
     needs: [envs,build_cli]
