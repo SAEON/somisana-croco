@@ -1,0 +1,50 @@
+🌍 Starting p90 climatology generation...
+📆 Processing month: 01
+Warning (split_timevalue): Reset wrong date/time to 0000-03-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month01.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month01.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month01.nc to save space...
+📆 Processing month: 02
+Warning (split_timevalue): Reset wrong date/time to 0000-03-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month02.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month02.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month02.nc to save space...
+📆 Processing month: 03
+Warning (split_timevalue): Reset wrong date/time to 0000-00-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month03.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month03.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month03.nc to save space...
+📆 Processing month: 04
+Warning (split_timevalue): Reset wrong date/time to 0000-00-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month04.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month04.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month04.nc to save space...
+📆 Processing month: 05
+Warning (split_timevalue): Reset wrong date/time to 0000-04-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month05.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month05.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month05.nc to save space...
+📆 Processing month: 06
+Warning (split_timevalue): Reset wrong date/time to 0000-01-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month06.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month06.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month06.nc to save space...
+📆 Processing month: 07
+Warning (split_timevalue): Reset wrong date/time to 0000-01-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month07.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month07.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month07.nc to save space...
+📆 Processing month: 08
+Warning (split_timevalue): Reset wrong date/time to 0000-05-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month08.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month08.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month08.nc to save space...
+📆 Processing month: 09
+Warning (split_timevalue): Reset wrong date/time to 0000-02-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month09.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month09.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month09.nc to save space...
+📆 Processing month: 10
+Warning (split_timevalue): Reset wrong date/time to 0000-02-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month10.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month10.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month10.nc to save space...
+📆 Processing month: 11
+Warning (split_timevalue): Reset wrong date/time to 0000-06-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month11.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month11.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month11.nc to save space...
+📆 Processing month: 12
+Warning (split_timevalue): Reset wrong date/time to 0000-03-01 12:00:30!
+✅ Done: /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_clim_month12.nc and /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_p90_month12.nc
+🧹 Removing /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90/temp_timeseries_month12.nc to save space...
+🎉 All done. Output files saved in /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/p90

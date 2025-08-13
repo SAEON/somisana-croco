@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+
+import os
+import glob
+import xarray as xr
+import numpy as np
+from tqdm import tqdm
+
+# === CONFIG ===
+input_dir = "/media/nc.memela/Leviathan/MODELS/somisana-croco/configs/SA_West/croco_v1.3.1/C01_I01_GLORYS_ERA5/output/"
+output_dir = "./monthly_climatology/"
+os.makedirs(output_dir, exist_ok=True)
+
+var_name = "temp"
+months = range(1, 13)
+
+print(f"[INFO] Starting monthly climatology (mean and 90th percentile)...")
+
+for month in months:
+    month_str = f"{month:02d}"
+    print(f"\n📆 Processing month: {month_str}")
+
+    # === Step 1: Find all files for this month
+    pattern = os.path.join(input_dir, f"croco_avg_Y*M{month_str}.nc")
+    files = sorted(glob.glob(pattern))
+
+    if not files:
+        print(f"[WARNING] No files found for month {month_str}, skipping.")
+        continue
+
+    # === Step 2: Load temperature data from all files for this month
+    data_list = []
+    for f in tqdm(files, desc=f"Loading M{month_str}", unit="file"):
+        with xr.open_dataset(f) as ds:
+            temp = ds[var_name].load()  # eager loading to avoid dask complications
+            data_list.append(temp)
+
+    # === Step 3: Concatenate all monthly data
+    combined = xr.concat(data_list, dim="time")
+
+    # === Step 4: Compute statistics
+    print(f"[INFO] Computing stats for M{month_str}...")
+    mean_clim = combined.mean(dim="time", keep_attrs=True)
+    p90_clim = combined.reduce(np.nanpercentile, q=90, dim="time")
+
+    # === Step 5: Save
+    out_path = os.path.join(output_dir, f"clim_M{month_str}.nc")
+    print(f"[INFO] Saving to {out_path}")
+    clim_ds = xr.Dataset({
+        f"{var_name}_mean": mean_clim,
+        f"{var_name}_p90": p90_clim
+    })
+    clim_ds.to_netcdf(out_path)
+
+    # === Step 6: Cleanup
+    del combined, mean_clim, p90_clim, clim_ds, data_list
+    import gc
+    gc.collect()
+
+print("\n✅ DONE: All monthly climatology saved safely.")
+
