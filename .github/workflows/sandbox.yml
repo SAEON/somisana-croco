@@ -22,8 +22,8 @@ jobs:
             --memory=10g \
             --cpus=1 \
             --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            -v /home/somisana/ops/anom-plot/20250812_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10:/tmp \
+            ghcr.io/saeon/somisana-croco_cli_anom-plot:latest \
               crocplot \
                 --fname /tmp/postprocess/croco_avg_anom.nc \
                 --level -100 \
@@ -32,5 +32,5 @@ jobs:
                 --var 'temp_anom' \
                 --ref_date '2000-01-01 00:00:00' \
                 --add_vectors False
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4
+          sudo chown somisana:somisana /home/somisana/ops/anom-plot/20250812_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4
 
