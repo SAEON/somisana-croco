@@ -4,12 +4,16 @@ import dask
 from datetime import timedelta, datetime
 from glob import glob
 from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
+<<<<<<< HEAD
 import pandas as pd
 import os
 import shutil
 import time
 from dask.diagnostics import ProgressBar
 
+=======
+import re
+>>>>>>> main
 
 def change_attrs(attrs,da,var_str):
     meta = getattr(attrs, var_str)
@@ -210,6 +214,28 @@ def rho2v(var_rho):
         M=Mp-1
         var_v=0.5*(var_rho[:,:,0:M,:]+var_rho[:,:,1:Mp,:])
     return var_v
+
+def rho2psi(var_rho):
+    """
+    regrid a variable on the rho grid to the psi-grid
+    """
+    Num_dims=len(var_rho.shape)
+    if Num_dims == 2:        
+        var_psi = 0.25 * (var_rho[:-1, :-1] + 
+                              var_rho[1:, :-1] +
+                              var_rho[:-1, 1:] + 
+                              var_rho[1:, 1:])
+    elif Num_dims == 3:
+        var_psi = 0.25 * (var_rho[:,:-1, :-1] + 
+                              var_rho[:,1:, :-1] +
+                              var_rho[:,:-1, 1:] + 
+                              var_rho[:,1:, 1:])
+    else: # Num_dims == 4:
+        var_psi = 0.25 * (var_rho[:,:,:-1, :-1] + 
+                              var_rho[:,:,1:, :-1] +
+                              var_rho[:,:,:-1, 1:] + 
+                              var_rho[:,:,1:, 1:])
+    return var_psi
 
 def csf(sc, theta_s, theta_b):
     """
@@ -421,7 +447,6 @@ def get_ds(fname,var_str='h'):
     flexible method to get the xarray dataset for either a
     single or multiple CROCO files 
     '''
-    # print('Opening dataset: ' + fname)
     if ('*' in fname) or ('?' in fname) or ('[' in fname):
         # this approach borrowed from OpenDrift's reader_ROMS_native.py
         # our essential vars are the 'var_str' (obviously) plus some other 
@@ -440,7 +465,7 @@ def get_ds(fname,var_str='h'):
             ds = xr.open_dataset(fname, decode_times=False)
         else:
             # let's use open_mfdataset, but drop non-essential vars
-            essential_vars=static_vars+[var_str,'time', 'zeta']
+            essential_vars=static_vars+[var_str,'time', 'ocean_time', 'zeta']
             def drop_non_essential_vars_pop(ds):
                 dropvars = [v for v in ds.variables if v not in
                             essential_vars]
@@ -472,8 +497,14 @@ def get_depths(ds):
     
     # get the variables used to calculate the sigma levels
     # CROCO uses these params to determine how to deform the vertical grid
-    theta_s = ds.theta_s
-    theta_b = ds.theta_b
+    if 'theta_s' in ds.variables: # it's a variable in ROMS files
+        theta_s = ds.theta_s.values
+    else: # it's a global attribute in CROCO files
+        theta_s = ds.theta_s
+    if 'theta_b' in ds.variables: # it's a variable in ROMS files
+        theta_b = ds.theta_b.values
+    else: # it's a global attribute in CROCO files
+        theta_b = ds.theta_b
     hc = ds.hc.values
     N = np.shape(ds.s_rho)[0]
     type_coordinate = "rho"
@@ -497,57 +528,6 @@ def get_depths(ds):
     depth_da.attrs['positive'] = 'up'
     
     return depth_da
-
-def find_nearest_time_indx(dt,dts):
-    '''
-    dt : array of datetimes
-    dts : list of datetimes for which we want to return the nearest indices
-    returns corresponding indices
-
-    '''
-    
-    # dts needs to be list, even if it's a single datetime
-    # so the enumerate() loop below will always work
-    if isinstance(dts, datetime):
-        dts = [dts]
-    
-    indx_out = np.zeros_like(dts)
-    for t, dts_t in enumerate(dts):
-        indx_out[t] = np.argmin(np.abs(np.array(dt)-dts_t))
-
-    return indx_out.astype(int)
-
-def get_time(fname,ref_date=None):
-    ''' 
-        fname = CROCO output file (or file pattern to use when opening with open_mfdataset())
-                fname can also be an xarray dataset for enhanced functionality
-        ref_date = reference date for the croco run as a datetime object
-        
-    '''
-    if isinstance(fname, xr.Dataset):
-        ds = fname.copy()
-    else:
-        ds = get_ds(fname)
-
-    time_ds = ds.time.values
-    
-    # convert time from floats to datetimes, if not already converted in the input ds object
-    if all(isinstance(item, float) for item in np.atleast_1d(time_ds)):
-        
-        if ref_date is None:
-            print('ref_date is not defined - using default of 2000-01-01')
-            ref_date=datetime(2000,1,1)
-    
-        # convert 'time_ds' (in seconds since ref_date) to a list of datetimes
-        time_dt = []
-        for t in time_ds:
-            date_now = ref_date + timedelta(seconds=np.float64(t))
-            time_dt.append(date_now)
-    else:
-        time_dt = time_ds.astype('datetime64[s]').astype(datetime)
-    
-    ds.close()
-    return time_dt
 
 def get_grd_var(fname,var_str,
                    eta_rho=slice(None),
@@ -603,34 +583,39 @@ def get_lonlatmask(fname,type='r',
         
     return lon,lat,mask
 
-def time_to_slice(time_croco, time):
-    '''
-    Take the input to get_var, and return a slice object to be used to
-    subset the dataset using ds.isel()
-    see get_var() for how this is used
-    '''
-    # check if time input is(are) datetime object(s), 
-    # in which case convert it/them into the correct time index/indices
-    if isinstance(np.atleast_1d(time)[0],datetime):
-        time = find_nearest_time_indx(time_croco,time)
-        
-    # get the time indices for input to ds.isel()
-    if not isinstance(time,slice):
-        if isinstance(time,int):
-            # make sure time is a slice, even if it's a single integer
-            # this is a hack to make sure we keep the time dimension 
-            # after the ds.isel() step below, even though it's a single index
-            # https://stackoverflow.com/questions/52190344/how-do-i-preserve-dimension-values-in-xarray-when-using-isel
-            time = slice(time,time+1) 
-        elif len(time)==1:
-            # so time is a list with length 1
-            time = slice(time[0],time[0]+1) # this will be a slice with a singe number
+def handle_time(ds,time=slice(None),Yorig=None):
+
+    if 'ocean_time' in ds: # handle the case of ROMS output files
+        ds = ds.rename({'ocean_time': 'time'})
+
+    time_ds = ds.time.values
     
-        elif len(time)==2:
-            # convert the start and end limits into a slice
-            time = slice(time[0],time[1]+1) # +1 to make indices inclusive 
-    
-    return time
+    # convert time from floats to datetimes, if not already converted in the input ds object
+    if all(isinstance(item, float) for item in np.atleast_1d(time_ds)):
+         
+        if Yorig is None:
+            time_units=ds.time.attrs.get('units', '')
+            match = re.match(r'seconds since (\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?)', time_units)
+            if match:
+                print('    using time units read from the input file(s): '+time_units)
+                origin_str = match.group(1)
+                ref_date = datetime.strptime(origin_str, "%Y-%m-%d %H:%M:%S")
+            else:
+                print('    Yorig is not defined - using default reference date of 2000-01-01 00:00:00')
+                ref_date=datetime(2000,1,1)
+        else:
+            ref_date = datetime(Yorig,1,1)
+        time_dt = [ref_date + timedelta(seconds=s) for s in np.array(time_ds, dtype=np.float64)]
+    else:
+        time_dt = time_ds.astype('datetime64[s]').astype(datetime)
+
+    ds = ds.assign_coords(time=time_dt)
+    if isinstance(time, slice):
+        ds = ds.sel(time=time)
+    else:
+        ds = ds.sel(time=time, method='nearest', drop=False)
+
+    return ds
 
 def domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,grdname,var_str):
     '''
@@ -702,7 +687,7 @@ def get_var(fname,var_str,
             xi_rho=slice(None),
             xi_u=slice(None),
             subdomain=None,
-            ref_date=None,
+            Yorig=None,
             nc_out=None):
     '''
         extract a variable from a CROCO file
@@ -710,10 +695,10 @@ def get_var(fname,var_str,
                 fname can also be a previously extracted xarray dataset for enhanced functionality
         var_str = variable name (string) in the CROCO output file(s)
         grdname = optional name of your croco grid file (only needed if the grid info is not in fname)
-        time = time step indices to extract 
+        time = time(s) to extract 
                If slice(None), then all time-steps are extracted
-               time can be a single integer (starting at zero) or a datetime object, in which case the nearest time index is extracted
-               time can betwo integers/datetimes in a list e.g. [dt1,dt2], in which case the range between the two is extracted
+               time can be a single datetime object, in which case the nearest time index is extracted
+               or it can be slice(dt1,dt2), in which case the range between the two is extracted
                 
         level = vertical level to extract
                 if slice(None), then all sigma levels are extracted, and the depths of the levels are provided as an additional variable
@@ -732,13 +717,14 @@ def get_var(fname,var_str,
               this is only needed for extracting a subset of 'u'
         subdomain = extents used to do a spatial subset, as a list in format [lon0,lon1,lat0,lat1]
               If None, then no subsetting will get done
-        ref_date = reference datetime used in croco runs
+        Yorig = reference origin year used in croco runs - used for creating real times if not provided in the units of the time dimension
         nc_out = option to write a netcdf file from the output dataset
         
         Retruns an xarray dataset object of the requested data
     '''
     
-    print('extracting the data from croco file(s) - ' + var_str)
+    print('')
+    print('  Running get_var() for ' + var_str)
 
     # Get an xarray dataset of the croco file(s)
     if isinstance(fname, xr.Dataset): # handles the case of using an already extracted dataset as input
@@ -757,19 +743,16 @@ def get_var(fname,var_str,
         ds['mask_rho'] = ds_grd['mask_rho']
         ds_grd.close()
     
-    # get the time as a list of datetimes
-    time_dt = get_time(ds, ref_date)
-    ds = ds.assign_coords(time=time_dt)
+    # sort out the time dimension based on the inputs
+    ds=handle_time(ds,time=time,Yorig=Yorig)   
     
-    # for each of the input dimensions we check the format of the input 
+    # for each of the spatial input dimensions we check the format of the input 
     # and construct the appropriate slice to extract
-    time = time_to_slice(time_dt, time)
     eta_rho,eta_v,xi_rho,xi_u = domain_to_slice(eta_rho,eta_v,xi_rho,xi_u,subdomain,ds,var_str)
     level_for_isel,level = level_to_slice(level)
     
     # subset the dataset
-    ds = ds.isel(time=time,
-                       s_rho=level_for_isel,
+    ds = ds.isel(s_rho=level_for_isel,
                        s_w=level_for_isel,
                        eta_rho=eta_rho,
                        xi_rho=xi_rho,
@@ -789,7 +772,7 @@ def get_var(fname,var_str,
     
     # regrid u/v vector components onto the rho grid if needed
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
-        print('regridding '+var_str+' onto rho grid')
+        print('    regridding '+var_str+' onto rho grid...')
         if var_str in ['u','sustr','bustr','ubar']:
             data_rho=u2rho(da)   
         if var_str in ['v','svstr','bvstr','vbar']:
@@ -823,7 +806,7 @@ def get_var(fname,var_str,
     if not var_is_2d and not isinstance(level,slice):
         if np.mean(np.atleast_1d(level)) < 0: # we can't put this in the line above as you can't use '<' on a slice, so at least here we know 'level' is not a slice
             
-            print('doing vertical interpolations - ' + var_str)
+            print('    doing vertical interpolations...')
             # given the above checks in the code, here we should be dealing with a 3D variable 
             # and we want a hz slice at a constant depth level
             z=get_depths(ds) # have to use ds, not da, as we need zeta and h for this
@@ -834,7 +817,7 @@ def get_var(fname,var_str,
             da=da_out.copy()
         
     # Masking
-    print('applying the mask - ' + var_str)
+    print('    applying the mask...')
     mask = ds.mask_rho
     mask_nan = mask.where(mask != 0, np.nan)
     da = da.squeeze() * mask_nan
@@ -843,14 +826,14 @@ def get_var(fname,var_str,
 
     # include the depths of the sigma levels in the output
     if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
-        print('computing depths of sigma levels...')
+        print('    computing depths of sigma levels...')
         depths = get_depths(ds).squeeze() * mask_nan
-        print('making the output dataset for get_var()...')
+        print('    making the output dataset...')
         var_data, depth_data, zeta_data, h_data = dask.compute(da, depths, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'depth': depth_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
         ds_out['s_rho'].attrs.pop('formula_terms', None)
     else:
-        print('making the output dataset for get_var()...')
+        print('    making output dataset...')
         var_data, zeta_data, h_data = dask.compute(da, zeta, h)
         ds_out = xr.Dataset({var_str: var_data, 'zeta': zeta_data, 'h': h_data, 'mask':mask})
 
@@ -869,7 +852,8 @@ def get_var(fname,var_str,
     ds_out[var_str] = change_attrs(attrs,ds_out[var_str],var_str)
     
     if nc_out is not None:
-        print('writing the netcdf file')
+        print('')
+        print(f'    writing the netcdf file: {nc_out}')
         ds_out.to_netcdf(nc_out)
     
     ds.close()
@@ -885,7 +869,7 @@ def get_uv(fname,
            xi_rho=slice(None),
            xi_u=slice(None),
            subdomain=None,
-           ref_date=None,
+           Yorig=None,
            var_u='u', # could also be sustr, bustr, ubar
            var_v='v', # could also be svstr, bvstr, vbar
            nc_out=None):
@@ -912,7 +896,7 @@ def get_uv(fname,
               xi_rho=xi_rho,
               xi_u=xi_u,
               subdomain=subdomain,
-              ref_date=ref_date)
+              Yorig=Yorig)
     v=get_var(fname,var_v,
               grdname=grdname,
               time=time,
@@ -922,7 +906,7 @@ def get_uv(fname,
               xi_rho=xi_rho,
               xi_u=xi_u,
               subdomain=subdomain,
-              ref_date=ref_date)
+              Yorig=Yorig)
     # get the dataarrays from the datasets
     u_da=u[var_u]
     v_da=v[var_v]
@@ -934,7 +918,8 @@ def get_uv(fname,
     # -------------------
     # Rotate the vectors
     # -------------------
-    print('rotating u/v vector components to be east/north components')
+    print('')
+    print('  rotating u/v vector components to be east/north components ('+ var_u + ',' + var_v + ')...')
     # grid angle
     if grdname is None:
         grdname = fname
@@ -961,7 +946,8 @@ def get_uv(fname,
     ds_out = ds_out.assign({var_u: u_out, var_v: v_out})
     
     if nc_out is not None:
-        print('writing the netcdf file')
+        print('')
+        print(f'  writing the netcdf file: {nc_out}')
         ds_out.to_netcdf(nc_out)
     
     return ds_out
@@ -970,7 +956,7 @@ def get_vort(fname,
              grdname=None,
              time=slice(None),
              level=slice(None),
-             ref_date=None):
+             Yorig=None):
     '''
     extract the relative vorticity from a CROCO output file:
     dv/dx - du/dy
@@ -988,8 +974,8 @@ def get_vort(fname,
     # start by getting u and v
     # and we'll leave them on their native grids for this calc
     # (i.e. intentionally not regridding to the rho grid)
-    u=get_var(fname,'u',grdname=grdname,time=time,level=level,ref_date=ref_date)
-    v=get_var(fname,'v',grdname=grdname,time=time,level=level,ref_date=ref_date)
+    u=get_var(fname,'u',grdname=grdname,time=time,level=level,Yorig=Yorig)
+    v=get_var(fname,'v',grdname=grdname,time=time,level=level,Yorig=Yorig)
     if grdname is None:
         grdname = fname
     pm=get_grd_var(grdname, 'pm') # 1/dx on the rho grid
@@ -1158,7 +1144,8 @@ def find_fractional_eta_xi(grdname,lons,lats):
     return eta_fracs, xi_fracs
 
 
-def get_ts_multivar(fname, lon, lat, ref_date, 
+def get_ts_multivar(fname, lon, lat, 
+                Yorig=None, 
                 grdname=None,
                 vars = ['temp','salt'],
                 i_shift=0, j_shift=0, 
@@ -1180,14 +1167,16 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     # Initialize an empty list to store datasets
     all_datasets = []
     for var in vars:
-        ds_var = get_ts(fname, var, lon, lat, ref_date, 
+        ds_var = get_ts(fname, var, lon, lat, 
+                        Yorig=Yorig, 
                         grdname=grdname,
                         i_shift=i_shift, j_shift=j_shift, 
                         time=time,
                         level=level)
         all_datasets.append(ds_var)
     # add u,v
-    ds_uv = get_ts_uv(fname, lon, lat, ref_date, 
+    ds_uv = get_ts_uv(fname, lon, lat,  
+                    Yorig=Yorig, 
                     grdname=grdname,
                     i_shift=i_shift, j_shift=j_shift, 
                     time=time,
@@ -1198,12 +1187,14 @@ def get_ts_multivar(fname, lon, lat, ref_date,
     ds_all = xr.merge(all_datasets)
     
     if nc_out is not None:
-        print('writing the netcdf file')
+        print('')
+        print(f'  writing the netcdf file: {nc_out}')
         ds_all.to_netcdf(nc_out)
     
     return ds_all
 
-def get_ts(fname, var_str, lon, lat, ref_date,
+def get_ts(fname, var_str, lon, lat, 
+                Yorig=None,
                 grdname=None,
                 i_shift=0, j_shift=0,
                 time=slice(None),
@@ -1228,7 +1219,7 @@ def get_ts(fname, var_str, lon, lat, ref_date,
             - ds, an xarray dataset containing the ts data
     """
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
-        print('WARNING: '+var_str+' will be the grid aligned vector component')
+        print('WARNING: this function will return grid aligned vector components for '+var_str)
         print('rather use get_ts_uv() for extracting a time-series of u/v data which represents east/north components')
     
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
@@ -1246,12 +1237,13 @@ def get_ts(fname, var_str, lon, lat, ref_date,
                           level=level,
                           eta_rho=j,
                           xi_rho=i,
-                          ref_date=ref_date,
+                          Yorig=Yorig,
                           nc_out=nc_out)
         
     return ds
 
-def get_ts_uv(fname, lon, lat, ref_date, 
+def get_ts_uv(fname, lon, lat, 
+                Yorig=None, 
                 grdname=None,
                 i_shift=0, j_shift=0, 
                 time=slice(None),
@@ -1306,7 +1298,7 @@ def get_ts_uv(fname, lon, lat, ref_date,
                 xi_u=i_u,
                 var_u=var_u,
                 var_v=var_v,
-                ref_date=ref_date
+                Yorig=Yorig
                 )
     
     # pull out the middle data point from our 3x3 block of rho grid points
@@ -1314,7 +1306,8 @@ def get_ts_uv(fname, lon, lat, ref_date,
     ds = ds.isel(eta_rho=1,xi_rho=1).squeeze()
     
     if nc_out is not None:
-        print('writing the netcdf file')
+        print('')
+        print(f'writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
     
     return ds
@@ -1376,7 +1369,7 @@ def get_section(fname,
                 grdname=None,
                 time=slice(None),
                 level=slice(None),
-                ref_date=None,
+                Yorig=None,
                 res=None,
                 nc_out=None,
                 ):
@@ -1397,6 +1390,9 @@ def get_section(fname,
     - ds, an xarray dataset containing the section data for the variable
     """
     
+    print('')
+    print('Running get_section() for ' + var_str)
+    
     # if the gridname is not provided, we use the fname for the gridname 
     if grdname is None:
         grdname = fname
@@ -1412,7 +1408,7 @@ def get_section(fname,
                  time=time,
                  level=level,
                  subdomain=subdomain,
-                 ref_date=ref_date)
+                 Yorig=Yorig)
     
     # if the grid resolution is not provided, we use the smallest grid size as the resolution. 
     if res is None:
@@ -1424,11 +1420,13 @@ def get_section(fname,
     section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
     
     # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
-    print('mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    print('')
+    print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
     eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
     
     # Interpolate the variable along the line
-    print('interpolating along the section...')
+    print('')
+    print('  interpolating along the section...')
     ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
     # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
     # section_lons, section_lats, while theoretically they should be identical
@@ -1448,12 +1446,12 @@ def get_section(fname,
     
     if nc_out is not None:
         print('')
-        print(f'File saved to: {nc_out}')
-        print('')
+        print(f'  writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
     
     return ds
 
+<<<<<<< HEAD
 
 def compute_mhw(fname_clim, fname_in, fname_out,
                        ref_date="2000-01-01",
@@ -1817,3 +1815,9 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
 
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
+=======
+#if __name__ == "__main__":
+#    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
+#    Yorig=2000
+#    ds_temp = get_var(file, "temp", Yorig=Yorig)
+>>>>>>> main
