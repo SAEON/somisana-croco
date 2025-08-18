@@ -27,7 +27,21 @@ jobs:
       - name: pull latest somisana-croco docker image to server
         run: |
           docker pull ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest
-  
+
+  checkout-source-code:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: pull latest somisana-croco code to server
+        run: |
+          cd /home/somisana/code/somisana-croco
+          git fetch origin
+          if git show-ref --verify --quiet refs/heads/${{ inputs.BRANCH_REF }}; then
+            git checkout ${{ inputs.BRANCH_REF }}
+          else
+            git checkout -b ${{ inputs.BRANCH_REF }} origin/${{ inputs.BRANCH_REF }}
+          fi
+          git pull
+
   cleanup:
     uses: ./.github/workflows/cleanup.yml 
     with:
