@@ -518,25 +518,25 @@ def make_tides(input_dir,output_dir,run_ini_date,Yorig,fname_out):
             input_file_u=[]
             input_file_v=[]
             for inp in tides:
-                if path.isfile(input_dir+elev_file.replace('<tides>',inp)):
-                    input_file_ssh+=[input_dir+elev_file.replace('<tides>',inp)]
-                elif path.isfile(input_dir+elev_file.replace('<tides>',inp.lower())):
-                    input_file_ssh+=[input_dir+elev_file.replace('<tides>',inp.lower())]
+                if path.isfile(os.path.join(input_dir,elev_file.replace('<tides>',inp))):
+                    input_file_ssh+=[os.path.join(input_dir,elev_file.replace('<tides>',inp))]
+                elif path.isfile(os.path.join(input_dir,elev_file.replace('<tides>',inp.lower()))):
+                    input_file_ssh+=[os.path.join(input_dir,elev_file.replace('<tides>',inp.lower()))]
                 else:
-                    sys.exit('Elevation file %s for wave %s is missing' % (input_dir+elev_file.replace('<tides>',inp), inp))
+                    sys.exit('Elevation file %s for wave %s is missing' % (os.path.join(input_dir,elev_file.replace('<tides>',inp)), inp))
                
                 if cur:
-                    if path.isfile(input_dir+u_file.replace('<tides>',inp)):
-                        input_file_u+=[input_dir+u_file.replace('<tides>',inp)]
-                    elif path.isfile(input_dir+u_file.replace('<tides>',inp.lower())):
-                        input_file_u+=[input_dir+u_file.replace('<tides>',inp.lower())]
+                    if path.isfile(os.path.join(input_dir,u_file.replace('<tides>',inp))):
+                        input_file_u+=[os.path.join(input_dir,u_file.replace('<tides>',inp))]
+                    elif path.isfile(os.path.join(input_dir,u_file.replace('<tides>',inp.lower()))):
+                        input_file_u+=[os.path.join(input_dir,u_file.replace('<tides>',inp.lower()))]
                     else:
                         sys.exit('Eastward current file for wave %s is missing' % inp)
 
-                    if path.isfile(input_dir+v_file.replace('<tides>',inp)):
-                        input_file_v+=[input_dir+v_file.replace('<tides>',inp)]
-                    elif path.isfile(input_dir+v_file.replace('<tides>',inp.lower())):
-                        input_file_v+=[input_dir+v_file.replace('<tides>',inp.lower())]
+                    if path.isfile(os.path.join(input_dir,v_file.replace('<tides>',inp))):
+                        input_file_v+=[os.path.join(input_dir,v_file.replace('<tides>',inp))]
+                    elif path.isfile(os.path.join(input_dir,v_file.replace('<tides>',inp.lower)())):
+                        input_file_v+=[os.path.join(input_dir,v_file.replace('<tides>',inp.lower()))]
                     else:
                         sys.exit('Northward current file for wave %s is missing' % inp)
             
@@ -548,18 +548,18 @@ def make_tides(input_dir,output_dir,run_ini_date,Yorig,fname_out):
                 input_file_u = None
                 input_file_v = None
         else:
-            input_file_ssh=list(input_dir+elev_file)
+            input_file_ssh=list(os.path.join(input_dir,elev_file))
             if cur:
-                input_file_u = list(input_dir+u_file)
-                input_file_v = list(input_dir+v_file)
+                input_file_u = list(os.path.join(input_dir,u_file))
+                input_file_v = list(os.path.join(input_dir,v_file))
             else:
                 input_file_u = None
                 input_file_v = None
     else:
-        input_file_ssh=list([input_dir+params.input_file])
+        input_file_ssh=list([os.path.join(input_dir,params.input_file)])
         if cur:
-            input_file_u=list([input_dir+params.input_file])
-            input_file_v=list([input_dir+params.input_file])
+            input_file_u=list([os.path.join(input_dir,params.input_file)])
+            input_file_v=list([os.path.join(input_dir,params.input_file)])
         else:
             input_file_u=None
             input_file_v=None
