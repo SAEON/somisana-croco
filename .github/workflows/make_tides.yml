@@ -54,6 +54,17 @@ jobs:
       - name: generate the tidal forcing file
         id: make_tide_file
         run: |
+          #docker run \
+          #  --rm \
+          #  -v ${{ env.INPUT_DIR }}:/mnt/tmp/input_dir \
+          #  -v ${{ env.CONFIG_DIR }}:/mnt/tmp/config_dir \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #  make_tides_fcst \
+          #    --input_dir /mnt/tmp/input_dir/ \
+          #    --output_dir /mnt/tmp/config_dir/${{ inputs.TIDE_FRC }}/ \
+          #    --run_date ${{ steps.format_date.outputs.value }} \
+          #    --hdays ${{ inputs.HDAYS }} \
+          #    --Yorig 2000
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
