@@ -61,7 +61,7 @@ jobs:
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
-          python /home/somisana/code/somisana-croco/cli.py \
+          python /home/somisana/code/somisana-croco/cli.py \ 
             make_ini_fcst \
               --input_file ${{ env.INPUT_DIR }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
               --output_dir ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/ \
@@ -74,7 +74,7 @@ jobs:
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
-          python /home/somisana/code/somisana-croco/cli.py \
+          python /home/somisana/code/somisana-croco/cli.py \ 
             make_bry_fcst \
               --input_file ${{ env.INPUT_DIR }}/${{ inputs.OGCM }}_${{ inputs.RUN_DATE }}.nc \
               --output_dir ${{ env.CONFIG_DIR }}/${{ inputs.OGCM }}/ \
