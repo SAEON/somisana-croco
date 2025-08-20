@@ -97,7 +97,7 @@ jobs:
             --user $(id -u):$(id -g) \
             --rm \
             -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
-            ghcr.io/saeon/somisana-croco_cli_main:latest \
+            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
             reformat_gfs_atm \
               --gfsDir '/tmp/gfsDir' \
               --outputDir '/tmp/gfsDir/for_croco' \

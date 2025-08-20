@@ -55,7 +55,7 @@ jobs:
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.RUNNER_NAME == 'mims1' }}
     steps:
       - name: pull latest download docker image to the saeon-apps server
         run: |
@@ -92,7 +92,7 @@ jobs:
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp/download'
             # copy to a shared dir
-            cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/MERCATOR_${{ inputs.RUN_DATE }}_${{ inputs.RUNNER_NAME }}.nc
+            cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}_${{ inputs.RUNNER_NAME }}.nc
       - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
@@ -123,8 +123,29 @@ jobs:
         # we only need this since we have the workaround of downloading on saeonapps
         # so this essentially replaces the commented download code below
         run: |
-          # We need to use sudo in the line below because the mounted dir is owned by root
-          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}_${{ inputs.RUNNER_NAME }}.nc ${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc
+          set -e
+          file="/mnt/saeon-somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}_${{ inputs.RUNNER_NAME }}.nc"
+          dest="${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc"
+          
+          # I'm putting the copy command in a loop since at the time of writing we are running the same operational code
+          # on two servers and we have to run the needed download_mercator_saeon step on one of the servers otherwise we get an error from Mercator for too many downloads at once
+          # So this loop handles the case where one of the servers has to wait for the file to be made available
+          for i in {1..40}; do
+            if [ -f "$file" ]; then
+              echo "File found, copying..."
+              # We need to use sudo in the line below because the mounted dir is owned by root
+              sudo cp "$file" "$dest"
+              echo "Copy successful."
+              exit 0
+            else
+              echo "[$i/20] File not found yet, retrying in 2 minutes..."
+              sleep 120
+            fi
+          done
+      
+          echo "File not found after 20 attempts." >&2
+          exit 1
+
 #      - name: Format RUN_DATE
 #        id: format_date
 #        run: |
