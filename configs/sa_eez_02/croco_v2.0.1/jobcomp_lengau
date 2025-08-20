@@ -25,7 +25,7 @@
 #
 cd /home/gfearon/lustre/somisana-croco/configs/sa_eez_02/croco_v2.0.1/
 source myenv_inter.sh
-RUNDIR=$PWD
+
 EXEDIR=$RUNDIR/$EXENAME
 cd $EXEDIR
 SCRDIR=$EXEDIR/Compile
