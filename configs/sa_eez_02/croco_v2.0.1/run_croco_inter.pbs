@@ -18,9 +18,9 @@ MK=/bin/mkdir
 ########################################################
 #
 
-cd /home/$USER/run_croco_inter_lengau 
+cd /home/gfearon/lustre/somisana-croco/configs/sa_eez_02/croco_v2.0.1 
 source myenv_inter.sh
-cd $RUNDIR
+RUNDIR=$PWD
 EXEDIR=$RUNDIR/$EXENAME
 CODFILE=croco
 

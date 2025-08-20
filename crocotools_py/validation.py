@@ -78,9 +78,10 @@ def obs_2_model_timeaxis(ds_obs, ds_mod):
     model_time = ds_mod['time']
     
     # Compute bin edges of the model times
-    midpoints = model_time + (model_time.diff(dim="time") / 2)  # Compute midpoints
+    model_dt = model_time[1] - model_time[0] # we can assume the model timestep is constant 
+    bin_edges = model_time + model_dt/2
     bin_edges = xr.concat(
-        [midpoints[0] - (model_time[1] - model_time[0]), midpoints, midpoints[-1] + (model_time[-1] - model_time[-2])],
+        [bin_edges[0] - model_dt, bin_edges],
         dim="time"
     )
     
@@ -89,10 +90,6 @@ def obs_2_model_timeaxis(ds_obs, ds_mod):
     
     ds_obs_model_timeaxis = ds_obs_model_timeaxis.rename({"time_bins": "time"})
         
-    print('________')
-    print(f'ds_obs_model_timeaxis:{ds_obs_model_timeaxis}')
-    print('________')
-    
     return ds_obs_model_timeaxis
 
 def extract_lat_lon(ds):
@@ -146,7 +143,7 @@ def extract_lat_lon(ds):
         print("Longitude and latitude successfully retrieved.")
     return long_obs, lat_obs
 
-def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, j_shifted=0, ref_date=None, lon_extract=None):
+def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, j_shifted=0, Yorig=None):
     """
            This Function is for retrieving all datasets from the other functions and package them into a netCDF 
            file on the same time axis: 
@@ -156,22 +153,11 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
             - fname_obs         :filename of observations
             - output_path       :filename of fname_out
             - var               :variable input by the user. should be the same in both the modeland obs netCDFs.
-            - lat               :lat read from the insitu input
-            - lon               :lon read from the insitu input
-            - ref_date          :static user input
+            - Yorig             :origin year of CROCO time
             - depth             :user input based on insitu sensor depth
             - i_shifted         :optional user inputs if the z level of the model does not match the input lon depth
             - j_shifted         :optional user inputs if the z level of the model does not match the input lat depth
-            - time_lims         :limits are computed based on the length of the insitu data that matches model span
     """
-    print(f'fname: {fname}')
-    print(f'fname_obs: {fname_obs}')
-    print(f'output_path: {output_path}')
-    print(f'var: {var}')
-    print(f'depth: {depth}')
-    print(f'i_shifted: {i_shifted}')
-    print(f'ref_date: {ref_date}')
-    print(f'lon_extract: {lon_extract}')
     
     # Load the NetCDF dataset
     ds_obs = xr.open_dataset(fname_obs).sel(depth=abs(depth))
@@ -179,19 +165,10 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
     # Some observations have a different time format, that makes tem compatible
     ds_obs['time'] = ds_obs['time'].astype('datetime64[ns]') 
 
-    # Define the time limits
-    # time_lims = [datetime(2011, 3, 1), datetime(2011, 3, 31)]
-    # time_lims = [datetime(2013, 1, 1), datetime(2011, 12, 31)]
-
-    # Slice the dataset based on the time limits
-    # ds_obs = ds_obs.sel(time=slice(*time_lims))
-    
-        
     # The following if statement handles the u,v grid. The else part handles the rho grid points computation. 
-    # if var=='u' or var=='v':
     if (var != 'temp') or (var != 'salt'):
         long_obs, lat_obs = extract_lat_lon(ds_obs)
-        model_data = post.get_ts_uv(fname, long_obs, lat_obs, ref_date, 
+        model_data = post.get_ts_uv(fname, long_obs, lat_obs, Yorig=Yorig, 
                         i_shift=0, j_shift=0, 
                         level=depth,
                         )
@@ -478,7 +455,7 @@ def get_model_obs_ts(fname, fname_obs, output_path, var, depth=-1, i_shifted=0, 
         else:
             long_obs,lat_obs = extract_lat_lon(ds_obs)
             
-        model_data = post.get_ts(fname, var, long_obs, lat_obs, ref_date,
+        model_data = post.get_ts(fname, var, long_obs, lat_obs, Yorig=Yorig,
                              i_shift=0, j_shift=0,
                              time_lims=slice(None),
                              depths=depth,  # slice(None),
