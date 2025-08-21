@@ -77,7 +77,7 @@ jobs:
           shell: bash
           continue_on_error: false
           command: |
-            download_dir=/home/giles/mercator_download_for_${{ inputs.RUNNER_NAME }}
+            download_dir=/home/giles/mercator_download
             mkdir -p ${download_dir}
             docker run \
               --rm \
@@ -92,14 +92,14 @@ jobs:
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp/download'
             # copy to a shared dir
-            cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}_${{ inputs.RUNNER_NAME }}.nc
+            cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc
       - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
           # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
           # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
           # so I'm using the cli docker image to remove the files it originally created
-          download_dir=/home/giles/mercator_download_for_${{ inputs.RUNNER_NAME }}
+          download_dir=/home/giles/mercator_download
           docker run \
             --rm \
             --entrypoint /bin/bash \
@@ -124,7 +124,7 @@ jobs:
         # so this essentially replaces the commented download code below
         run: |
           set -e
-          file="/mnt/saeon-somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}_${{ inputs.RUNNER_NAME }}.nc"
+          file="/mnt/saeon-somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc"
           dest="${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc"
           
           # I'm putting the copy command in a loop since at the time of writing we are running the same operational code
@@ -138,12 +138,12 @@ jobs:
               echo "Copy successful."
               exit 0
             else
-              echo "[$i/20] File not found yet, retrying in 2 minutes..."
+              echo "[$i/40] File not found yet, retrying in 2 minutes..."
               sleep 120
             fi
           done
       
-          echo "File not found after 20 attempts." >&2
+          echo "File not found after 40 attempts." >&2
           exit 1
 
 #      - name: Format RUN_DATE
