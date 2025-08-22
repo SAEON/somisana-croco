@@ -143,7 +143,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               regrid_tier3 \
-                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc \
                 --dir_out ${{ env.RUN_DIR }}/postprocess/ \
                 --spacing 0.02
         
