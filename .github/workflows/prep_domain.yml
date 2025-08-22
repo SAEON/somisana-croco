@@ -75,4 +75,5 @@ jobs:
           # We compile the croco model outside the docker image because we are
           # running the model outside the docker image. We hope that it speeds up
           # the running of the model
+          source ~/.bashrc # this doesn't get done when running as a github runner so ensure this is run in case it is needed
           cd ${{ env.CONFIG_DIR }} && ./jobcomp_frcst.sh ${{ inputs.COMP }} 

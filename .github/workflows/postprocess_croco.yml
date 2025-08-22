@@ -77,53 +77,74 @@ jobs:
           HINDCAST_DAYS=${{ inputs.HDAYS }}
           HINDCAST_HOURS=$((HINDCAST_DAYS * 24))
           HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
-          #
-          docker run \
-            --rm \
-            --entrypoint /bin/bash \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_run_main:latest \
-            -c "ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O /tmp/output/croco_avg.nc /tmp/postprocess/croco_avg_frcst.nc"
+          ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc"
       # Regrid CROCO u,v to rho grid,
       # rotate u,v components from grid aligned to east/north aligned and
       # work out depth levels of sigma grid in meters (tier 1)
       - name: Tier 1 regridding
         continue-on-error: true
         run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --memory=35g \
+          #  --cpus=1 \
+          #  --user $(id -u):$(id -g) \
+          #  --rm \
+          #  -v ${{ env.RUN_DIR }}:/tmp \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #    regrid_tier1 \
+          #      --fname /tmp/output/croco_avg.nc \
+          #      --dir_out /tmp/postprocess/ \
+          #      --Yorig 2000
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
               regrid_tier1 \
-                --fname /tmp/output/croco_avg.nc \
-                --dir_out /tmp/postprocess/ \
-                --ref_date '2000-01-01 00:00:00'
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --dir_out ${{ env.RUN_DIR }}/postprocess/ \
+                --Yorig 2000
       # interpolate data to constant vertical levels (tier 2)
       - name: Tier 2 regridding
         continue-on-error: true
         run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --memory=35g \
+          #  --cpus=1 \
+          #  --user $(id -u):$(id -g) \
+          #  --rm \
+          #  -v ${{ env.RUN_DIR }}:/tmp \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #    regrid_tier2 \
+          #      --fname /tmp/output/croco_avg.nc \
+          #      --dir_out /tmp/postprocess/ \
+          #      --depths 0,-5,-10,-50,-100,-500,-1000
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
               regrid_tier2 \
-                --fname /tmp/output/croco_avg.nc \
-                --dir_out /tmp/postprocess/ \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --dir_out ${{ env.RUN_DIR }}/postprocess/ \
                 --depths 0,-5,-10,-50,-100,-500,-1000
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
         continue-on-error: true
         run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --memory=10g \
+          #  --cpus=1 \
+          #  --user $(id -u):$(id -g) \
+          #  --rm \
+          #  -v ${{ env.RUN_DIR }}:/tmp \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #    regrid_tier3 \
+          #      --fname /tmp/postprocess/croco_avg_t2.nc \
+          #      --dir_out /tmp/postprocess/ \
+          #      --spacing 0.02
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
               regrid_tier3 \
-                --fname /tmp/postprocess/croco_avg_t2.nc \
-                --dir_out /tmp/postprocess/ \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc \
+                --dir_out ${{ env.RUN_DIR }}/postprocess/ \
                 --spacing 0.02
         
       # here we can add the extraction of time-series 
@@ -136,44 +157,76 @@ jobs:
       - name: animate surface temperature and currents
         continue-on-error: true
         run: |
-          docker run \
-            --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --memory=10g \
+          #  --cpus=1 \
+          #  --rm \
+          #  -v ${{ env.RUN_DIR }}:/tmp \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #    crocplot \
+          #      --fname /tmp/output/croco_avg.nc \
+          #      --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
+          #      --skip_time 6 \
+          #      --Yorig 2000
+          #sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /tmp/output/croco_avg.nc \
-                --gif_out /tmp/postprocess/croco_avg_temp_surf.gif \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --gif_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif \
                 --skip_time 6 \
-                --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif
+                --Yorig 2000
       - name: animate bottom temperature and currents
         continue-on-error: true
         run: |
-          docker run \
-            --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --memory=10g \
+          #  --cpus=1 \
+          #  --rm \
+          #  -v ${{ env.RUN_DIR }}:/tmp \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #    crocplot \
+          #      --fname /tmp/output/croco_avg.nc \
+          #      --level 0 \
+          #      --gif_out /tmp/postprocess/croco_avg_temp_bot.gif \
+          #      --skip_time 6 \
+          #      --Yorig 2000
+          #sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /tmp/output/croco_avg.nc \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --level 0 \
-                --gif_out /tmp/postprocess/croco_avg_temp_bot.gif \
+                --gif_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif \
                 --skip_time 6 \
-                --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif
+                --Yorig 2000
       - name: animate 100m temperature and currents
         continue-on-error: true
         run: |
-          docker run \
-            --rm \
-            -v ${{ env.RUN_DIR }}:/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --memory=10g \
+          #  --cpus=1 \
+          #  --rm \
+          #  -v ${{ env.RUN_DIR }}:/tmp \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #    crocplot \
+          #      --fname /tmp/output/croco_avg.nc \
+          #      --level -100 \
+          #      --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
+          #      --skip_time 6 \
+          #      --Yorig 2000
+          #sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /tmp/output/croco_avg.nc \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --level -100 \
-                --gif_out /tmp/postprocess/croco_avg_temp_100m.gif \
+                --gif_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif \
                 --skip_time 6 \
-                --ref_date '2000-01-01 00:00:00'
-          sudo chown somisana:somisana ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif
+                --Yorig 2000
       - name: ensure permissions
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
@@ -183,7 +236,7 @@ jobs:
     needs: [postprocess,plotting]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
-    if: ${{ inputs.BRANCH_REF == 'main' }}
+    if: ${{ inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims1' }}
     steps:
       - name: get archive dir
         id: archive_dir

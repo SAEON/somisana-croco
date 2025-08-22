@@ -14,7 +14,7 @@ import dask
 #import dask.array as da
 import re
 
-def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0),doi_link=None):
+def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000,doi_link=None):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -26,7 +26,7 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
     fname_in  : path to input CROCO file(s). Can include wildcards *. (required = True) 
     dir_out   : path to output directory (required = True)
     grdname   : optional name of your croco grid file (only needed if the grid info is not in fname)
-    ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1)
+    Yorig     : Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01
     doi_link  : doi link in string (required = False)
     '''
     
@@ -50,16 +50,17 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
         print('Opening: ', file)
         print("Extracting the model output variables we need")
     
-        ds_temp = post.get_var(file, "temp", grdname=grdname, ref_date=ref_date)
-        ds_salt = post.get_var(file, "salt", grdname=grdname, ref_date=ref_date)
-        ds_uv   = post.get_uv(file, grdname=grdname, ref_date=ref_date)
+        ds_temp = post.get_var(file, "temp", grdname=grdname, Yorig=Yorig)
+        ds_salt = post.get_var(file, "salt", grdname=grdname, Yorig=Yorig)
+        ds_uv   = post.get_uv(file, grdname=grdname, Yorig=Yorig)
        
-        ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
+        ds_all = xr.merge([ds_temp,ds_salt,ds_uv],compat='override')
         
         ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier1 function"
         ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         ds_all.attrs["conventions"] = "CF-1.8"
+        ds_all.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
         encoding = {
@@ -68,15 +69,17 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
                 "salt": {"dtype": "float32"},
                 "u": {"dtype": "float32"},
                 "v": {"dtype": "float32"},
-                "depth": {"dtype": "float32"},
                 "h": {"dtype": "float32"},
                 "mask": {"dtype": "float32"},
                 "lon_rho": {"dtype": "float32"},
                 "lat_rho": {"dtype": "float32"},
-                "time": {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                "time": {"units": f"seconds since {Yorig}-01-01 00:00:00",
                          "calendar": "standard",
                          "dtype": "i4"},
                 }
+        
+        if 'depth' in ds_all.variables: # allow for both cases where depth is or isn't in the dataset  (e.g. if a surface file is used)
+            encoding['depth'] = {"dtype": "float32"}
       
         # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
         basename = os.path.basename(file)
@@ -96,7 +99,7 @@ def regrid_tier1(fname_in, dir_out, grdname=None, ref_date=datetime(2000,1,1,0,0
 
         print(f'Created: {fname_out}')
 
-def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), doi_link=None, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]):
+def regrid_tier2(fname_in,dir_out, grdname=None, Yorig=2000, doi_link=None, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -107,7 +110,7 @@ def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), do
     fname_in  : path to input tier 2 netcdf file (required = True).
     dir_out   : path to output directory (required = True).
     grdname   : optional name of your croco grid file (only needed if the grid info is not in fname)
-    ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1).
+    Yorig     : Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01
     depths    : list of depths to extract (in metres, negative down, required = False).
                 If not specified depth = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000].
                 A value of 0 denotes the surface and a value of -99999 denotes the bottom layer.
@@ -133,16 +136,18 @@ def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), do
         print(f'Opening: {file}')
         print("Extracting the model output variables we need")
     
-        ds_temp = post.get_var(file, "temp", grdname=grdname, ref_date=ref_date, level=depths)
-        ds_salt = post.get_var(file, "salt", grdname=grdname, ref_date=ref_date, level=depths)
-        ds_uv = post.get_uv(file, grdname=grdname, ref_date=ref_date, level=depths)
+        ds_temp = post.get_var(file, "temp", grdname=grdname, Yorig=Yorig, level=depths)
+        ds_salt = post.get_var(file, "salt", grdname=grdname, Yorig=Yorig, level=depths)
+        ds_uv = post.get_uv(file, grdname=grdname, Yorig=Yorig, level=depths)
         
-        ds_all = xr.merge([ds_temp,ds_salt,ds_uv])
+        ds_all = xr.merge([ds_temp,ds_salt,ds_uv],compat='override')
         
         ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier2 function"
         ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         ds_all.attrs["conventions"] = "CF-1.8"
+        ds_all.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
+
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
         encoding = {
@@ -156,7 +161,7 @@ def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), do
                 "mask": {"dtype": "float32"},
                 "lon_rho": {"dtype": "float32"},
                 "lat_rho": {"dtype": "float32"},
-                "time": {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+                "time": {"units": f"seconds since {Yorig}-01-01 00:00:00",
                          "calendar": "standard",
                          "dtype": "i4"},
                 }
@@ -177,7 +182,7 @@ def regrid_tier2(fname_in,dir_out, grdname=None, ref_date=datetime(2000,1,1), do
         
         print(f'Created: {fname_out}')
 
-def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, spacing=0.01):
+def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
     '''
     tier 3 regridding of a CROCO output:
       -> takes the output of regrid-tier2 as input and
@@ -191,7 +196,7 @@ def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, 
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True)
     dir_out   : path to output directory (required = True)
-    ref_date  : reference datetime used in croco runs (must be a datetime.datetime object, required = False, standard = 2000,1,1).
+    Yorig     : Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01
     spacing   : constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output (type: str or float). 
                 If None, the default is 0.01.
     doi_link  : doi link in string (required = False)
@@ -416,11 +421,12 @@ def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, 
         data_out.attrs["source"] = file
         data_out.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
         data_out.attrs["conventions"] = "CF-1.8"
+        data_out.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
         if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
         # Explicitly set chunk sizes of some dimensions
         chunksizes = {
-            "time": 24,
+            "time": ds.time.size,
             "depth": 1,
         }
 
@@ -438,7 +444,7 @@ def regrid_tier3(fname_in, dir_out, ref_date=datetime(2000,1,1), doi_link=None, 
         }
 
         # Adjust for non-chunked variables
-        encoding["time"] = {"units": f"seconds since {ref_date.strftime('%Y-%m-%d %H:%M:%S')}",
+        encoding["time"] = {"units": f"seconds since {Yorig}-01-01 00:00:00",
                             "calendar": "standard",
                             "dtype": "i4"}
         encoding['latitude'] = {"dtype": "float32"}
@@ -475,9 +481,13 @@ if __name__ == "__main__":
     fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
     dir_out = '/home/g.rautenbach/Data/models/sa_southeast/'
     doi = '10.15493/SOMISANA.26032025'
-    ref_date=datetime(2000,1,1)
+    Yorig=2000
+    
+    # fname_in = '/home/gfearon/code/somisana-croco/configs/test_02/croco_v1.3.1/C04_I01_GLORYS_ERA5/output/croco_avg_Y2019M05.nc'
+    # grdname = '/home/gfearon/croco_grd.nc'
+    # dir_out = '/home/gfearon/test_cfcompliance/'
 
-    regrid_tier1(fname_in, dir_out, ref_date=ref_date, doi_link=doi)
-    regrid_tier2(fname_in, dir_out, ref_date=ref_date, doi_link=doi, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000])
+    # regrid_tier1(fname_in, dir_out, grdname=grdname,Yorig=Yorig, doi_link=doi)
+    regrid_tier2(fname_in, dir_out, Yorig=Yorig, doi_link=doi, depths=[0,-5,-10])
     fname_in = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg_t2.nc'
-    regrid_tier3(fname_in, dir_out, ref_date=ref_date, doi_link=doi, spacing=0.05)
+    # regrid_tier3(fname_in, dir_out, Yorig=Yorig, doi_link=doi, spacing=0.05)

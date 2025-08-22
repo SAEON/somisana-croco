@@ -134,8 +134,6 @@ def plot_cbar(ax,var_plt,
 
 def plot_time(ax,time,
              loc=[0.5,1.01],
-             tstep=0,
-             ref_date = datetime(2000, 1, 1, 0, 0, 0),
              time_fmt = '%Y-%m-%d %H:%M',
              time_font=15):
     '''
@@ -242,12 +240,12 @@ def plot(fname,
         ax=None, # allowing for adding to an existing axis
         var='temp', # croco variable to plot
         grdname=None, # option croco grid file (if grid variables arem't in the croco output file)
-        time=slice(None), # see post.get_var() for 'time' format. If a single value, then a plot is made, if two values, then an animation between those times is made
+        time=slice(None), # see post.get_var() for 'time' format. If a single value, then a plot is made, if a slice then an animation between the define slice limits is made
         level=None, # see post.get_var() for 'level' format. Has to be a single value for this function to do a plot
         ticks = None, #np.linspace(12,22,num=11), (gets set automatically if None)
         cmap = 'Spectral_r',
         extents = None, # [lon0,lon1,lat0,lat1] whole domain plotted if None
-        ref_date = None, # datetime, from CROCO model setup
+        Yorig = None, # Origin year used in setting up CROCO model time
         add_cbar = True, # add a colorbar?
         cbar_loc = None, # [left, bottom, width, height] (gets set automatically if None)
         cbar_label = None, # 'temperature ($\degree$C)', we just use 'var' is None
@@ -284,7 +282,7 @@ def plot(fname,
         
     # get the data we want to 
     print('extracting the data to plot')
-    ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,ref_date=ref_date)
+    ds = post.get_var(fname,var,grdname=grdname,time=time,level=level,Yorig=Yorig)
     da_var=ds[var]
     time_var=np.atleast_1d(ds.time.values)
     lon = post.get_grd_var(grdname,'lon_rho').values
@@ -374,7 +372,7 @@ def plot(fname,
         print('getting the u/v vectors')
         
         # dynamically update the vector scaling paramseters based on the actual veclocity data
-        ds_uv = post.get_uv(fname,grdname=grdname,time=time,level=level,ref_date=ref_date)
+        ds_uv = post.get_uv(fname,grdname=grdname,time=time,level=level,Yorig=Yorig)
         
         da_u=ds_uv.u
         da_v=ds_uv.v
@@ -448,7 +446,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         var='wspd',
         figsize=(6,6), # (hz,vt)
         tstep=0, # the step to plot (not going to worry about decoding the actual dates here)
-        ref_date = datetime(1993,1,1), # datetime, from CROCO model setup
+        Yorig = 1993, # from CROCO model setup
         ticks = [], # the ticks to plot
         cmap = 'Spectral_r',
         extents = None,#  [lon_min, lon_max, lat_min, lat_max]
@@ -481,7 +479,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
     ds_blk = xr.open_dataset(croco_blk_file, decode_times=False)
     # get an array of datetimes for this file
     ds_blk_days = np.float64(ds_blk.bulk_time.values)
-    blk_time = ref_date + timedelta(days = ds_blk_days[tstep])
+    blk_time = datetime(Yorig,1,1) + timedelta(days = ds_blk_days[tstep])
     ds_blk_t = ds_blk.isel(bulk_time=tstep)
 
     var_data=ds_blk_t[var].values
@@ -554,7 +552,7 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
             v_i = v * cos_a + u * sin_a
             
             # update the figure for this time-step
-            blk_time = ref_date + timedelta(days = ds_blk_days[i])
+            blk_time = datetime(Yorig,1,1) + timedelta(days = ds_blk_days[i])
             time_plt.set_text('tstep = '+str(i)+': '+datetime.strftime(blk_time, '%Y-%m-%d %H:%M:%S')) 
             var_plt.set_array(var_i.ravel())
             uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv],

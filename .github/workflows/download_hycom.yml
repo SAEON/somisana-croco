@@ -78,14 +78,13 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               -v ${{ env.DATA_DIR }}/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              download_hycom \
+              ghcr.io/saeon/somisana-download_main:latest \
+              download_hycom_ops \
                 --domain 11,36,-39,-25 \
                 --run_date ${{ steps.format_date.outputs.value }} \
                 --hdays ${{ inputs.HDAYS }} \
                 --fdays ${{ inputs.FDAYS }} \
-                --savedir '/tmp/' \
-                --pad True
+                --outputDir '/tmp/'
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server

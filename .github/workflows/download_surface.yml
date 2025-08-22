@@ -84,7 +84,7 @@ jobs:
               --user $(id -u):$(id -g) \
               --rm \
               -v ${{ env.DATA_DIR }}/GFS:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+              ghcr.io/saeon/somisana-download_main:latest \
               download_gfs_atm \
                 --domain 11,36,-39,-25 \
                 --run_date ${{ steps.format_date.outputs.value }} \
@@ -93,14 +93,21 @@ jobs:
                 --outputDir '/tmp'
       - name: reformat gfs netcdf files for use with ONLINE cpp key
         run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --user $(id -u):$(id -g) \
+          #  --rm \
+          #  -v ${{ env.DATA_DIR }}/GFS:/tmp/gfsDir \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #  reformat_gfs_atm \
+          #    --gfsDir '/tmp/gfsDir' \
+          #    --outputDir '/tmp/gfsDir/for_croco' \
+          #    --Yorig 2000 
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
             reformat_gfs_atm \
-              --gfsDir '/tmp/gfsDir' \
-              --outputDir '/tmp/gfsDir/for_croco' \
+              --gfsDir ${{ env.DATA_DIR }}/GFS \
+              --outputDir ${{ env.DATA_DIR }}/GFS/for_croco \
               --Yorig 2000 
           # ensure files have correct permissions to do the copy to the archive dir
           chmod -R 775 ${{ env.DATA_DIR }}/GFS
@@ -129,16 +136,26 @@ jobs:
       - name: reformat SAWS netcdf files for use with ONLINE cpp key
         id: reformat_saws
         run: |
-          docker run \
-            --user $(id -u):$(id -g) \
-            --rm \
-            -v ${{ env.DATA_DIR }}:/tmp/dataDir \
-            -v /mnt/saws-data/ocims:/tmp/sawsDir \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #docker run \
+          #  --user $(id -u):$(id -g) \
+          #  --rm \
+          #  -v ${{ env.DATA_DIR }}:/tmp/dataDir \
+          #  -v /mnt/saws-data/ocims:/tmp/sawsDir \
+          #  ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+          #  reformat_saws_atm \
+          #    --sawsDir '/tmp/sawsDir' \
+          #    --backupDir '/tmp/dataDir/GFS/for_croco' \
+          #    --outputDir '/tmp/dataDir/SAWS/for_croco' \
+          #    --run_date ${{ steps.format_date.outputs.value }} \
+          #    --hdays ${{ inputs.HDAYS }} \
+          #    --Yorig 2000
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
             reformat_saws_atm \
-              --sawsDir '/tmp/sawsDir' \
-              --backupDir '/tmp/dataDir/GFS/for_croco' \
-              --outputDir '/tmp/dataDir/SAWS/for_croco' \
+              --sawsDir /mnt/saws-data/ocims \
+              --backupDir ${{ env.DATA_DIR }}/GFS/for_croco \
+              --outputDir ${{ env.DATA_DIR }}/SAWS/for_croco \
               --run_date ${{ steps.format_date.outputs.value }} \
               --hdays ${{ inputs.HDAYS }} \
               --Yorig 2000

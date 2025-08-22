@@ -93,7 +93,12 @@ ipython_config.py
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
-# # Environments
+# Folders
+configs/sa_west_02/croco_v1.3.1/VALIDATION_Report/
+configs/sa_west_02/croco_v1.3.1/GLORYS/Validation/
+
+
+# Environments
 # .env
 # .venv
 # env/

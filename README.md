@@ -3,7 +3,6 @@ This repo is part of the [SOMISANA](https://somisana.ac.za/) initiative, and use
 Directories in the repository: 
 - `crocotools_mat`:    some matlab code which is used in conjunction with the official croco-tools to support some of SOMISANA's model development, particularly the pre-processing. 
 - `crocotools_py`:     python functions for some postprocessing, validation and plotting CROCO model output
-- `download`:          python functions for downloading data used for forcing our CROCO configurations
 - `configs`:           configurations used for SOMISANA's hindcast and forecast simulations (see README's in the sub-directories for further details)
 - `.github/workflows`: github workflows for running our forecast models operationally on a server set up for this purpose on MIMS (`run_ops.yml` is the `main` workflow)
 

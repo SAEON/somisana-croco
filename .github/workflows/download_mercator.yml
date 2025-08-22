@@ -55,8 +55,11 @@ jobs:
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.RUNNER_NAME == 'mims1' }}
     steps:
+      - name: pull latest download docker image to the saeon-apps server
+        run: |
+          docker pull ghcr.io/saeon/somisana-download_main:latest
       - name: Format RUN_DATE
         id: format_date
         run: |
@@ -73,13 +76,14 @@ jobs:
           warning_on_retry: true
           shell: bash
           continue_on_error: false
-          on_retry_command: sudo rm -f /home/giles/mercator_download/*nc
           command: |
+            download_dir=/home/giles/mercator_download
+            mkdir -p ${download_dir}
             docker run \
               --rm \
-              -v /home/giles/mercator_download:/tmp/download \
-              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-              download_mercator \
+              -v ${download_dir}:/tmp/download \
+              ghcr.io/saeon/somisana-download_main:latest \
+              download_mercator_ops \
                 --usrname ${{ secrets.COPERNICUS_USERNAME }} \
                 --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
                 --domain 11,36,-39,-25 \
@@ -88,21 +92,22 @@ jobs:
                 --fdays ${{ inputs.FDAYS }} \
                 --outputDir '/tmp/download'
             # copy to a shared dir
-            cp /home/giles/mercator_download/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/
+            cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc
       - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
           # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
           # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
           # so I'm using the cli docker image to remove the files it originally created
+          download_dir=/home/giles/mercator_download
           docker run \
             --rm \
             --entrypoint /bin/bash \
-            -v /home/giles/mercator_download/:/mnt/tmp \
-            ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
+            -v ${download_dir}:/mnt/tmp \
+            ghcr.io/saeon/somisana-download_main:latest \
               -c "rm -f /mnt/tmp/*nc"
 
-  move_mercator:
+  download_mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
     needs: [check_files,download_mercator_saeon]
     if: ${{ always() && needs.check_files.outputs.OGCM_OK == '0' }}
@@ -118,15 +123,35 @@ jobs:
         # we only need this since we have the workaround of downloading on saeonapps
         # so this essentially replaces the commented download code below
         run: |
-          # We need to use sudo in the line below because the mounted dir is owned by root
-          sudo mv /mnt/saeon-somisana/data/MERCATOR_${{ inputs.RUN_DATE }}.nc ${{ env.DATA_DIR }}/MERCATOR/
+          set -e
+          file="/mnt/saeon-somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc"
+          dest="${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc"
+          
+          # I'm putting the copy command in a loop since at the time of writing we are running the same operational code
+          # on two servers and we have to run the needed download_mercator_saeon step on one of the servers otherwise we get an error from Mercator for too many downloads at once
+          # So this loop handles the case where one of the servers has to wait for the file to be made available
+          for i in {1..40}; do
+            if [ -f "$file" ]; then
+              echo "File found, copying..."
+              # We need to use sudo in the line below because the mounted dir is owned by root
+              sudo cp "$file" "$dest"
+              echo "Copy successful."
+              exit 0
+            else
+              echo "[$i/40] File not found yet, retrying in 2 minutes..."
+              sleep 120
+            fi
+          done
+      
+          echo "File not found after 40 attempts." >&2
+          exit 1
+
 #      - name: Format RUN_DATE
 #        id: format_date
 #        run: |
 #          run_date=${{ inputs.RUN_DATE }}
 #          run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
 #          echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
-# see comments in mercator_saeon job as to why this download is commented here
 #      - name: download MERCATOR
 #        uses: nick-fields/retry@master
 #        with:
@@ -137,14 +162,14 @@ jobs:
 #          warning_on_retry: true
 #          shell: bash
 #          continue_on_error: false
-#          on_retry_command: sudo rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
+#          on_retry_command: rm -f ${{ env.DATA_DIR }}/MERCATOR/*mercator*
 #          command: >-
 #            docker run \
 #              --user $(id -u):$(id -g) \
 #              --rm \
 #              -v ${{ env.DATA_DIR }}/MERCATOR:/tmp \
-#              ghcr.io/saeon/somisana-croco_cli_${{ inputs.BRANCH_REF }}:latest \
-#              download_mercator \
+#              ghcr.io/saeon/somisana-download_main:latest \
+#              download_mercator_ops \
 #                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
 #                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
 #                --domain 11,36,-39,-25 \
@@ -155,10 +180,10 @@ jobs:
 
   archive_ocims:
     # copy the data to an archive directory on ocims infrastructure, mounted to the mims compute server
-    needs: [move_mercator]
+    needs: [download_mercator]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
-    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
+    if: ${{ always() && inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims1' }}
     continue-on-error: true
     steps:
       - name: archive forcing files on ocims infrastructure
