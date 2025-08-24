@@ -77,7 +77,7 @@ jobs:
           HINDCAST_DAYS=${{ inputs.HDAYS }}
           HINDCAST_HOURS=$((HINDCAST_DAYS * 24))
           HINDCAST_NUMAVG=$((HINDCAST_HOURS / NH_AVG)) # NH_AVG is read from myenv_in.sh - it's the output frequency (in hours) of the avg file
-          ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc"
+          ncks -v temp,salt,u,v,w,zeta,sustr,svstr -d time,${HINDCAST_NUMAVG}, -O ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc
       # Regrid CROCO u,v to rho grid,
       # rotate u,v components from grid aligned to east/north aligned and
       # work out depth levels of sigma grid in meters (tier 1)
