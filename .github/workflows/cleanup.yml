@@ -32,7 +32,7 @@ jobs:
           # have to run as sudo as the archive is owned by root
           # BE CAREFUL IF YOU EDIT THIS LINE!! you could delete the entire archive if you get it wrong!!
           # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
-          sudo find /mnt/ocims-somisana/ -path "/mnt/ocims-somisana/lost+found" -prune -o -type f,d \( -name "*_06*" -o -name "*_12*" -o -name "*_18*" -o -name "croco_avg_t1.nc*" -o -name "croco_avg_t2.nc*" -o -name "croco_avg_t3.nc*" -o -name "*jpg" -o -name "*gif" -o -name "croco_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/ocims-somisana/public-facing -prune -o -type f,d \( -name "*_06*" -o -name "*_12*" -o -name "*_18*" -o -name "croco_avg_t1.nc*" -o -name "croco_avg_t2.nc*" -o -name "croco_avg_t3.nc*" -o -name "*jpg" -o -name "*gif" -o -name "croco_avg.nc*" \) -ctime +5 -exec rm -fr {} +
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
         id: cleanup_saeon_mount

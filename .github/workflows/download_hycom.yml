@@ -101,7 +101,7 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_yyyymm=${run_date:0:6}
           run_date_hh=${run_date:9:2}
-          archive_dir=/mnt/ocims-somisana/sa-forcing/${run_date_yyyymm}/${run_date}
+          archive_dir=/mnt/ocims-somisana/public-facing/sa-forcing/${run_date_yyyymm}/${run_date}
           # make the archive directory
           sudo mkdir -p ${archive_dir}/HYCOM
           # only archive one run per day (initialised at 00)
