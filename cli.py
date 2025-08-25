@@ -262,7 +262,7 @@ def main():
             
             print('working on '+month_now.strftime('%Y-%m'))
             
-            fname_out = params.croco_prefix + month_now.strftime('_Y%YM%m.nc')
+            fname_out = params.croco_prefix + month_now.strftime('_Y%YM%m.nc') + params.croco_suffix
             
             make_tides(args.input_dir,args.output_dir,month_now,args.Yorig,fname_out)
             
@@ -317,7 +317,7 @@ def main():
         ini_date = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
         fname_in = os.path.join(args.input_dir, ini_date.strftime(params.input_file_fmt))
         
-        fname_out = params.ini_prefix + ini_date.strftime('_Y%YM%m.nc')
+        fname_out = params.ini_prefix + ini_date.strftime('_Y%YM%m.nc') + params.ini_suffix
         
         make_ini(fname_in,args.output_dir,ini_date,args.Yorig,fname_out)
     

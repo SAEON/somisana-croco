@@ -8,7 +8,7 @@
 #
 # Model time step [seconds]
 #
-DT=180
+DT0=180
 DTFAST=60
 #      Number of hours for averages files
 #      24 is 1 days
@@ -28,13 +28,13 @@ T_REF=3
 #
 # Number total of grid levels (1: No child grid)
 #
-NLEVEL=1
+NLEVEL=2
 #
 # these are the time extents for this run
 # restarting from 2022-02 since we run with define TIDERAMP for the first month, and then undef TIDERAMP starting from the second month onwards
-NY_START=2023
-NY_END=2023
-NM_START=2
+NY_START=2015
+NY_END=2021
+NM_START=1
 NM_END=12
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
@@ -46,7 +46,7 @@ NY_SPIN=0
 #  Restart file - RSTFLAG=0 --> No Restart
 #		  RSTFLAG=1 --> Restart
 #
-RSTFLAG=1
+RSTFLAG=0
 #
 #  Time Schedule  -  TIME_SCHED=0 --> yearly files
 #                    TIME_SCHED=1 --> monthly files

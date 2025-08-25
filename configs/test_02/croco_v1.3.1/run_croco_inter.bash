@@ -78,8 +78,8 @@ cd $SCRATCHDIR
 echo "Getting $CODFILE from $EXEDIR"
 $CP -f $EXEDIR/$CODFILE $SCRATCHDIR
 chmod u+x $CODFILE
-#echo "Getting Agrif file from $INPUTDIR_IN"
-#$CP -f $INPUTDIR_IN/AGRIF_FixedGrids.in $SCRATCHDIR
+echo "Getting Agrif file from $INPUTDIR_GRD"
+$CP -f $INPUTDIR_GRD/AGRIF_FixedGrids.in $SCRATCHDIR
 #echo "Getting stations file from $INPUTDIR_IN"
 #$CP -f $INPUTDIR_IN/stations.in $SCRATCHDIR
 
@@ -96,7 +96,7 @@ while [ $LEVEL != $NLEVEL ]; do
   echo "Getting ${GRDFILE}.nc${ENDF} from ${INPUTDIR_GRD}${ENDF}"
   $LN -sf ${INPUTDIR_GRD}${ENDF}/${GRDFILE}.nc${ENDF} $SCRATCHDIR
   echo "Getting ${MODEL}_inter.in${ENDF} from $INPUTDIR_IN${ENDF}"
-  $CP -f $INPUTDIR_IN${ENDF}/${MODEL}_inter.in${ENDF} $SCRATCHDIR
+  $CP -f $INPUTDIR_IN/${MODEL}_inter.in${ENDF} $SCRATCHDIR
   if [[ $RSTFLAG == 0 ]]; then
     echo "Getting ${INIFILE}_${OGCM}_${TIME}.nc${ENDF} from ${INPUTDIR_BRY}${ENDF}"
     $CP -f ${INPUTDIR_BRY}${ENDF}/${INIFILE}_${OGCM}_${TIME}.nc${ENDF} $SCRATCHDIR
@@ -216,6 +216,9 @@ while [ $NY != $NY_END ]; do
         fi
       fi
     fi
+
+    DT=$DT0
+
     NUMTIMES=$((NDAYS * 24 * 3600))
     NUMTIMES=$((NUMTIMES / DT))
 
@@ -243,7 +246,13 @@ while [ $NY != $NY_END ]; do
         ENDF=
       else
         ENDF=.${LEVEL}
+	DT=$((DT / T_REF))
 	NUMTIMES=$((T_REF * NUMTIMES))
+	NUMAVG=$((T_REF * NUMAVG))
+	NUMHIS=$((T_REF * NUMHIS))
+	NUMAVGSURF=$((T_REF * NUMAVGSURF))
+	NUMHISSURF=$((T_REF * NUMHISSURF))
+	NUMSTA=$((T_REF * NUMSTA))
       fi
       echo "USING NUMTIMES = $NUMTIMES"
       sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/NUMSTA/'$NUMSTA'/' -e 's/NYONLINE/'$NY'/' -e 's/NMONLINE/'$NM'/' < ${MODEL}_inter.in${ENDF} > ${MODEL}_${TIME}_inter.in${ENDF}

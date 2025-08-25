@@ -8,7 +8,7 @@
 export SOURCE=/home/$USER/code/croco-v1.3.1/OCEAN/
 #
 # dir with compile options
-export EXENAME=C04
+export EXENAME=C05
 #
 # MPI partitioning
 export MPI_NUM_X=5
