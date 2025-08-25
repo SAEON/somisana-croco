@@ -1444,11 +1444,6 @@ def get_section(fname,
     
     return ds
 
-#if __name__ == "__main__":
-#    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
-#    Yorig=2000
-#    ds_temp = get_var(file, "temp", Yorig=Yorig)
-
 def compute_anomaly(fname_clim, fname_in, fname_out,
                     ref_date="2000-01-01",
                     varlist=["temp", "u", "v", "salt", "zeta"],
@@ -1540,3 +1535,10 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
 
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
+
+#if __name__ == "__main__":
+#    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
+#    Yorig=2000
+#    ds_temp = get_var(file, "temp", Yorig=Yorig)
+
+
