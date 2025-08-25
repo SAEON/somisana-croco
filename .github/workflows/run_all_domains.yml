@@ -35,7 +35,7 @@ jobs:
     with:
       RUN_DATE: ${{ inputs.RUN_DATE }}
       BRANCH_REF: ${{ inputs.BRANCH_REF }}
-      RUNNER_NAME: mims1
+      RUNNER_NAME: ${{ inputs.RUNNER_NAME }}
       MODEL: croco_v1.3.1
       DOMAIN: ${{ matrix.domain }}
       OGCM: ${{ inputs.OGCM }}

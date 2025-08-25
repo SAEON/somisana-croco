@@ -241,6 +241,7 @@ jobs:
           #    -c "cd /home/somisana && ./run_croco_frcst.bash ${{ env.RUN_NAME }}"
           #
           # We are preferring to rather run CROCO directly on the server due to issues with resource management
+          source ~/.bashrc # this doesn't get done when running as a github runner so ensure this is run in case it is needed
           cd ${{ env.CONFIG_DIR }} && ./run_croco_frcst.bash ${{ env.RUN_NAME }}
       - name: ensure permissions
         run: |

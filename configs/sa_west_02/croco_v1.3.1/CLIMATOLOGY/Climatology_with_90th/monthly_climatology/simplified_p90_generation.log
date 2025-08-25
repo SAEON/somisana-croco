@@ -1,9 +1,0 @@
-🔁 Starting monthly stack and 90th percentile computation: Thu Jul 31 08:32:07 AM SAST 2025
-
-📅 [INFO] Processing month 01...
-📦 [INFO] Stacking files for month 01...
-Warning (split_timevalue): Reset wrong date/time to 0000-03-01 12:00:30!
-📊 [INFO] Computing 90th percentile for month 01...
-
-cdo (Abort): [4mtimpctl,90[0m /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/stacked_M01.nc /home/nc.memela/Projects/somisana-croco/configs/sa_west_02/croco_v1.3.1/CLIMATOLOGY/Climatology_with_90th/monthly_climatology/monthly_p90_M01.nc  
-                  ^ Missing Inputs
