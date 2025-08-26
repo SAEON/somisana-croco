@@ -604,7 +604,7 @@ def handle_time(ds,time=slice(None),Yorig=None):
     if isinstance(time, slice):
         ds = ds.sel(time=time)
     else:
-        ds = ds.sel(time=time, method='nearest', drop=False)
+        ds = ds.sel(time=[time], method='nearest', drop=False) # ensuring the time dimension is retained even if a single value is input
 
     return ds
 
@@ -754,7 +754,7 @@ def get_var(fname,var_str,
     
     # get dataarrays of the data we want
     da = ds[var_str]
-    if len(da.shape)==4:
+    if 's_rho' in da.coords:
         var_is_2d=False
     else:
         var_is_2d=True
