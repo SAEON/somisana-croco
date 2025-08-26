@@ -24,6 +24,7 @@ sigma_params = dict(theta_s=7, theta_b=2, N=40, hc=200) # Vertical streching, si
 
 # Ini filename prefix
 ini_prefix = 'croco_ini_GLORYS'
+ini_suffix = ''
 
 # Bry filename prefinformations
 bry_prefix = 'croco_bry_GLORYS' 

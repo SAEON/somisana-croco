@@ -24,6 +24,7 @@ Compile options
 08 - as per 06, define READ_PATM 
 09 - as per 08, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
 10 - as per 09, define CLIMATOLOGY
+11 - as per 10, define AGRIF and AGRIF_2WAY
 
 Runtime input (\*.in files)
 ---------------------------

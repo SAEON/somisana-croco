@@ -8,7 +8,7 @@
 export SOURCE=/home/gfearon/croco-v2.0.1/OCEAN/
 
 # dir with compile options
-export EXENAME=C09
+export EXENAME=C11
 
 # MPI partitioning
 export MPI_NUM_X=30

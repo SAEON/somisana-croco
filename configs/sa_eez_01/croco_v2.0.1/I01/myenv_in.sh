@@ -8,7 +8,7 @@
 #
 # Model time step [seconds]
 #
-DT=180
+DT0=180
 DTFAST=60
 #      Number of hours for averages files
 #      24 is 1 days
