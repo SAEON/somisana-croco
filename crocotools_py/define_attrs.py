@@ -33,6 +33,7 @@ class CROCO_Attrs_RotatedVectors:
         self.svstr  = VariableMetadata('Northward component of surface stress', 'N m-2', 'surface_northward_stress')
         self.bvstr  = VariableMetadata('Northward component of bottom stress', 'N m-2', 'bottom_northward_stress')
         self.vbar   = VariableMetadata('Northward component of barotropic velocity', 'm s-1', 'barotropic_northward_sea_water_velocity')
+        self.w      = VariableMetadata('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component')
 
 class CROCO_Attrs:
     def __init__(self):
@@ -54,3 +55,4 @@ class CROCO_Attrs:
         self.svstr  = VariableMetadata('Wind stress on sea surface in y direction', 'N m-2', 'surface_downward_y_stress')
         self.bvstr  = VariableMetadata('Stress due to sea water on sea floor in y direction', 'N m-2', 'stress_due_to_sea_water_on_sea_floor_in_y_direction')
         self.vbar   = VariableMetadata('Barotropic velocity of sea water in y direction', 'm s-1', 'barotropic_sea_water_y_velocity')
+        self.w      = VariableMetadata('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component')
