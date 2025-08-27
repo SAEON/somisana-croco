@@ -53,7 +53,9 @@ jobs:
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
-          sudo chown somisana:somisana /home/somisana/ops/anom-plot/20250812_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4
+          sudo chown somisana:somisana /home/somisana/ops/anom-plot/20250826_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4
+          sudo chown somisana:somisana /home/somisana/ops/anom-plot/20250826_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10/postprocess/croco_avg_temp_anom_bot.mp4
+          sudo chown somisana:somisana /home/somisana/ops/anom-plot/20250826_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10/postprocess/croco_avg_temp_anom_100m.mp4
 
 
 #%% The sandbox replaced by the above
