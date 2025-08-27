@@ -5,6 +5,8 @@ from datetime import timedelta, datetime
 from glob import glob
 from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
 import re
+import time
+import pandas as pd
 
 def change_attrs(attrs,da,var_str):
     meta = getattr(attrs, var_str)
@@ -1441,6 +1443,98 @@ def get_section(fname,
         ds.to_netcdf(nc_out)
     
     return ds
+
+def compute_anomaly(fname_clim, fname_in, fname_out,
+                    Yorig=2000,#Yorig=2000,
+                    varlist=["temp", "u", "v", "salt", "zeta"],
+                    use_constant_clim=False):
+    """
+    Compute anomalies by subtracting monthly climatology from high-frequency CROCO output.
+
+    Parameters:
+    -----------
+    fname_clim : str
+        Path to the NetCDF file containing 12 monthly climatology time steps.
+    fname_in : str
+        Path to the NetCDF file containing high-frequency model output (e.g., hourly).
+    fname_out : str
+        Path to output NetCDF file containing the anomalies
+    ref_date : str, optional
+        Reference date (e.g., "2000-01-01") used to define the high-frequency time axis based on Yorig.
+    varlist : list of str, optional
+        List of variables for which anomalies should be computed.
+     use_constant_clim : bool, optional
+        If True, use a constant climatology (interpolated to midpoint of HF time axis insted of to the entire HF time axis).
+        This is useful when the high frequency file is very large, but a single climatology value is sufficient
+        An alternative approach to this problem is to chunk the data. This works to speed up the interpolation step
+        but leads to memory issue when trying to write the output (at least I couldn't solve them without bypassing the problem)
+
+    Returns:
+    --------
+    None. Saves output NetCDF with anomaly variables added.
+    """
+
+    start_time = time.time()
+    print("Loading climatology and high-frequency files...")
+    ds_clim = xr.open_dataset(fname_clim, decode_times=False)
+    ds_clim = ds_clim[varlist] # subset to only the variables we need
+    ds_hf = xr.open_dataset(fname_in, decode_times=False)
+    ref_hf = np.datetime64(str(Yorig,1,1))
+
+    # Ensure climatology file has 12 time steps
+    if len(ds_clim.time) != 12:
+        raise ValueError("ERROR: Provided climatology file must have exactly 12 monthly time steps.")
+
+    print("Extending climatology time axis...")
+    start = ds_clim.isel(time=0)
+    end = ds_clim.isel(time=-1)
+    ds_clim = xr.concat([end, ds_clim, start], dim="time")
+    ds_clim = ds_clim.transpose('time', ...) # ensure time is the first dimension
+    
+    print("Set climatology time axis to align with high frequency file...")
+    HF_t = ds_hf.time.values.astype("float64")
+    hf_dates = ref_hf + HF_t.astype("timedelta64[s]")
+    hf_year = pd.to_datetime(hf_dates[0]).year
+    clim_time = pd.date_range(start=f'{hf_year-1}-12-15', periods=14, freq='MS')
+    clim_seconds = ((clim_time - ref_hf) / np.timedelta64(1, "s")).to_numpy(dtype=np.float64) # seconds since initialisation i.e. as per the high frequency file
+    ds_clim = ds_clim.assign_coords(time=clim_seconds)
+    if use_constant_clim:
+        print("(Using constant climatology based on midpoint of HF time axis)")
+        middle_time = ds_hf.time.isel(time=int(len(ds_hf.time) / 2))
+        ds_clim = ds_clim.interp(time=middle_time, method="linear")
+    else:
+        ds_clim = ds_clim.interp(time=ds_hf.time, method="linear")
+    
+    print("Computing anomalies...")
+    ds_anom = xr.Dataset(coords=ds_hf.coords)
+    croco_attrs = CROCO_Attrs()
+    for var in varlist:
+        print(f"{var}")
+        anom = ds_hf[var] - ds_clim[var]
+        anom_name = f"{var}_anom"
+        anom = change_attrs(croco_attrs, anom, anom_name)
+        ds_anom[anom_name] = anom
+    ds_hf.close()
+    ds_clim.close()
+    
+    # add variables from ds_hf related to the vertical grid
+    # (this is needed if you want to plot or extract data at specific vertical levels later)
+    add_vars = ['theta_s','theta_b','hc','Vtransform','h','zeta','mask_rho']
+    for add_var in add_vars:
+        if add_var in ds_hf:
+            ds_anom[add_var] = ds_hf[add_var]
+        elif add_var in ds_hf.attrs: # handle 'theta_s' and 'theta_b' which are stored as global attributes not variables
+            ds_anom.attrs[add_var] = ds_hf.attrs[add_var]
+    
+    print("Writing output file...")   
+    encoding = {
+        var: {"dtype": "float32"}
+        for var in ds_anom.data_vars
+    }
+    ds_anom.to_netcdf(fname_out, encoding=encoding, mode='w')
+
+    end_time = time.time()
+    print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
 
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'

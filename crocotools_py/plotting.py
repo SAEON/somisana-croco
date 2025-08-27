@@ -296,19 +296,30 @@ def plot(fname,
         data_plt=da_var.isel(time=0).values
     
     if ticks is None:
-        # get the range of the data to plot (using 5th and 95th percentiles)
-        vmin=np.nanpercentile(da_var, 1)
-        vmax=np.nanpercentile(da_var, 99)
-        # round these to two significant figures
-        vmin=round(vmin, 2 - int(np.floor(np.log10(abs(vmin)))) - 1)
-        vmax=round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)
+    
+        is_anomaly = var.endswith('_anom')
         num_ticks = 10
+    
+        if is_anomaly:
+            vmax = np.nanpercentile(abs(da_var), 99)
+            # Symmetric color scale around 0
+            vmax = round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)
+            vmin = -vmax
+            cmap = 'bwr'
+            #isobaths=[200,500],
+            cbar_label = 'temperature anomaly ($\degree$C)'
+        else:
+            vmin = np.nanpercentile(da_var, 1)
+            vmax = np.nanpercentile(da_var, 99)
+            # Round to two significant figures
+            vmin = round(vmin, 2 - int(np.floor(np.log10(abs(vmin)))) - 1)
+            vmax = round(vmax, 2 - int(np.floor(np.log10(abs(vmax)))) - 1)
+    
+        # Shared logic: step rounding and tick generation
         step = (vmax - vmin) / num_ticks
         step = round(step, 2 - int(np.floor(np.log10(abs(step)))) - 1)
-        # update vmax based on the rounded step
         vmax = vmin + num_ticks * step
-        # Generate the ticks using the rounded step size
-        ticks = np.arange(vmin, vmax + step/10, step) # Add a small value to ensure new_vmax is included
+        ticks = np.arange(vmin, vmax + step / num_ticks, step)
     
     # compute the extents from the grid if not explicitly defined
     if extents is None:

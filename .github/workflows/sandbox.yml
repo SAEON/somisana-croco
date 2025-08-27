@@ -11,38 +11,100 @@ jobs:
       IMAGE_ID: cli
 
   # Download hycom 
-  download_hycom:
+  plotting-surf-anom:
     runs-on: mims1
     needs: [build_cli]
     steps:
-      - name: Clean and create HYCOM directory with correct permissions
+      - name: animate surface temperature anomalies
+        continue-on-error: true
         run: |
-          sudo rm -rf /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
-          sudo mkdir -p /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
-          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
-          sudo chmod -R 775 /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
 
-      - name: Download HYCOM
-        uses: nick-fields/retry@master
-        with:
-          timeout_minutes: 60
-          retry_wait_seconds: 300
-          max_attempts: 3
-          retry_on: any
-          warning_on_retry: true
-          shell: bash
-          continue_on_error: false
-          command: |
-            docker run \
-              --user $(id -u):$(id -g) \
-              --rm \
-              --entrypoint bash \
-              -v /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
-              -c 'python cli.py download_hycom \
-                --domain 11,36,-39,-25 \
-                --run_date "2025-05-19 00:00:00" \
-                --hdays 5 \
-                --fdays 5 \
-                --savedir "/tmp" \
-                --pad True && echo "Download completed" || echo "Download failed"'
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate bottom temperature anomalies
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --level 0 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate 100m temperature anomalies
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --level -100 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+          sudo chown somisana:somisana /home/somisana/ops/anom-plot/20250812_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_SAWS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4
+
+
+#%% The sandbox replaced by the above
+
+
+
+# name: Sandbox for testing individual calleable workflows
+# # (not used in th operational workflow at all)
+
+# on:
+#   workflow_dispatch:
+
+# jobs:
+#   build_cli:
+#     uses: ./.github/workflows/build_images.yml
+#     with:
+#       IMAGE_ID: cli
+
+#   # Download hycom 
+#   download_hycom:
+#     runs-on: mims1
+#     needs: [build_cli]
+#     steps:
+#       - name: Clean and create HYCOM directory with correct permissions
+#         run: |
+#           sudo rm -rf /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+#           sudo mkdir -p /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+#           sudo chown -R $(id -u):$(id -g) /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+#           sudo chmod -R 775 /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+
+#       - name: Download HYCOM
+#         uses: nick-fields/retry@master
+#         with:
+#           timeout_minutes: 60
+#           retry_wait_seconds: 300
+#           max_attempts: 3
+#           retry_on: any
+#           warning_on_retry: true
+#           shell: bash
+#           continue_on_error: false
+#           command: |
+#             docker run \
+#               --user $(id -u):$(id -g) \
+#               --rm \
+#               --entrypoint bash \
+#               -v /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM:/tmp \
+#               ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
+#               -c 'python cli.py download_hycom \
+#                 --domain 11,36,-39,-25 \
+#                 --run_date "2025-05-19 00:00:00" \
+#                 --hdays 5 \
+#                 --fdays 5 \
+#                 --savedir "/tmp" \
+#                 --pad True && echo "Download completed" || echo "Download failed"'
