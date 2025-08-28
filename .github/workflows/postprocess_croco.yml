@@ -248,24 +248,33 @@ jobs:
           # replace underscores with hyphens for the archive directory - probably looks better
           domain=${domain//_/-}
           #
-          archive_dir=/mnt/ocims-somisana/public-facing/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
-          echo "value=$archive_dir" >> $GITHUB_OUTPUT
+          # the public facing archive - data older than 5 days gets cleaned
+          public=/mnt/ocims-somisana/public-facing/${domain}/${{ inputs.VERSION }}/forecasts/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          # the backed up long term archive of our forecasts
+          safe=/mnt/somisana_safe/models/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          echo "public=$public" >> $GITHUB_OUTPUT
+          echo "safe=$safe" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
         run: |
-          if [ ! -d ${{ steps.archive_dir.outputs.value }} ]; then
-            sudo mkdir -p ${{ steps.archive_dir.outputs.value }}
-            sudo chmod -R 775 ${{ steps.archive_dir.outputs.value }}
+          if [ ! -d ${{ steps.archive_dir.outputs.public }} ]; then
+            sudo mkdir -p ${{ steps.archive_dir.outputs.public }}
+            sudo chmod -R 775 ${{ steps.archive_dir.outputs.public }}
+          fi
+          if [ ! -d ${{ steps.archive_dir.outputs.safe }} ]; then
+            sudo mkdir -p ${{ steps.archive_dir.outputs.safe }}
+            sudo chmod -R 775 ${{ steps.archive_dir.outputs.safe }}
           fi
           # apparently we need sudo permissions to copy to the archive directory
           # we have set up the somisana user to be able to do this without the need for a password
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.value }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.value }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.public }}
+          # the 5 dat forecast gets archived in the backed up somisana_safe mount
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.safe.outputs.safe }}
           
       - name: clean up
         run: |
