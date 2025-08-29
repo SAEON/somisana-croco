@@ -1479,7 +1479,7 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     ds_clim = xr.open_dataset(fname_clim, decode_times=False)
     ds_clim = ds_clim[varlist] # subset to only the variables we need
     ds_hf = xr.open_dataset(fname_in, decode_times=False)
-    ref_hf = np.datetime64(str(Yorig,1,1))
+    ref_hf = ref_hf = np.datetime64(f"{Yorig}-01-01") #np.datetime64(str(Yorig,1,1))
 
     # Ensure climatology file has 12 time steps
     if len(ds_clim.time) != 12:
