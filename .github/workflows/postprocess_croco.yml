@@ -274,7 +274,7 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.public }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.public }}
           # the 5 dat forecast gets archived in the backed up somisana_safe mount
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.safe.outputs.safe }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}
           
       - name: clean up
         run: |

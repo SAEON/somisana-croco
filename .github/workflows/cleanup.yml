@@ -31,9 +31,9 @@ jobs:
         run: |
           # have to run as sudo as the archive is owned by root
           # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
-          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/* -mtime +7 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/* -mtime +7 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/* -mtime +7 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/* -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/* -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/* -mtime +6 -exec rm -rf {} +
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
         id: cleanup_saeon_mount
