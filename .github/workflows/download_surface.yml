@@ -185,10 +185,15 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_yyyymm=${run_date:0:6}
           run_date_hh=${run_date:9:2}
-          archive_dir=/mnt/ocims-somisana/public-facing/sa-forcing/${run_date_yyyymm}/${run_date}
+          archive_dir=/mnt/somisana_safe/models/sa-forcing/${run_date_yyyymm}/${run_date}
+          # also copying it to the public facing directory, just in case we might need it
+          archive_dir_public=/mnt/ocims-somisana/public-facing/sa-forcing/${run_date}
           # make the archive directory
-          if [ ! -d ${archive_dir} ]; then
+          if [ ! -d ${archive_dir}/GFS ]; then
             sudo mkdir -p ${archive_dir}/GFS
+          fi
+          if [ ! -d ${archive_dir_public}/GFS ]; then
+            sudo mkdir -p ${archive_dir_public}/GFS
           fi
           # only archive one run per day (initialised at 00)
           # the archiving is really for validation purposes, and I think one run per day is sufficient for this
@@ -196,5 +201,6 @@ jobs:
             # We need to use sudo in the lines below because the target dir is owned by root
             # Not an issue since we have ensured no password is needed for this command 
             sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${archive_dir}/GFS/
+            sudo cp ${{ env.DATA_DIR }}/GFS/for_croco/*.nc ${archive_dir_public}/GFS/
             # add others here as they come on board e.g. ECMWF?
           fi
