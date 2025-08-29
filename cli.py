@@ -215,7 +215,7 @@ def main():
     parser_compute_anomaly.add_argument('--fname_clim', required=True, type=str, help='input climatology file')
     parser_compute_anomaly.add_argument('--fname_in', required=True, type=str, help='input high frequency (forecast) file')
     parser_compute_anomaly.add_argument('--fname_out', required=True, type=str, help='output directory')
-    parser_compute_anomaly.add_argument('--Yorig', type=str, 
+    parser_compute_anomaly.add_argument('--Yorig', type=parse_int, 
                         default=2000, 
                         help='CROCO reference date in format "YYYY-MM-DD"')
     parser_compute_anomaly.add_argument('--varlist', type=parse_list_str, 
@@ -226,7 +226,7 @@ def main():
                        help='If True, use a constant climatology (interpolated to the midpoint of the HF time series instead of interpolating to the full HF time axis')
     def compute_anomaly_handler(args):
         compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, 
-                        args.ref_date, varlist=args.varlist,
+                        args.Yorig, varlist=args.varlist,
                         use_constant_clim=args.use_constant_clim)
     parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
 
