@@ -103,6 +103,9 @@ def main():
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
+    parser_crocplot.add_argument('--add_vectors', type=parse_bool, 
+                       default='True',
+                       help='If True, usually on the raw croco plot then map will have vectors for currents but if False i.e. anomalies, then no vectors for plots')
     parser_crocplot.add_argument('--skip_time', required=False, type=int, default=1,
             help='Number of time-steps to skip between frames in the animation')
     parser_crocplot.add_argument('--Yorig', type=parse_int, 
