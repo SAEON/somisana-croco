@@ -227,7 +227,27 @@ jobs:
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
-                
+
+      - name: Make anomaly file
+        continue-on-error: true
+        run: |
+          # we need to transform the domain name into the equivalent name on the archive mount where the climatology is stored
+          # e.g. sa_west_02 needs to be sa-west
+          domain="sa-west"
+          domain_mnt="${domain%???}"
+          domain_mnt="${domain_mnt//_/-}"
+          clim_dir=/mnt/ocims-somisana/public-facing/${domain_mnt}/v1.0/hindcasts/GLORYS-ERA5/climatology
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              compute_anomaly \
+                --fname_clim /mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/monthly_climatology.nc \
+                --fname_in /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --fname_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --Yorig 2000 \
+                --varlist temp,zeta \
+                --use_constant_clim True
+                                
       - name: animate surface temperature anomalies
         continue-on-error: true
         run: |
@@ -236,9 +256,11 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
+                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4 \
                 --skip_time 6 \
+                --var temp_anom \
+                --add_vectors False \
                 --Yorig 2000
       - name: animate bottom temperature anomalies
         continue-on-error: true
@@ -248,9 +270,11 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
                 --level 0 \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 \
+                --var temp_anom \
+                --add_vectors False \
+                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_bot.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: animate 100m temperature anomalies
@@ -261,9 +285,11 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
                 --level -100 \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
+                --var temp_anom \
+                --add_vectors False \
+                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: ensure permissions
