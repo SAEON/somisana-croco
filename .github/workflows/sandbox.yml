@@ -20,6 +20,44 @@ jobs:
             git checkout -b new-anom-plot origin/new-anom-plot
           fi
           git pull
+      - name: animate surface temperature and currents
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_surf.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate bottom temperature and currents
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --level 0 \
+                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_bot.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate 100m temperature and currents
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --level -100 \
+                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_100m.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
           
       - name: Make anomaly file
         continue-on-error: true
