@@ -344,11 +344,10 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 ${{ steps.archive_dir.outputs.public }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 ${{ steps.archive_dir.outputs.public }}
           # the 5 dat forecast gets archived in the backed up somisana_safe mount
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}
-          
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}                    
       - name: clean up
         run: |
           # the .nc files we previously copied files from elsewhere into the scratch directory are redundant
           # (it's useful to just dump them in scratch but are just copies so we don't need to keep them at all)
-         sudo rm -f ${{ env.RUN_DIR }}/scratch/*.nc
+          sudo rm -f ${{ env.RUN_DIR }}/scratch/*.nc
  
