@@ -20,6 +20,23 @@ jobs:
             git checkout -b new-anom-plot origin/new-anom-plot
           fi
           git pull
+          
+      - name: Detect latest ops date folder (_00 only)
+        run: |
+          set -euo pipefail
+          ROOT=/home/somisana/ops/main
+          # List all YYYYMMDD_00 folders, sort, take the newest
+          latest=$(ls -1d ${ROOT}/20??????_00 2>/dev/null | sort -V | tail -n1)
+
+          if [ -z "$latest" ]; then
+            echo "No _00 folders found under ${ROOT}" >&2
+            exit 1
+          fi
+
+          echo "DATE=$(basename "$latest")" >> "$GITHUB_ENV"
+          echo "BASE=${latest}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10" >> "$GITHUB_ENV"
+          echo "Detected DATE=${latest}"     
+              
       - name: animate surface temperature and currents
         continue-on-error: true
         run: |
@@ -28,8 +45,8 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
-                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_surf.mp4 \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_surf.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: animate bottom temperature and currents
@@ -40,9 +57,9 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
                 --level 0 \
-                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_bot.mp4 \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_bot.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: animate 100m temperature and currents
@@ -53,9 +70,9 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
                 --level -100 \
-                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_100m.mp4 \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
           
@@ -73,8 +90,8 @@ jobs:
           python /home/somisana/code/somisana-croco/cli.py \
               compute_anomaly \
                 --fname_clim /mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/monthly_climatology.nc \
-                --fname_in /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
-                --fname_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --fname_in /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --fname_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
                 --Yorig 2000 \
                 --varlist temp,zeta \
                 --use_constant_clim True
@@ -87,8 +104,8 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
-                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4 \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4 \
                 --skip_time 6 \
                 --var temp_anom \
                 --add_vectors False \
@@ -101,11 +118,11 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
                 --level 0 \
                 --var temp_anom \
                 --add_vectors False \
-                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_bot.mp4 \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_bot.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: animate 100m temperature anomalies
@@ -116,11 +133,11 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
                 --level -100 \
                 --var temp_anom \
                 --add_vectors False \
-                --mp4_out /home/somisana/ops/main/20250828_00/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_100m.mp4 \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
                  
