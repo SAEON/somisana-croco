@@ -17,6 +17,7 @@ croco_grd = '../GRID/croco_grd.nc'
 
 # Tide file informations
 croco_prefix = 'croco_frc_TPXO10'
+croco_suffix = ''
 tides = ['M2','S2','N2','K2','K1','O1','P1','Q1','Mf','Mm']
 
 cur = True # Set to True if you to compute currents

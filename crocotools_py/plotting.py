@@ -46,7 +46,7 @@ def plot_land(ax, ocean_color = 'white', land_color = cfeature.COLORS['land'], l
                    facecolor=land_color,
                    edgecolor='black')
 
-def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h'):
+def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h', add_land=True):
     '''
     generic stuff applicable to all 2D plots
     
@@ -67,7 +67,8 @@ def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h'):
         extents=[lon_min-dl,lon_max+dl,lat_min-dl,lat_max+dl]
     
     ax.set_extent(extents)
-    plot_land(ax,land_color=land_color,lscale=lscale)
+    if add_land:
+        plot_land(ax,land_color=land_color,lscale=lscale)
     # ax.add_feature(cfeature.LAND, zorder=0, edgecolor='black')
     gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
                       linewidth=1, color='dimgrey', alpha=0.5, linestyle=':')
