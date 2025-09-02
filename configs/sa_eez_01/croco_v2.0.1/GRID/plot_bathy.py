@@ -45,6 +45,34 @@ var_plt = ax.pcolormesh(lon_rho,
 
 crocplot.plot_cbar(ax,var_plt,label=cbar_label,ticks=ticks,loc=cbar_loc)
 
+# add boundaries of subdomains
+def add_subdomain_extents(agrif_file):
+    with open(agrif_file, "r") as f:
+        lines = f.readlines()
+    imin, imax, jmin, jmax, *rest = map(int, lines[1].split())
+    # Extract the corners in order (clockwise)
+    lons = np.concatenate([
+        lon_rho[jmin, imin:imax+1],          # bottom edge (left→right)
+        lon_rho[jmin:jmax+1, imax],          # right edge (bottom→top)
+        lon_rho[jmax, imax:imin-1:-1],       # top edge (right→left)
+        lon_rho[jmax:jmin-1:-1, imin]        # left edge (top→bottom)
+    ])
+    
+    lats = np.concatenate([
+        lat_rho[jmin, imin:imax+1],
+        lat_rho[jmin:jmax+1, imax],
+        lat_rho[jmax, imax:imin-1:-1],
+        lat_rho[jmax:jmin-1:-1, imin]
+    ])
+    ax.plot(lons, lats, 'r-', linewidth=2, transform=ccrs.PlateCarree())
+
+agrif_file_1='../GRID.1/AGRIF_FixedGrids.in.sa-east'
+agrif_file_2='../GRID.1/AGRIF_FixedGrids.in.sa-southeast'
+agrif_file_3='../GRID.1/AGRIF_FixedGrids.in.sa-west'
+add_subdomain_extents(agrif_file_1)
+add_subdomain_extents(agrif_file_2)
+add_subdomain_extents(agrif_file_3)
+
 jpg_out = 'plot_bathy.jpg'
 plt.savefig(jpg_out,dpi=500,bbox_inches = 'tight')
 
