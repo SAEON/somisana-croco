@@ -496,7 +496,10 @@ def get_depths(ds):
         theta_b = ds.theta_b.values
     else: # it's a global attribute in CROCO files
         theta_b = ds.theta_b
-    hc = ds.hc.values
+    if 'hc' in ds.variables: # it's a variable in ROMS files
+        hc = ds.hc.values
+    else: # it's a global attribute in CROCO files
+        hc = ds.hc
     N = np.shape(ds.s_rho)[0]
     type_coordinate = "rho"
     vtransform = ds.Vtransform.values
