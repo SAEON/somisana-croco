@@ -751,7 +751,9 @@ def get_var(fname,var_str,
                        eta_rho=eta_rho,
                        xi_rho=xi_rho,
                        xi_u=xi_u,
+                       xi_v=xi_rho,
                        eta_v=eta_v,
+                       eta_u=eta_rho,
                        missing_dims='ignore' # handle case where input is a previously extracted dataset
                        )
     

@@ -46,7 +46,7 @@ def plot_land(ax, ocean_color = 'white', land_color = cfeature.COLORS['land'], l
                    facecolor=land_color,
                    edgecolor='black')
 
-def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h'):
+def setup_plot(ax, fname, extents=None, add_land=True, land_color=('k', 0), lscale='h'):
     '''
     generic stuff applicable to all 2D plots
     
@@ -67,8 +67,10 @@ def setup_plot(ax, fname, extents=None, land_color=('k', 0), lscale='h'):
         extents=[lon_min-dl,lon_max+dl,lat_min-dl,lat_max+dl]
     
     ax.set_extent(extents)
-    plot_land(ax,land_color=land_color,lscale=lscale)
-    # ax.add_feature(cfeature.LAND, zorder=0, edgecolor='black')
+    if add_land:
+        plot_land(ax,land_color=land_color,lscale=lscale)
+        # ax.add_feature(cfeature.LAND, zorder=0, edgecolor='black')
+    
     gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
                       linewidth=1, color='dimgrey', alpha=0.5, linestyle=':')
     gl.right_labels = False
@@ -256,6 +258,7 @@ def plot(fname,
         num_vectors=25, # baseline number of vectors in each direction, given an aspect ratio of 1
         skip_time = 1, # every nth time-step will be animated (if provided)
         add_time_label = True,
+        add_land = True,
         isobaths = None, # optional list of isobaths to overlay over plot
         jpg_out=None, # full path to jpg output
         gif_out=None, # full path to gif output
@@ -350,7 +353,7 @@ def plot(fname,
         ax = fig.add_axes([0.1, 0.1, width, 0.8], projection=proj)
     
     # set up the plot
-    extents = setup_plot(ax, grdname, extents = extents)
+    extents = setup_plot(ax, grdname, extents = extents, add_land=add_land)
     
     # plot the data
     var_plt = plot_var(ax,data_plt,lon,lat, 
