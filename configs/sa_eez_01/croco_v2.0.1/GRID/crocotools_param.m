@@ -69,12 +69,12 @@ grdfile_d3d='delft3d_grid/11.grd';
 %
 % Number of vertical Levels (! should be the same in param.h !)
 %
-N = 30;
+N = 40;
 %
 %  Vertical grid parameters (! should be the same in croco.in !)
 %
-theta_s    =  5.;
-theta_b    =  7.; % increased from the default to give us more resolution at the bottom, as we are going into shallower waters, where resolving the bottom boundary layer becomes more important
+theta_s    =  7.;
+theta_b    =  2.; % increased from the default to give us more resolution at the bottom, as we are going into shallower waters, where resolving the bottom boundary layer becomes more important
 hc         = 200.;
 vtransform =  2.; % s-coordinate type (1: old- ; 2: new- coordinates)
                   % ! take care to define NEW_S_COORD cpp-key in cppdefs.h 
@@ -171,7 +171,7 @@ FORC_DATA_DIR = [RUN_dir,'DATA/'];
 %
 % CROCO file names (grid, forcing, bulk, climatology, initial)
 %
-grdname  = [CROCO_files_dir,'../GRID/croco_grd.nc'];
+grdname  = [CROCO_files_dir,'croco_grd.nc'];
 frcname  = [CROCO_files_dir,'croco_frc.nc'];
 blkname  = [CROCO_files_dir,'croco_blk.nc'];
 clmname  = [CROCO_files_dir,'croco_clm.nc'];
@@ -427,7 +427,7 @@ itolap_ecmwf = 3;                                      % 3 records for daily  EC
 %--------------------------------------------------
 %
 %ERA5_dir    = [FORC_DATA_DIR,'ERA5_',CROCO_config,'/'];        % ERA5 data dir. [croco format]
-ERA5_dir    = [DATADIR,'ERA5/sa_west_for_croco/'];        % where the reformatted GLORYS data are saved
+ERA5_dir    = [DATADIR,'ERA5/sa_eez_for_croco/'];        % where the reformatted GLORYS data are saved
 % My_ERA5_dir = [FORC_DATA_DIR,'ERA5_native_',CROCO_config,'/']; % ERA5 native data downloaded
                                                                % with python script 
 							       % (the data are already reformatted with the 
@@ -443,7 +443,7 @@ itolap_era5 = 2;                                               % 2 records = 2 h
 OGCM        = 'GLORYS';        % Select OGCM: SODA, ECCO, mercator
 % (We're using our own tools for the boundaries...) 
 Reformat_OGCM = 0; % do we want to do the reformating step (1), or has this been done already (0) 
-My_OGCM_dir = [DATADIR,OGCM,'/sa_west/'];
+My_OGCM_dir = [DATADIR,OGCM,'/sa_eez/'];
 %
 OGCM_dir    = [CROCO_files_dir,'/tmp_for_croco/'];  % OGCM data dir. [croco format] i.e. where the reformatted croco format files are saved before getting intperpolated to bry or clm files, I see this is a temporary directory as the data are not used after the bry/clm files are generated
 %
