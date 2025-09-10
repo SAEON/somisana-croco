@@ -498,7 +498,10 @@ def get_depths(ds):
         theta_b = ds.theta_b.values
     else: # it's a global attribute in CROCO files
         theta_b = ds.theta_b
-    hc = ds.hc.values
+    if 'hc' in ds.variables: # it's a variable in ROMS files
+        hc = ds.hc.values
+    else: # it's a global attribute in CROCO files
+        hc = ds.hc
     N = np.shape(ds.s_rho)[0]
     type_coordinate = "rho"
     vtransform = ds.Vtransform.values
@@ -750,7 +753,9 @@ def get_var(fname,var_str,
                        eta_rho=eta_rho,
                        xi_rho=xi_rho,
                        xi_u=xi_u,
+                       xi_v=xi_rho,
                        eta_v=eta_v,
+                       eta_u=eta_rho,
                        missing_dims='ignore' # handle case where input is a previously extracted dataset
                        )
     
