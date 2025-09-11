@@ -56,7 +56,7 @@ on:
         required: true
         type: string
       CLIM_FILE:
-        description: 'climatology files used for computing anomalies'
+        description: 'climatology file used for computing anomalies'
         required: true
         type: string
 
