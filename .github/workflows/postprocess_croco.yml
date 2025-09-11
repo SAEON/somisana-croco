@@ -55,6 +55,10 @@ on:
         description: 'number of forecast days (integer) from T0'
         required: true
         type: string
+      CLIM_FILE:
+        description: 'climatology files used for computing anomalies'
+        required: true
+        type: string
 
 env:
   # define the directory names for this configuration
@@ -227,21 +231,23 @@ jobs:
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
+      - name: ensure permissions
+        run: |
+          chmod -R 775 ${{ env.RUN_DIR }}
 
+  # compute anomalies and make plots/animations of the anomalies
+  anomalies:
+    if: ${{ inputs.CLIM_FILE != '' }}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
       - name: Make anomaly file
         continue-on-error: true
         run: |
-          # we need to transform the domain name into the equivalent name on the archive mount where the climatology is stored
-          # e.g. sa_west_02 needs to be sa-west
-          domain="sa-west"
-          domain_mnt="${domain%???}"
-          domain_mnt="${domain_mnt//_/-}"
-          clim_dir=/mnt/ocims-somisana/public-facing/${domain_mnt}/v1.0/hindcasts/GLORYS-ERA5/climatology
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               compute_anomaly \
-                --fname_clim /mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/monthly_climatology.nc \
+                --fname_clim ${{ inputs.CLIM_FILE }} \
                 --fname_in ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc \
                 --Yorig 2000 \
@@ -251,7 +257,6 @@ jobs:
       - name: animate surface temperature anomalies
         continue-on-error: true
         run: |
-
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
@@ -265,7 +270,6 @@ jobs:
       - name: animate bottom temperature anomalies
         continue-on-error: true
         run: |
-
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
@@ -280,7 +284,6 @@ jobs:
       - name: animate 100m temperature anomalies
         continue-on-error: true
         run: |
-
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
@@ -298,10 +301,10 @@ jobs:
 
   # copy data over to where it will be archived
   archive:
-    needs: [postprocess,plotting]
+    needs: [postprocess,plotting,anomalies]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
-    if: ${{ inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims3' }}
+    if: ${{ always() && inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims3' }}
     steps:
       - name: get archive dir
         id: archive_dir

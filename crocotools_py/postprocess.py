@@ -1450,7 +1450,7 @@ def get_section(fname,
     return ds
 
 def compute_anomaly(fname_clim, fname_in, fname_out,
-                    Yorig=2000,#Yorig=2000,
+                    Yorig=2000,
                     varlist=["temp", "u", "v", "salt", "zeta"],
                     use_constant_clim=False):
     """
@@ -1461,15 +1461,15 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     fname_clim : str
         Path to the NetCDF file containing 12 monthly climatology time steps.
     fname_in : str
-        Path to the NetCDF file containing high-frequency model output (e.g., hourly).
+        Path to the NetCDF file containing high-frequency model output on which we want to compute anomalies 
     fname_out : str
         Path to output NetCDF file containing the anomalies
-    ref_date : str, optional
-        Reference date (e.g., "2000-01-01") used to define the high-frequency time axis based on Yorig.
+    Yorig : str, optional
+        Reference date ("Yorig-01-01") used to define the time axis of fname_in
     varlist : list of str, optional
         List of variables for which anomalies should be computed.
      use_constant_clim : bool, optional
-        If True, use a constant climatology (interpolated to midpoint of HF time axis insted of to the entire HF time axis).
+        If True, subtract a constant value from fname_in computed as the climatology at the midpoint of the time axis of fname_in.
         This is useful when the high frequency file is very large, but a single climatology value is sufficient
         An alternative approach to this problem is to chunk the data. This works to speed up the interpolation step
         but leads to memory issue when trying to write the output (at least I couldn't solve them without bypassing the problem)

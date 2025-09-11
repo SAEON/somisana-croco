@@ -78,6 +78,7 @@ jobs:
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
+      CLIM_FILE: '/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/monthly_climatology.nc'
 
   run_sa_southeast_gfs:
     needs: [run_sa_west_gfs]
@@ -115,6 +116,7 @@ jobs:
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 5
+      CLIM_FILE: ''
   
   # Now the SAWS forced runs
   # We only execute the SAWS forced runs if inputs.SAWS_OK == 1 i.e. if we were able to find
@@ -159,6 +161,7 @@ jobs:
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
+      CLIM_FILE: '/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/monthly_climatology.nc'
 
   run_sa_southeast_saws:
     needs: [run_sa_west_saws]
@@ -197,3 +200,4 @@ jobs:
       OGCM: ${{ inputs.OGCM }}
       HDAYS: 5
       FDAYS: 2.45
+      CLIM_FILE: ''
