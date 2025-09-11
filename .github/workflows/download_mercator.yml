@@ -67,32 +67,23 @@ jobs:
           run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
       - name: download MERCATOR
-        uses: nick-fields/retry@master
-        with:
-          timeout_minutes: 90 # Script is considered failed if this limit is reached
-          retry_wait_seconds: 300 # Wait 5 minutes and try again
-          max_attempts: 3
-          retry_on: any
-          warning_on_retry: true
-          shell: bash
-          continue_on_error: false
-          command: |
-            download_dir=/home/giles/mercator_download
-            mkdir -p ${download_dir}
-            docker run \
-              --rm \
-              -v ${download_dir}:/tmp/download \
-              ghcr.io/saeon/somisana-download_main:latest \
-              download_mercator_ops \
-                --usrname ${{ secrets.COPERNICUS_USERNAME }} \
-                --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
-                --domain 11,36,-39,-25 \
-                --run_date ${{ steps.format_date.outputs.value }} \
-                --hdays ${{ inputs.HDAYS }} \
-                --fdays ${{ inputs.FDAYS }} \
-                --outputDir '/tmp/download'
-            # copy to a shared dir
-            cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc
+        run: |
+          download_dir=/home/giles/mercator_download
+          mkdir -p ${download_dir}
+          docker run \
+            --rm \
+            -v ${download_dir}:/tmp/download \
+            ghcr.io/saeon/somisana-download_main:latest \
+            download_mercator_ops \
+              --usrname ${{ secrets.COPERNICUS_USERNAME }} \
+              --passwd ${{ secrets.COPERNICUS_PASSWORD }} \
+              --domain 11,36,-39,-25 \
+              --run_date ${{ steps.format_date.outputs.value }} \
+              --hdays ${{ inputs.HDAYS }} \
+              --fdays ${{ inputs.FDAYS }} \
+              --outputDir '/tmp/download'
+          # copy to a shared dir
+          cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc
       - name: clean up files on saeonapps
         run: |
           # this is a terrible hack I know...
