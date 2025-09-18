@@ -304,7 +304,7 @@ jobs:
     needs: [postprocess,plotting,anomalies]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
-    if: ${{ always() && inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims3' }}
+    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
     steps:
       - name: get archive dir
         id: archive_dir
@@ -318,12 +318,18 @@ jobs:
           #
           # the public facing archive - data older than 5 days gets cleaned
           public=/mnt/ocims-somisana/public-facing/${domain}/${{ inputs.VERSION }}/forecasts/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          public_latest=/mnt/ocims-somisana/public-facing/${domain}/${{ inputs.VERSION }}/forecasts/latest/${{ inputs.OGCM }}-${{ inputs.BLK }}
           # the backed up long term archive of our forecasts
           safe=/mnt/somisana_safe/models/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "public=$public" >> $GITHUB_OUTPUT
+          echo "public_latest=$public_latest" >> $GITHUB_OUTPUT
           echo "safe=$safe" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
         run: |
+          if [ ! -d ${{ steps.archive_dir.outputs.public_latest }} ]; then
+            sudo mkdir -p ${{ steps.archive_dir.outputs.public_latest }}
+            sudo chmod -R 775 ${{ steps.archive_dir.outputs.public_latest }}
+          fi
           if [ ! -d ${{ steps.archive_dir.outputs.public }} ]; then
             sudo mkdir -p ${{ steps.archive_dir.outputs.public }}
             sudo chmod -R 775 ${{ steps.archive_dir.outputs.public }}
@@ -341,14 +347,17 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.mp4 ${{ steps.archive_dir.outputs.public }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.mp4 ${{ steps.archive_dir.outputs.public }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 ${{ steps.archive_dir.outputs.public }}
-          # anomaly plots (only if the climatology file was provided)
+          # anomaly plots (only if the climatology file was provided for the computation of anomalies)
           if [ ! "${{ inputs.CLIM_FILE }}" = '' ]; then
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc ${{ steps.archive_dir.outputs.public }}
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 ${{ steps.archive_dir.outputs.public }}
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 ${{ steps.archive_dir.outputs.public }}
             sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 ${{ steps.archive_dir.outputs.public }}
           fi
-          # the 5 dat forecast gets archived in the backed up somisana_safe mount
+          # update the 'latest' directory
+          sudo rm -f ${{ steps.archive_dir.outputs.public_latest }}/*
+          sudo cp ${{ steps.archive_dir.outputs.public }}/* ${{ steps.archive_dir.outputs.public_latest }}
+          # the 5 day forecast gets archived in the backed up somisana_safe mount
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}                    
       - name: clean up
         run: |
