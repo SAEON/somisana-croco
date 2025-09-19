@@ -12,7 +12,7 @@ import sys, os
 from datetime import datetime, timedelta
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
-from crocotools_py.postprocess import get_ts_multivar
+from crocotools_py.postprocess import get_ts_multivar, compute_anomaly
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 
@@ -103,11 +103,14 @@ def main():
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
+    parser_crocplot.add_argument('--add_vectors', type=parse_bool, 
+                       default='True',
+                       help='If True, current vectors are added to the plot')
     parser_crocplot.add_argument('--skip_time', required=False, type=int, default=1,
             help='Number of time-steps to skip between frames in the animation')
     parser_crocplot.add_argument('--Yorig', type=parse_int, 
                         default=2000, 
-                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     def crocplot_handler(args):
         # a lot of the crocplot inputs are hard coded below but could be made configurable in future
         # there are also other potential optional inputs to this function which we aren't specifying here
@@ -121,7 +124,7 @@ def main():
                       extents = None,
                       Yorig = args.Yorig,
                       cbar_label=args.cbar_label,
-                      add_vectors = True,
+                      add_vectors = args.add_vectors,
                       skip_time = args.skip_time,
                       isobaths=args.isobaths,
                       gif_out=args.gif_out,
@@ -140,7 +143,7 @@ def main():
     parser_regrid_tier1.add_argument('--dir_out', required=True, help='tier 1 output directory')
     parser_regrid_tier1.add_argument('--Yorig', type=parse_int, 
                         default=2000, 
-                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_regrid_tier1.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     def regrid_tier1_handler(args):
         regrid_tier1(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link)
@@ -157,7 +160,7 @@ def main():
     parser_regrid_tier2.add_argument('--dir_out', required=True, help='tier 2 output directory')
     parser_regrid_tier2.add_argument('--Yorig', type=parse_int, 
                         default=2000, 
-                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_regrid_tier2.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
                          default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],  
@@ -175,7 +178,7 @@ def main():
     parser_regrid_tier3.add_argument('--dir_out', required=True, help='tier 3 output directory')
     parser_regrid_tier3.add_argument('--Yorig', type=parse_int, 
                         default=2000, 
-                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_regrid_tier3.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier3.add_argument('--spacing', type=float,default=0.01,
                          help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
@@ -192,7 +195,7 @@ def main():
     parser_get_ts_multivar.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
     parser_get_ts_multivar.add_argument('--Yorig', type=parse_int, 
                         default=2000, 
-                        help='Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01')
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
@@ -207,6 +210,28 @@ def main():
                write_nc=True, # default behaviour in the cli is to write a file
                fname_nc=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
+    
+    # ----------------
+    # compute_anomaly
+    # ----------------
+    parser_compute_anomaly=subparsers.add_parser('compute_anomaly', help='Compute anomalies by subtracting monthly climatology from high-frequency CROCO output.')
+    parser_compute_anomaly.add_argument('--fname_clim', required=True, type=str, help='input climatology file')
+    parser_compute_anomaly.add_argument('--fname_in', required=True, type=str, help='input high frequency (forecast) file')
+    parser_compute_anomaly.add_argument('--fname_out', required=True, type=str, help='output directory')
+    parser_compute_anomaly.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
+    parser_compute_anomaly.add_argument('--varlist', type=parse_list_str, 
+                        default=['temp','u','v', 'salt','zeta'],
+                        help='optional list of CROCO variable names')
+    parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_bool, 
+                       default='False',
+                       help='If True, subtract a constant value from fname_in, computed as the climatology at the midpoint of the time axis of fname_in')
+    def compute_anomaly_handler(args):
+        compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, 
+                        args.Yorig, varlist=args.varlist,
+                        use_constant_clim=args.use_constant_clim)
+    parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
 
     # ----------------
     # make_tides_fcst

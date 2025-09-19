@@ -56,21 +56,8 @@ jobs:
         run: |
           echo "value=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
   
-  # everything below here runs on self-hosted runners i.e. dedicated servers hosted by DFFE
-  # for now we have two, running identical workflows, simply to test the stability of the new server
   # in future, if we had two different servers, we could run different domains/configurations on them in parallel
   # by adding new configurable inputs to run_ops_server.yml 
-  #
- 
-  run_ops_mims1:
-    needs: [envs,build_cli]
-    uses: ./.github/workflows/run_ops_server.yml 
-    with:
-      RUNNER_NAME: mims1
-      BRANCH_REF: ${{ needs.envs.outputs.BRANCH_REF }}
-      RUN_DATE: ${{ needs.envs.outputs.RUN_DATE }}
-    secrets: inherit
- 
   run_ops_mims3:
     needs: [envs,build_cli]
     uses: ./.github/workflows/run_ops_server.yml 

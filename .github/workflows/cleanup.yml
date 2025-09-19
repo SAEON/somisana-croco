@@ -13,9 +13,8 @@ on:
         type: string
 
 jobs:
-  cleanup-files:
+  cleanup-ops-server:
     runs-on: ${{ inputs.RUNNER_NAME }}
-    if: ${{ inputs.RUNNER_NAME == 'mims1' }}
     steps:
       - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
         # remove all directories older than 5 days on the the server where the model is run 
@@ -23,6 +22,9 @@ jobs:
         id: cleanup_runner
         run: |
           sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
+  cleanup-archive:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
       - name: Clean /mnt/ocims-somisana
         # clean certain file types in the public facing archive
         # we only want to keep the forecast portion of the archived forecast runs

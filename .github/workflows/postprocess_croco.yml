@@ -55,6 +55,10 @@ on:
         description: 'number of forecast days (integer) from T0'
         required: true
         type: string
+      CLIM_FILE:
+        description: 'climatology file used for computing anomalies'
+        required: true
+        type: string
 
 env:
   # define the directory names for this configuration
@@ -174,7 +178,7 @@ jobs:
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
                 --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --gif_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: animate bottom temperature and currents
@@ -199,7 +203,7 @@ jobs:
               crocplot \
                 --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --level 0 \
-                --gif_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: animate 100m temperature and currents
@@ -224,7 +228,71 @@ jobs:
               crocplot \
                 --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --level -100 \
-                --gif_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: ensure permissions
+        run: |
+          chmod -R 775 ${{ env.RUN_DIR }}
+
+  # compute anomalies and make plots/animations of the anomalies
+  anomalies:
+    if: ${{ inputs.CLIM_FILE != '' }}
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
+      - name: Make anomaly file
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              compute_anomaly \
+                --fname_clim ${{ inputs.CLIM_FILE }} \
+                --fname_in ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc \
+                --Yorig 2000 \
+                --varlist temp,zeta \
+                --use_constant_clim True
+                                
+      - name: animate surface temperature anomalies
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
+                --skip_time 6 \
+                --var temp_anom \
+                --add_vectors False \
+                --Yorig 2000
+      - name: animate bottom temperature anomalies
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc \
+                --level 0 \
+                --var temp_anom \
+                --add_vectors False \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate 100m temperature anomalies
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc \
+                --level -100 \
+                --var temp_anom \
+                --add_vectors False \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
                 --skip_time 6 \
                 --Yorig 2000
       - name: ensure permissions
@@ -233,10 +301,10 @@ jobs:
 
   # copy data over to where it will be archived
   archive:
-    needs: [postprocess,plotting]
+    needs: [postprocess,plotting,anomalies]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
-    if: ${{ inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims1' }}
+    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
     steps:
       - name: get archive dir
         id: archive_dir
@@ -250,12 +318,18 @@ jobs:
           #
           # the public facing archive - data older than 5 days gets cleaned
           public=/mnt/ocims-somisana/public-facing/${domain}/${{ inputs.VERSION }}/forecasts/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
+          public_latest=/mnt/ocims-somisana/public-facing/${domain}/${{ inputs.VERSION }}/forecasts/latest/${{ inputs.OGCM }}-${{ inputs.BLK }}
           # the backed up long term archive of our forecasts
           safe=/mnt/somisana_safe/models/${domain}/${{ inputs.VERSION }}/forecasts/${run_date_yyyymm}/${run_date}/${{ inputs.OGCM }}-${{ inputs.BLK }}
           echo "public=$public" >> $GITHUB_OUTPUT
+          echo "public_latest=$public_latest" >> $GITHUB_OUTPUT
           echo "safe=$safe" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
         run: |
+          if [ ! -d ${{ steps.archive_dir.outputs.public_latest }} ]; then
+            sudo mkdir -p ${{ steps.archive_dir.outputs.public_latest }}
+            sudo chmod -R 775 ${{ steps.archive_dir.outputs.public_latest }}
+          fi
           if [ ! -d ${{ steps.archive_dir.outputs.public }} ]; then
             sudo mkdir -p ${{ steps.archive_dir.outputs.public }}
             sudo chmod -R 775 ${{ steps.archive_dir.outputs.public }}
@@ -270,12 +344,21 @@ jobs:
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.public }}
           sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.public }}
           sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.gif ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.gif ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.gif ${{ steps.archive_dir.outputs.public }}
-          # the 5 dat forecast gets archived in the backed up somisana_safe mount
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}
-          
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.mp4 ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.mp4 ${{ steps.archive_dir.outputs.public }}
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 ${{ steps.archive_dir.outputs.public }}
+          # anomaly plots (only if the climatology file was provided for the computation of anomalies)
+          if [ ! "${{ inputs.CLIM_FILE }}" = '' ]; then
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc ${{ steps.archive_dir.outputs.public }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 ${{ steps.archive_dir.outputs.public }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 ${{ steps.archive_dir.outputs.public }}
+            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 ${{ steps.archive_dir.outputs.public }}
+          fi
+          # update the 'latest' directory
+          sudo rm -f ${{ steps.archive_dir.outputs.public_latest }}/*
+          sudo cp ${{ steps.archive_dir.outputs.public }}/* ${{ steps.archive_dir.outputs.public_latest }}
+          # the 5 day forecast gets archived in the backed up somisana_safe mount
+          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}                    
       - name: clean up
         run: |
           # the .nc files we previously copied files from elsewhere into the scratch directory are redundant

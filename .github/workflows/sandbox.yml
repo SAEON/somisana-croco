@@ -2,47 +2,196 @@ name: Sandbox for testing individual calleable workflows
 # (not used in th operational workflow at all)
 
 on:
-  workflow_dispatch:
+    workflow_dispatch:
 
 jobs:
-  build_cli:
-    uses: ./.github/workflows/build_images.yml
-    with:
-      IMAGE_ID: cli
-
+      
   # Download hycom 
-  download_hycom:
+  plotting-surf-anom:
     runs-on: mims1
-    needs: [build_cli]
     steps:
-      - name: Clean and create HYCOM directory with correct permissions
+      - name: pull latest somisana-croco code to server
         run: |
-          sudo rm -rf /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
-          sudo mkdir -p /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
-          sudo chown -R $(id -u):$(id -g) /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
-          sudo chmod -R 775 /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+          cd /home/somisana/code/somisana-croco
+          git fetch origin
+          if git show-ref --verify --quiet refs/heads/new-anom-plot; then
+            git checkout new-anom-plot
+          else
+            git checkout -b new-anom-plot origin/new-anom-plot
+          fi
+          git pull
+          
+      - name: Detect latest ops date folder (_00 only)
+        run: |
+          set -euo pipefail
+          ROOT=/home/somisana/ops/main
+          # List all YYYYMMDD_00 folders, sort, take the newest
+          latest=$(ls -1d ${ROOT}/20??????_00 2>/dev/null | sort -V | tail -n1)
 
-      - name: Download HYCOM
-        uses: nick-fields/retry@master
-        with:
-          timeout_minutes: 60
-          retry_wait_seconds: 300
-          max_attempts: 3
-          retry_on: any
-          warning_on_retry: true
-          shell: bash
-          continue_on_error: false
-          command: |
-            docker run \
-              --user $(id -u):$(id -g) \
-              --rm \
-              --entrypoint bash \
-              -v /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
-              -c 'python cli.py download_hycom \
-                --domain 11,36,-39,-25 \
-                --run_date "2025-05-19 00:00:00" \
-                --hdays 5 \
-                --fdays 5 \
-                --savedir "/tmp" \
-                --pad True && echo "Download completed" || echo "Download failed"'
+          if [ -z "$latest" ]; then
+            echo "No _00 folders found under ${ROOT}" >&2
+            exit 1
+          fi
+
+          echo "DATE=$(basename "$latest")" >> "$GITHUB_ENV"
+          echo "BASE=${latest}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10" >> "$GITHUB_ENV"
+          echo "Detected DATE=${latest}"     
+              
+      - name: animate surface temperature and currents
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_surf.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate bottom temperature and currents
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --level 0 \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_bot.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate 100m temperature and currents
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --level -100 \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_100m.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+          
+      - name: Make anomaly file
+        continue-on-error: true
+        run: |
+          # we need to transform the domain name into the equivalent name on the archive mount where the climatology is stored
+          # e.g. sa_west_02 needs to be sa-west
+          domain="sa-west"
+          domain_mnt="${domain%???}"
+          domain_mnt="${domain_mnt//_/-}"
+          clim_dir=/mnt/ocims-somisana/public-facing/${domain_mnt}/v1.0/hindcasts/GLORYS-ERA5/climatology
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              compute_anomaly \
+                --fname_clim /mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/monthly_climatology.nc \
+                --fname_in /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/output/croco_avg.nc \
+                --fname_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --Yorig 2000 \
+                --varlist temp,zeta \
+                --use_constant_clim True
+                        
+      - name: animate surface temperature anomalies
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_surf.mp4 \
+                --skip_time 6 \
+                --var temp_anom \
+                --add_vectors False \
+                --Yorig 2000
+      - name: animate bottom temperature anomalies
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --level 0 \
+                --var temp_anom \
+                --add_vectors False \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_bot.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+      - name: animate 100m temperature anomalies
+        continue-on-error: true
+        run: |
+
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh          
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_anom.nc \
+                --level -100 \
+                --var temp_anom \
+                --add_vectors False \
+                --mp4_out /home/somisana/ops/main/${BASE}/sa_west_02/croco_v1.3.1/C06_I99_MERCATOR_GFS_TPXO10/postprocess/croco_avg_temp_anom_100m.mp4 \
+                --skip_time 6 \
+                --Yorig 2000
+                 
+
+
+#%% The sandbox replaced by the above
+
+
+
+# name: Sandbox for testing individual calleable workflows
+# # (not used in th operational workflow at all)
+
+# on:
+#   workflow_dispatch:
+
+# jobs:
+#   build_cli:
+#     uses: ./.github/workflows/build_images.yml
+#     with:
+#       IMAGE_ID: cli
+
+#   # Download hycom 
+#   download_hycom:
+#     runs-on: mims1
+#     needs: [build_cli]
+#     steps:
+#       - name: Clean and create HYCOM directory with correct permissions
+#         run: |
+#           sudo rm -rf /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+#           sudo mkdir -p /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+#           sudo chown -R $(id -u):$(id -g) /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+#           sudo chmod -R 775 /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM
+
+#       - name: Download HYCOM
+#         uses: nick-fields/retry@master
+#         with:
+#           timeout_minutes: 60
+#           retry_wait_seconds: 300
+#           max_attempts: 3
+#           retry_on: any
+#           warning_on_retry: true
+#           shell: bash
+#           continue_on_error: false
+#           command: |
+#             docker run \
+#               --user $(id -u):$(id -g) \
+#               --rm \
+#               --entrypoint bash \
+#               -v /home/somisana/ops/update-hycom-download/20250519_00/downloaded_data/HYCOM:/tmp \
+#               ghcr.io/saeon/somisana-croco_cli_update-hycom-download:latest \
+#               -c 'python cli.py download_hycom \
+#                 --domain 11,36,-39,-25 \
+#                 --run_date "2025-05-19 00:00:00" \
+#                 --hdays 5 \
+#                 --fdays 5 \
+#                 --savedir "/tmp" \
+#                 --pad True && echo "Download completed" || echo "Download failed"'
