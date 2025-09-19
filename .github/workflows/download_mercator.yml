@@ -55,7 +55,7 @@ jobs:
     # then this job can be deleted and the commented download step in the mercator job can be used
     runs-on: saeonapps
     needs: [check_files]
-    if: ${{ needs.check_files.outputs.OGCM_OK == '0' && inputs.RUNNER_NAME == 'mims3' }}
+    if: ${{ needs.check_files.outputs.OGCM_OK == '0' }}
     steps:
       - name: pull latest download docker image to the saeon-apps server
         run: |
@@ -66,6 +66,19 @@ jobs:
           run_date=${{ inputs.RUN_DATE }}
           run_date_formatted="'${run_date:0:4}-${run_date:4:2}-${run_date:6:2} ${run_date:9:2}:00:00'"
           echo "value=$run_date_formatted" >> $GITHUB_OUTPUT
+      - name: clean up files on saeonapps
+        run: |
+          # this is a terrible hack I know...
+          # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
+          # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
+          # so I'm using the cli docker image to remove the files it originally created
+          download_dir=/home/giles/mercator_download
+          docker run \
+            --rm \
+            --entrypoint /bin/bash \
+            -v ${download_dir}:/mnt/tmp \
+            ghcr.io/saeon/somisana-download_main:latest \
+              -c "rm -f /mnt/tmp/*nc"
       - name: download MERCATOR
         run: |
           download_dir=/home/giles/mercator_download
@@ -84,19 +97,6 @@ jobs:
               --outputDir '/tmp/download'
           # copy to a shared dir
           cp ${download_dir}/MERCATOR_${{ inputs.RUN_DATE }}.nc /mnt/somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc
-      - name: clean up files on saeonapps
-        run: |
-          # this is a terrible hack I know...
-          # The cli wouldn't run as a non-root user due to permissions issues on saeonapps (even though I did try to get around this in visudo)
-          # so the output from the cli in owned by root, making it hard to clean up as a non-root user operationally
-          # so I'm using the cli docker image to remove the files it originally created
-          download_dir=/home/giles/mercator_download
-          docker run \
-            --rm \
-            --entrypoint /bin/bash \
-            -v ${download_dir}:/mnt/tmp \
-            ghcr.io/saeon/somisana-download_main:latest \
-              -c "rm -f /mnt/tmp/*nc"
 
   download_mercator:
     runs-on: ${{ inputs.RUNNER_NAME }}
@@ -117,25 +117,7 @@ jobs:
           set -e
           file="/mnt/saeon-somisana/data/shared/MERCATOR_${{ inputs.RUN_DATE }}.nc"
           dest="${{ env.DATA_DIR }}/MERCATOR/MERCATOR_${{ inputs.RUN_DATE }}.nc"
-          
-          # I'm putting the copy command in a loop since at the time of writing we are running the same operational code
-          # on two servers and we have to run the needed download_mercator_saeon step on one of the servers otherwise we get an error from Mercator for too many downloads at once
-          # So this loop handles the case where one of the servers has to wait for the file to be made available
-          for i in {1..40}; do
-            if [ -f "$file" ]; then
-              echo "File found, copying..."
-              # We need to use sudo in the line below because the mounted dir is owned by root
-              sudo cp "$file" "$dest"
-              echo "Copy successful."
-              exit 0
-            else
-              echo "[$i/40] File not found yet, retrying in 2 minutes..."
-              sleep 120
-            fi
-          done
-      
-          echo "File not found after 40 attempts." >&2
-          exit 1
+          sudo cp "$file" "$dest"
 
 #      - name: Format RUN_DATE
 #        id: format_date
@@ -174,7 +156,7 @@ jobs:
     needs: [download_mercator]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
-    if: ${{ always() && inputs.BRANCH_REF == 'main' && inputs.RUNNER_NAME == 'mims3' }}
+    if: ${{ always() && inputs.BRANCH_REF == 'main' }}
     continue-on-error: true
     steps:
       - name: archive forcing files on ocims infrastructure
