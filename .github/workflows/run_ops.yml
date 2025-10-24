@@ -1,7 +1,7 @@
 name: Run SOMISANA forecast models on MIMS
 
 on:
-  schedule:
+  # schedule:
   # the workflow designed to every 6 hours. Optionally it can also be run every 12 or 24 hours
   # initialise once a day at 3am
   # - cron: '0 3 * * *'
