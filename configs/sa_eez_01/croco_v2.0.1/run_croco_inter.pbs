@@ -1,8 +1,8 @@
 #!/bin/bash
-#PBS -l select=5:ncpus=24:mpiprocs=24
+#PBS -l select=4:ncpus=16:mpiprocs=16
 #PBS -P ERTH1103
 #PBS -q normal
-#PBS -l walltime=03:00:00
+#PBS -l walltime=06:00:00
 #PBS -o /home/gfearon/run_croco_inter_lengau/stdout 
 #PBS -e /home/gfearon/run_croco_inter_lengau/stderr 
 #
@@ -30,6 +30,19 @@ INPUTDIR_SRF=$RUNDIR/$ATMOS_BULK
 INPUTDIR_BRY=$RUNDIR/$OGCM
 INPUTDIR_GRD=$RUNDIR/GRID
 INPUTDIR_TID=$RUNDIR/$TIDE_FRC
+
+# check to see if these input variables were parsed to this job submission
+# this allows us to use this same job as a single job i.e. executed as "qsub run_croco_inter.pbs"
+# or alternatively executed inside a bash script which submits a few months at a time
+# see run_croco_inter_chpc.bash
+# essentially in the multiple job submission approach we over-write whatever these variables were in ${INPUTDIR_IN}/myenv_in.sh
+if [ $# -eq 5 ]; then
+    NY_START=$1
+    NY_END=$2
+    NM_START=$3
+    NM_END=$4
+    RSTFLAG=$5
+fi
 
 MODEL=croco
 RUNNAME=${EXENAME}_${INNAME}_${OGCM}_${ATMOS_BULK}
@@ -253,6 +266,11 @@ while [ $NY != $NY_END ]; do
         ENDF=
       else
         ENDF=.${LEVEL}
+        if [[ ${LEVEL} -gt 1 ]]; then
+          # this if statement is here because all of our subdomains are nested inside the same parent
+          # so we want to keep the steps as they are from LEVEL = 2 and up 
+          T_REF=1
+        fi
 	DT=$((DT / T_REF))
 	NUMTIMES=$((T_REF * NUMTIMES))
 	NUMAVG=$((T_REF * NUMAVG))

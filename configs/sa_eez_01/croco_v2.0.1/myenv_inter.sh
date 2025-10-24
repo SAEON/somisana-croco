@@ -11,8 +11,10 @@ export SOURCE=/home/gfearon/croco-v2.0.1/OCEAN/
 export EXENAME=C11
 
 # MPI partitioning
-export MPI_NUM_X=30
+export MPI_NUM_X=16
 export MPI_NUM_Y=4
+#export MPI_NUM_X=24
+#export MPI_NUM_Y=5
 export MPI_NUM_PROCS=$(($MPI_NUM_X * $MPI_NUM_Y))
 
 # boundary and atmospheric forcing
@@ -22,8 +24,8 @@ export ATMOS_BULK=ERA5
 export FORCING_FILES=0
 export ATMOS_FRC=NA
 #
-export CLIMATOLOGY_FILES=0
-export BOUNDARY_FILES=1
+export CLIMATOLOGY_FILES=1
+export BOUNDARY_FILES=0
 export OGCM=GLORYS
 #
 export TIDE_FILES=1

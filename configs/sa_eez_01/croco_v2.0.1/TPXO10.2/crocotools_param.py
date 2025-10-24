@@ -12,11 +12,11 @@ if multi_files:
     v_file = 'u_<tides>_tpxo10_atlas_30_v2.nc' # northward currents file names. if wave_separated put <tides> where wave name is found
 
 # CROCO grid informations
-croco_grd = '../GRID/croco_grd.nc'
+croco_grd = '../GRID.2/croco_grd.nc.2'
 
 # Tide file informations
 croco_prefix = 'croco_frc_TPXO10'
-croco_suffix = ''
+croco_suffix = '.2'
 tides = ['M2','S2','N2','K2','K1','O1','P1','Q1','Mf','Mm']
 
 cur = True # Set to True if you to compute currents

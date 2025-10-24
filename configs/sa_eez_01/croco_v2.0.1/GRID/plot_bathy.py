@@ -66,9 +66,9 @@ def add_subdomain_extents(agrif_file):
     ])
     ax.plot(lons, lats, 'r-', linewidth=2, transform=ccrs.PlateCarree())
 
-agrif_file_1='../GRID.1/AGRIF_FixedGrids.in.sa-east'
-agrif_file_2='../GRID.1/AGRIF_FixedGrids.in.sa-southeast'
-agrif_file_3='../GRID.1/AGRIF_FixedGrids.in.sa-west'
+agrif_file_1='../GRID.1/AGRIF_FixedGrids.in'
+agrif_file_2='../GRID.2/AGRIF_FixedGrids.in'
+agrif_file_3='../GRID.3/AGRIF_FixedGrids.in'
 add_subdomain_extents(agrif_file_1)
 add_subdomain_extents(agrif_file_2)
 add_subdomain_extents(agrif_file_3)
