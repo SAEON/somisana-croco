@@ -66,3 +66,36 @@ class CROCO_Attrs:
         self.bvstr  = VariableMetadata('Stress due to sea water on sea floor in y direction', 'N m-2', 'stress_due_to_sea_water_on_sea_floor_in_y_direction')
         self.vbar   = VariableMetadata('Barotropic velocity of sea water in y direction', 'm s-1', 'barotropic_sea_water_y_velocity')
         self.w      = VariableMetadata('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component')
+        # ------------------------------------------------------------------
+        # MHW daily fields (for run_mhw_detection outputs)
+        # ------------------------------------------------------------------
+        self.seas = VariableMetadata(
+            "Seasonal climatology of sea water temperature",
+            "degC",
+            "sea_water_temperature_climatology",
+        )
+        self.thresh = VariableMetadata(
+            "Marine heatwave threshold (e.g. 90th percentile)",
+            "degC",
+            "sea_water_temperature_threshold",
+        )
+        self.anom_relSeas = VariableMetadata(
+            "Temperature anomaly relative to seasonal climatology",
+            "degC",
+            "sea_water_temperature_anomaly_relative_to_climatology",
+        )
+        self.anom_relThresh = VariableMetadata(
+            "Temperature anomaly relative to MHW threshold",
+            "degC",
+            "sea_water_temperature_anomaly_relative_to_threshold",
+        )
+        self.is_mhw = VariableMetadata(
+            "Marine heatwave day flag (1=in event, 0=not in event)",
+            "1",
+            "marine_heatwave_day_flag",
+        )
+        self.category_code = VariableMetadata(
+            "Marine heatwave category code (1=Moderate,2=Strong,3=Severe,4=Extreme)",
+            "1",
+            "marine_heatwave_category_code",
+        )
