@@ -1,17 +1,16 @@
 #!/bin/bash
 
-CURRENT_DATE="2008-01-01"
+# This script is designed to run on the chpc
+# it submits a series of run_croco_inter.pbs job scripts, each of which is for a few months 
+# this is needed to ensure we stay under the 48 hr job length for each job submission
+
+CURRENT_DATE="2008-05-01"
 END_DATE="2013-12-31"
-RSTFLAG=0 # set to 1 if you want to restart from a previous months output
+RSTFLAG=1 # set to 1 if you want to restart from a previous months output
 prev_jobid=""
-   
-# I want to submit command line inputs to run_croco_inter.pbs for NY, NM and RSTFLAG
-# but when I do this the #PBS directives are not read!
-# So I am defining them here as inputs to qsub
-# This is a bit hacky, and could cause confusion when editing the #PBS directives in run_croco_inter.pbs and not seeing any change in behaviour
-# but this is all I could come up with at the time 
-QSUB_OPTIONS="-l select=4:ncpus=16:mpiprocs=16 -P ERTH1103 -q normal -l walltime=24:00:00"
-QSUB_OPTIONS+=" -o /home/gfearon/run_croco_inter_lengau/stdout -e /home/gfearon/run_croco_inter_lengau/stderr"
+
+# we need to give the absolute path to the script, even though we are running this bash script from the same directory!
+SCRIPT="/home/gfearon/lustre/somisana-croco/configs/sa_eez_01/croco_v2.0.1/run_croco_inter.pbs"
 
 while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ]; do
 
@@ -25,10 +24,10 @@ while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ];
     
     if [ -z "$prev_jobid" ]; then
         # First job (no dependency)
-        jobid=$(qsub $QSUB_OPTIONS -- run_croco_inter.pbs $NY_START $NY_END $NM_START $NM_END $RSTFLAG)
+        jobid=$(qsub -v NY_START=$NY_START,NY_END=$NY_END,NM_START=$NM_START,NM_END=$NM_END,RSTFLAG=$RSTFLAG $SCRIPT)
     else
         # include dependency of previous job
-        jobid=$(qsub -W depend=afterok:$prev_jobid $QSUB_OPTIONS -- run_croco_inter.pbs $NY_START $NY_END $NM_START $NM_END $RSTFLAG)
+        jobid=$(qsub -W depend=afterok:$prev_jobid -v NY_START=$NY_START,NY_END=$NY_END,NM_START=$NM_START,NM_END=$NM_END,RSTFLAG=$RSTFLAG $SCRIPT)
     fi
 
     echo "Submitted run starting at month $CURRENT_DATE as job $jobid"

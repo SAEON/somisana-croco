@@ -13,8 +13,6 @@ export EXENAME=C11
 # MPI partitioning
 export MPI_NUM_X=16
 export MPI_NUM_Y=4
-#export MPI_NUM_X=24
-#export MPI_NUM_Y=5
 export MPI_NUM_PROCS=$(($MPI_NUM_X * $MPI_NUM_Y))
 
 # boundary and atmospheric forcing

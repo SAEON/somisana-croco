@@ -346,10 +346,10 @@ Z0   =  1;       % Mean depth of tide gauge
 Yorig         = 1993;          % reference time for vector time
                                % in croco initial and forcing files
 %
-Ymin          = 2008;          % first forcing year
+Ymin          = 2013;          % first forcing year
 Ymax          = 2013;          % last  forcing year
-Mmin          = 1;             % first forcing month
-Mmax          = 5;             % last  forcing month
+Mmin          = 6;             % first forcing month
+Mmax          = 12;             % last  forcing month
 %
 Dmin          = 1;             % Day of initialization
 Hmin          = 0;             % Hour of initialization
@@ -442,7 +442,7 @@ itolap_era5 = 2;                                               % 2 records = 2 h
 %
 OGCM        = 'GLORYS';        % Select OGCM: SODA, ECCO, mercator
 % (We're using our own tools for the boundaries...) 
-Reformat_OGCM = 0; % do we want to do the reformating step (1), or has this been done already (0) 
+Reformat_OGCM = 1; % do we want to do the reformating step (1), or has this been done already (0) 
 My_OGCM_dir = [DATADIR,OGCM,'/eez/'];
 %
 OGCM_dir    = [CROCO_files_dir,'/tmp_for_croco/'];  % OGCM data dir. [croco format] i.e. where the reformatted croco format files are saved before getting intperpolated to bry or clm files, I see this is a temporary directory as the data are not used after the bry/clm files are generated

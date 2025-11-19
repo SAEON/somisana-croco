@@ -37,7 +37,7 @@ addpath(genpath('../../../../crocotools_mat/misc'));
 addpath('../../../../crocotools_mat/prep/');
 addpath('../../../../crocotools_mat/prep/GLORYS/');
 % point to wherever your official croco_tools is
-tools_path='/home/gfearon/code/croco_tools-v2.0.1/';
+tools_path='/home/gfearon/code/croco_tools-v1.3.1/';
 myutilpath=[tools_path,'UTILITIES/'];
 %
 % Other software directories

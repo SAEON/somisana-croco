@@ -8,8 +8,8 @@
 #
 # Model time step [seconds]
 #
-DT0=180
-DTFAST=60
+DT0=240
+DTFAST=80
 #      Number of hours for averages files
 #      24 is 1 days
 #      48 is 2 days
@@ -23,22 +23,20 @@ NH_HISSURF=24 #1
 NH_STA=1
 #
 # Time refinement coefficient (factor to apply to time-step at each child level)
-#
-T_REF=3
+# (commented out since this is now hard coded in run_croco_inter.pbs) 
+# T_REF=3
 #
 # Number total of grid levels (1: No child grid)
 #
-NLEVEL=1
+NLEVEL=4
+#NLEVEL=1
 #
 # these are the time extents for this run
-#NY_START=1993
-#NY_END=2019
-#NM_START=1
-#NM_END=12
-NY_START=2009
-NY_END=2013
-NM_START=1
-NM_END=12
+# (commented out since now these are taken as command line inputs to run_croco_inter.pbs) 
+# NY_START=2008
+# NY_END=2008
+# NM_START=1
+# NM_END=1
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
 MTH_FORMAT="%02d"
@@ -49,7 +47,8 @@ NY_SPIN=0
 #  Restart file - RSTFLAG=0 --> No Restart
 #		  RSTFLAG=1 --> Restart
 #
-RSTFLAG=0
+# (commented out since now these are taken as command line inputs to run_croco_inter.pbs) 
+# RSTFLAG=0
 #
 #  Time Schedule  -  TIME_SCHED=0 --> yearly files
 #                    TIME_SCHED=1 --> monthly files
