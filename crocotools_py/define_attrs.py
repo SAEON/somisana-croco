@@ -67,35 +67,169 @@ class CROCO_Attrs:
         self.vbar   = VariableMetadata('Barotropic velocity of sea water in y direction', 'm s-1', 'barotropic_sea_water_y_velocity')
         self.w      = VariableMetadata('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component')
         # ------------------------------------------------------------------
-        # MHW daily fields (for run_mhw_detection outputs)
+        # MHW daily fields (run_mhw_detection attributes)
         # ------------------------------------------------------------------
         self.seas = VariableMetadata(
-            "Seasonal climatology of sea water temperature",
-            "degC",
-            "sea_water_temperature_climatology",
+            'Seasonal climatology of sea water temperature',
+            'degC',
+            'sea_water_temperature_climatology'
         )
         self.thresh = VariableMetadata(
-            "Marine heatwave threshold (e.g. 90th percentile)",
-            "degC",
-            "sea_water_temperature_threshold",
+            'Marine heatwave threshold (e.g. 90th percentile)',
+            'degC',
+            'sea_water_temperature_threshold'
         )
         self.anom_relSeas = VariableMetadata(
-            "Temperature anomaly relative to seasonal climatology",
-            "degC",
-            "sea_water_temperature_anomaly_relative_to_climatology",
+            'Temperature anomaly relative to seasonal climatology',
+            'degC',
+            'sea_water_temperature_anomaly_relative_to_climatology'
         )
         self.anom_relThresh = VariableMetadata(
-            "Temperature anomaly relative to MHW threshold",
-            "degC",
-            "sea_water_temperature_anomaly_relative_to_threshold",
+            'Temperature anomaly relative to MHW threshold',
+            'degC',
+            'sea_water_temperature_anomaly_relative_to_threshold'
         )
         self.is_mhw = VariableMetadata(
-            "Marine heatwave day flag (1=in event, 0=not in event)",
-            "1",
-            "marine_heatwave_day_flag",
+            'Marine heatwave day flag (1=in event, 0=not in event)',
+            '1',
+            'marine_heatwave_day_flag'
         )
         self.category_code = VariableMetadata(
-            "Marine heatwave category code (1=Moderate,2=Strong,3=Severe,4=Extreme)",
-            "1",
-            "marine_heatwave_category_code",
+            'Marine heatwave category code (1=Moderate,2=Strong,3=Severe,4=Extreme)',
+            '1',
+            'marine_heatwave_category_code'
+        )
+
+        # ------------------------------------------------------------------
+        # 1-D event table variables (run_mhw_detection area_mean / nearest)
+        # ------------------------------------------------------------------
+        self.ev_date_start = VariableMetadata(
+            'Event start date',
+            'days since 0001-01-01',
+            'marine_heatwave_event_start_date'
+        )
+        self.ev_date_end = VariableMetadata(
+            'Event end date',
+            'days since 0001-01-01',
+            'marine_heatwave_event_end_date'
+        )
+        self.ev_date_peak = VariableMetadata(
+            'Event peak date',
+            'days since 0001-01-01',
+            'marine_heatwave_event_peak_date'
+        )
+        self.ev_index_start = VariableMetadata(
+            'Index of event start in time series',
+            '1',
+            'marine_heatwave_event_start_index'
+        )
+        self.ev_index_end = VariableMetadata(
+            'Index of event end in time series',
+            '1',
+            'marine_heatwave_event_end_index'
+        )
+        self.ev_index_peak = VariableMetadata(
+            'Index of event peak in time series',
+            '1',
+            'marine_heatwave_event_peak_index'
+        )
+        self.ev_duration = VariableMetadata(
+            'Event duration',
+            'days',
+            'marine_heatwave_event_duration'
+        )
+
+        self.ev_I_max = VariableMetadata(
+            'Maximum intensity above climatology',
+            'degC',
+            'marine_heatwave_event_maximum_intensity'
+        )
+        self.ev_I_mean = VariableMetadata(
+            'Mean intensity above climatology',
+            'degC',
+            'marine_heatwave_event_mean_intensity'
+        )
+        self.ev_I_var = VariableMetadata(
+            'Intensity variance above climatology',
+            'degC',
+            'marine_heatwave_event_intensity_variance'
+        )
+        self.ev_I_cum = VariableMetadata(
+            'Cumulative intensity above climatology',
+            'degC day',
+            'marine_heatwave_event_cumulative_intensity'
+        )
+
+        self.ev_I_max_relThresh = VariableMetadata(
+            'Maximum intensity above MHW threshold',
+            'degC',
+            'marine_heatwave_event_maximum_intensity_above_threshold'
+        )
+        self.ev_I_mean_relThresh = VariableMetadata(
+            'Mean intensity above MHW threshold',
+            'degC',
+            'marine_heatwave_event_mean_intensity_above_threshold'
+        )
+        self.ev_I_var_relThresh = VariableMetadata(
+            'Intensity variance above MHW threshold',
+            'degC',
+            'marine_heatwave_event_intensity_variance_above_threshold'
+        )
+        self.ev_I_cum_relThresh = VariableMetadata(
+            'Cumulative intensity above MHW threshold',
+            'degC day',
+            'marine_heatwave_event_cumulative_intensity_above_threshold'
+        )
+
+        self.ev_I_max_abs = VariableMetadata(
+            'Maximum absolute temperature during event',
+            'degC',
+            'marine_heatwave_event_maximum_absolute_temperature'
+        )
+        self.ev_I_mean_abs = VariableMetadata(
+            'Mean absolute temperature during event',
+            'degC',
+            'marine_heatwave_event_mean_absolute_temperature'
+        )
+        self.ev_I_var_abs = VariableMetadata(
+            'Variance of absolute temperature during event',
+            'degC',
+            'marine_heatwave_event_absolute_temperature_variance'
+        )
+        self.ev_I_cum_abs = VariableMetadata(
+            'Cumulative absolute temperature anomaly',
+            'degC day',
+            'marine_heatwave_event_cumulative_absolute_temperature'
+        )
+
+        self.ev_rate_onset = VariableMetadata(
+            'Rate of temperature increase before peak',
+            'degC day-1',
+            'marine_heatwave_event_rate_of_onset'
+        )
+        self.ev_rate_decline = VariableMetadata(
+            'Rate of temperature decrease after peak',
+            'degC day-1',
+            'marine_heatwave_event_rate_of_decline'
+        )
+
+        self.ev_dur_moderate = VariableMetadata(
+            'Duration spent in Moderate category',
+            'days',
+            'marine_heatwave_event_duration_moderate'
+        )
+        self.ev_dur_strong = VariableMetadata(
+            'Duration spent in Strong category',
+            'days',
+            'marine_heatwave_event_duration_strong'
+        )
+        self.ev_dur_severe = VariableMetadata(
+            'Duration spent in Severe category',
+            'days',
+            'marine_heatwave_event_duration_severe'
+        )
+        self.ev_dur_extreme = VariableMetadata(
+            'Duration spent in Extreme category',
+            'days',
+            'marine_heatwave_event_duration_extreme'
         )
