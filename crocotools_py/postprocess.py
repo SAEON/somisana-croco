@@ -8,9 +8,6 @@ import re
 import time
 import pandas as pd
 
-import os
-import marineHeatWaves as mhw
-
 def change_attrs(attrs,da,var_str):
     meta = getattr(attrs, var_str)
     da.attrs['long_name'] = meta.long_name
