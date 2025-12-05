@@ -8,6 +8,9 @@ import re
 import time
 import pandas as pd
 
+import os
+import marineHeatWaves as mhw
+
 def change_attrs(attrs,da,var_str):
     meta = getattr(attrs, var_str)
     da.attrs['long_name'] = meta.long_name
@@ -1545,3 +1548,4 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
 #    Yorig=2000
 #    ds_temp = get_var(file, "temp", Yorig=Yorig)
+
