@@ -2,9 +2,9 @@
 #PBS -l select=4:ncpus=16:mpiprocs=16
 #PBS -P ERTH1103
 #PBS -q normal
-#PBS -l walltime=24:00:00
-#PBS -o /home/gfearon/run_croco_inter_lengau/stdout 
-#PBS -e /home/gfearon/run_croco_inter_lengau/stderr 
+#PBS -l walltime=06:00:00
+#PBS -o /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1/stdout 
+#PBS -e /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1/stderr 
 #PBS -v NY_START,NY_END,NM_START,NM_END,RSTFLAG
 #
 #unalias cp

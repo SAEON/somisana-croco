@@ -4,8 +4,8 @@
 # it submits a series of run_croco_inter.pbs job scripts, each of which is for a few months 
 # this is needed to ensure we stay under the 48 hr job length for each job submission
 
-CURRENT_DATE="1993-02-01"
-END_DATE="2013-12-31"
+CURRENT_DATE="2008-01-01"
+END_DATE="2008-03-31"
 RSTFLAG=0 # set to 1 if you want to restart from a previous months output
 prev_jobid=""
 
