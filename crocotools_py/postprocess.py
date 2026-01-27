@@ -847,7 +847,10 @@ def get_var(fname,var_str,
     ds_out['h'] = change_attrs(attrs,ds_out.h,'h')
     ds_out['mask'] = change_attrs(attrs,ds_out.mask,'mask')
     ds_out['zeta'] = change_attrs(attrs,ds_out.zeta,'zeta')
-    ds_out[var_str] = change_attrs(attrs,ds_out[var_str],var_str)
+    try:
+        ds_out[var_str] = change_attrs(attrs, ds_out[var_str], var_str)
+    except:
+        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_str}")
     
     if nc_out is not None:
         print('')
@@ -935,8 +938,12 @@ def get_uv(fname,
     v_out = v_da*cos_a + u_da*sin_a
 
     attrs = CROCO_Attrs_RotatedVectors()
-    u_out = change_attrs(attrs,u_out,var_u)
-    v_out = change_attrs(attrs,v_out,var_v)
+    
+    try:
+        u_out = change_attrs(attrs,u_out,var_u)
+        v_out = change_attrs(attrs,v_out,var_v)
+    except:
+        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_u},{var_v}")
 
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
@@ -1518,6 +1525,11 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
         anom = ds_hf[var] - ds_clim[var]
         anom_name = f"{var}_anom"
         anom = change_attrs(croco_attrs, anom, anom_name)
+        try:
+            anom = change_attrs(croco_attrs, anom, anom_name)
+        except:
+            print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {anom_name}")
+
         ds_anom[anom_name] = anom
     ds_hf.close()
     ds_clim.close()
