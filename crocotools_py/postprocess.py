@@ -413,7 +413,7 @@ def hlev(var,z,depth):
     mask=0.*levs + 1.
     mask[np.where(levs==0)]=np.nan
     
-    # Locate the bracketing levels
+    #ate the bracketing levels
     # Converts the 3D indices into linear indices for easier slicing of z and var (avoids having to loop over each index point).
     [i2,j2]=np.meshgrid(i1,j1)
     pos_up  = L*M*levs + L*j2 + i2
