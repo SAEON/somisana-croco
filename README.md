@@ -10,4 +10,3 @@ This repo is largely a redesign of [this one](https://github.com/SAEON/somisana)
 
 Please refer to the [wiki](https://github.com/SAEON/somisana-croco/wiki) for more information.
 
-(delete me)
