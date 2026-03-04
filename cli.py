@@ -11,7 +11,7 @@ import argparse
 import sys, os
 from datetime import datetime, timedelta
 import calendar
-from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clim
 from crocotools_py.postprocess import get_ts_multivar, compute_anomaly
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
@@ -443,7 +443,76 @@ def main():
             month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
         
     parser_make_bry_inter.set_defaults(func=make_bry_inter_handler)
+
+    # ----------------
+    # make_clim_inter
+    # ----------------
+    parser_make_clim_inter = subparsers.add_parser('make_clim_inter',
+            help='Make monthly ocean climatology files for CROCO interannual runs')
+    parser_make_clim_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the monthly OGCM files')
+    parser_make_clim_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing files will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_clim_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_clim_inter.add_argument('--month_end', required=True, type=str,
+            help='last month in the interannual run in format "YYYY-MM"')
+    parser_make_clim_inter.add_argument('--Yorig', required=True, type=int,
+            help='the Yorig value used in setting up the CROCO model')
+    def make_clim_inter_handler(args):
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+        
+        month_start = datetime.strptime(args.month_start, "%Y-%m")
+        month_end   = datetime.strptime(args.month_end, "%Y-%m")
     
+        # Get all files in input directory
+        all_files = sorted(os.listdir(args.input_dir))
+
+        for fname in all_files:
+    
+            full_path = os.path.join(args.input_dir, fname)
+
+            if not os.path.isfile(full_path):
+                continue
+
+            # Try to parse date from filename using your format
+            try:
+                file_date = datetime.strptime(fname, params.input_file_fmt)
+            except ValueError:
+                # Skip files that don't match format
+                continue
+    
+            # Keep only files within requested range
+            if month_start <= file_date <= month_end:
+    
+                print(f"Processing {fname}")
+    
+                # Define month boundaries for this file
+                day_end = calendar.monthrange(
+                    file_date.year,
+                    file_date.month
+                )[1]
+    
+                ini_date = datetime(file_date.year, file_date.month, 1)
+                end_date = datetime(file_date.year, file_date.month, day_end)
+    
+                fname_out = (
+                    params.clim_prefix +
+                    file_date.strftime('_Y%YM%m.nc')
+                )
+    
+                make_clim(
+                    full_path,            # single file
+                    args.output_dir,
+                    ini_date,
+                    end_date,
+                    args.Yorig,
+                    fname_out
+                )
+        
+    parser_make_clim_inter.set_defaults(func=make_clim_inter_handler)
+ 
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
