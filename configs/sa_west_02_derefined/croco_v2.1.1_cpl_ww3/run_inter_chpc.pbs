@@ -274,8 +274,8 @@ while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ];
     ncks -O -d time,0,0 $ufile_next wind_next.nc
     ncks -A -d time,0,0 $vfile_next wind_next.nc
     ncrcat -O wind.nc wind_next.nc wind.nc
-    echo 'convert time from float to double to avoid float32 precision drift'
-    ncap2 -O -s 'time=double(time)' wind.nc wind.nc
+    echo 'convert time from float to double and round to exact hours to avoid float32 precision errors'
+    ncap2 -O -s 'time=round(double(time)*24.0)/24.0' wind.nc wind.nc    
     echo 'fix time units format for ww3_prnc U2D parser (needs hh:mm:ss)'
     ncatted -O -a units,time,o,c,"days since 1993-01-01 00:00:00" wind.nc
     echo 'add _FillValue attribute required by ww3_prnc'
