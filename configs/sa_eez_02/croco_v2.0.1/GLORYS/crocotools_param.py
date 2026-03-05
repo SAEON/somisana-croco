@@ -1,5 +1,5 @@
 '''
-params required by make_ini() and make_bry()
+params required by make_ini(), make_bry() and make_clim()
 '''
 
 # Input data information and formating

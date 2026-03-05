@@ -468,7 +468,8 @@ def main():
     
         # Get all files in input directory
         all_files = sorted(os.listdir(args.input_dir))
-
+        # We loop over the individual files in all files since the make_clim function
+        # cannot take in a list of files.
         for fname in all_files:
     
             full_path = os.path.join(args.input_dir, fname)
@@ -503,7 +504,7 @@ def main():
                 )
     
                 make_clim(
-                    full_path,            # single file
+                    full_path,
                     args.output_dir,
                     ini_date,
                     end_date,

@@ -1532,6 +1532,24 @@ def make_bry(input_file,output_dir,start_date,end_date,Yorig,fname_out):
     print('')
 
 def make_clim(input_file,output_dir,start_date,end_date,Yorig,fname_out):
+    '''
+    Make CROCO climatology file from an OGCM file
+    
+    This function uses combines the make_ini and make_bry functions in this script.
+    I was adjusted to create the climatology file/s for a climatologican run in CROCO.
+    Most of the inputs are contained in a crocotools_param.py file, while
+    a few others are direct inputs to this function. The direct inputs are for 
+    things which we may want to be update as part of an operational/inter-annual workflow
+    
+    INPUTS:
+    input_file  - path and filename for the OGCM file. Does not work for a list of files! 
+    output_dir  - where the output file gets written. This directory must also contain the crocotools_param.py file which contains configurable parameters not already provided as direct inputs.
+    start_date  - start of the bry file, as a datetime.datetime object. 
+    end_date    - end of the bry file, as a datetime.datetime object. 
+    Yorig       - the Yorig value used in setting up the CROCO model
+    fname_out   - output bry filename (only the filename, not the full path)
+            
+    '''  
     # ini_date was removed from inputs
     # imports
     sys.path.append(output_dir)
@@ -1597,7 +1615,7 @@ def make_clim(input_file,output_dir,start_date,end_date,Yorig,fname_out):
                             nc.variables['sclm_time'][t] = clm_time[t]
                         else:
                             print(f'\nError: tracer is {tra}')
-                            print(f'Correct tracers are either temp or salt.\n')
+                            print('Correct tracers are either temp or salt.\n')
                                   
             elif vars == 'velocity':
                 cosa=np.cos(crocogrd.angle)
