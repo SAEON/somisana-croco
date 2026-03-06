@@ -3,10 +3,20 @@
 *.mod
 *.npz
 
+# other ww3 related files we don't want hanging around
+spec.list
+*.ww3
+*.log
+*.out
+**/scratch
+**/output
+*post*
 
 copy2chpc.bash
 *.swp
 *.stdout
+stdout
+stderr
 
 Phyical/
 Untitled.ipynb

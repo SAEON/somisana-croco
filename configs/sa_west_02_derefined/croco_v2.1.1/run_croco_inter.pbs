@@ -1,10 +1,11 @@
 #!/bin/bash
-#PBS -l select=4:ncpus=24:mpiprocs=24
+#PBS -l select=1:ncpus=4:mpiprocs=4
 #PBS -P ERTH1103
 #PBS -q normal
-#PBS -l walltime=18:00:00
-#PBS -o /home/$USER/run_croco_inter_lengau/stdout 
-#PBS -e /home/$USER/run_croco_inter_lengau/stderr 
+#PBS -l walltime=01:00:00
+#PBS -o /home/gfearon/lustre/somisana-croco/configs/sa_west_02_derefined/croco_v2.1.1/stdout 
+#PBS -e /home/gfearon/lustre/somisana-croco/configs/sa_west_02_derefined/croco_v2.1.1/stderr 
+#PBS -v NY_START,NY_END,NM_START,NM_END,RSTFLAG
 #
 #unalias cp
 #unalias mv
@@ -18,9 +19,9 @@ MK=/bin/mkdir
 ########################################################
 #
 
-cd /home/$USER/run_croco_inter_lengau 
+cd /home/gfearon/lustre/somisana-croco/configs/sa_west_02_derefined/croco_v2.1.1 
 source myenv_inter.sh
-cd $RUNDIR
+RUNDIR=$PWD
 EXEDIR=$RUNDIR/$EXENAME
 CODFILE=croco
 
@@ -85,11 +86,10 @@ cd $SCRATCHDIR
 echo "Getting $CODFILE from $EXEDIR"
 $CP -f $EXEDIR/$CODFILE $SCRATCHDIR
 chmod u+x $CODFILE
-#echo "Getting Agrif file from $INPUTDIR_IN"
-#$CP -f $INPUTDIR_IN/AGRIF_FixedGrids.in $SCRATCHDIR
+echo "Getting Agrif file from $INPUTDIR_GRD"
+$CP -f $INPUTDIR_GRD/AGRIF_FixedGrids.in $SCRATCHDIR
 #echo "Getting stations file from $INPUTDIR_IN"
 #$CP -f $INPUTDIR_IN/stations.in $SCRATCHDIR
-#$CP -f $TIDEDIR/frc.nc $SCRATCHDIR
 
 #
 # Get the netcdf files for run initiation
@@ -103,8 +103,8 @@ while [ $LEVEL != $NLEVEL ]; do
   fi
   echo "Getting ${GRDFILE}.nc${ENDF} from ${INPUTDIR_GRD}${ENDF}"
   $LN -sf ${INPUTDIR_GRD}${ENDF}/${GRDFILE}.nc${ENDF} $SCRATCHDIR
-  echo "Getting ${MODEL}_inter.in${ENDF} from $INPUTDIR_IN${ENDF}"
-  $CP -f $INPUTDIR_IN${ENDF}/${MODEL}_inter.in${ENDF} $SCRATCHDIR
+  echo "Getting ${MODEL}_inter.in${ENDF} from $INPUTDIR_IN"
+  $CP -f $INPUTDIR_IN/${MODEL}_inter.in${ENDF} $SCRATCHDIR
   if [[ $RSTFLAG == 0 ]]; then
     echo "Getting ${INIFILE}_${OGCM}_${TIME}.nc${ENDF} from ${INPUTDIR_BRY}${ENDF}"
     $CP -f ${INPUTDIR_BRY}${ENDF}/${INIFILE}_${OGCM}_${TIME}.nc${ENDF} $SCRATCHDIR
@@ -224,6 +224,12 @@ while [ $NY != $NY_END ]; do
         fi
       fi
     fi
+
+    DT=$DT0
+    
+    # Time refinement coefficient (factor to apply to time-step at each child level)
+    T_REF=3
+
     NUMTIMES=$((NDAYS * 24 * 3600))
     NUMTIMES=$((NUMTIMES / DT))
 
@@ -251,7 +257,19 @@ while [ $NY != $NY_END ]; do
         ENDF=
       else
         ENDF=.${LEVEL}
+        if [[ ${LEVEL} -gt 1 ]]; then
+          # CAUTION! 
+          # this if statement is here because all of our subdomains are nested inside the same parent
+          # so we want to keep the steps as they are from LEVEL = 2 and up 
+          T_REF=1
+        fi
+	DT=$((DT / T_REF))
 	NUMTIMES=$((T_REF * NUMTIMES))
+	NUMAVG=$((T_REF * NUMAVG))
+	NUMHIS=$((T_REF * NUMHIS))
+	NUMAVGSURF=$((T_REF * NUMAVGSURF))
+	NUMHISSURF=$((T_REF * NUMHISSURF))
+	NUMSTA=$((T_REF * NUMSTA))
       fi
       echo "USING NUMTIMES = $NUMTIMES"
       sed -e 's/DTNUM/'$DT'/' -e 's/DTFAST/'$DTFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/NUMSTA/'$NUMSTA'/' -e 's/NYONLINE/'$NY'/' -e 's/NMONLINE/'$NM'/' < ${MODEL}_inter.in${ENDF} > ${MODEL}_${TIME}_inter.in${ENDF}
@@ -296,7 +314,7 @@ while [ $NY != $NY_END ]; do
 	  $MV -f ${MODEL}_avg.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_${TIME}.nc${ENDF}
 	  $MV -f ${MODEL}_his_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_surf_${TIME}.nc${ENDF}
 	  $MV -f ${MODEL}_avg_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_surf_${TIME}.nc${ENDF}
-          $MV -f ${MODEL}_sta.nc${ENDF} ${OUTPUTDIR}/${MODEL}_sta_${TIME}.nc${ENDF}
+          #$MV -f ${MODEL}_sta.nc${ENDF} ${OUTPUTDIR}/${MODEL}_sta_${TIME}.nc${ENDF}
       LEVEL=$((LEVEL + 1))
     done
     NM=$((NM + 1))
