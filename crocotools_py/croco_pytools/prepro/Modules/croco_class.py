@@ -164,7 +164,7 @@ class CROCO_grd(object):
 
 class CROCO():
 
-    def create_ini_nc(self, filename, grdobj, created_by='make_ini.py',tracers=['temp','salt']):#fillval
+    def create_ini_nc(self, filename, grdobj, created_by='make_ini()',tracers=['temp','salt']):#fillval
         # Global attributes
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()
@@ -303,7 +303,7 @@ class CROCO():
 
         nc.close()
 
-    def create_bry_nc(self,filename, grdobj, obc_dict, cycle, created_by='make_bry.py',time=None,tracers=['temp','salt']):#fillval
+    def create_bry_nc(self,filename, grdobj, obc_dict, cycle, created_by='make_bry()',time=None,tracers=['temp','salt']):#fillval
         # Global attributes
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()
@@ -446,7 +446,7 @@ class CROCO():
 
         nc.close()
 
-    def create_clim_nc(self, filename, grdobj, cycle, created_by='make_clim.py', tracers=['temp', 'salt']):
+    def create_clim_nc(self, filename, grdobj, cycle, created_by='make_clm()', tracers=['temp', 'salt']):
     
         # Generic functions for making the various variables
         def create_scalar(nc, name, dtype='f8', dims=('one',), **attrs):
@@ -521,11 +521,10 @@ class CROCO():
                 nc.createDimension(name, size)
     
             time_dims = [
-                'tclm_time', 'temp_time',
-                'sclm_time', 'salt_time',
-                'uclm_time', 'vclm_time',
-                'v2d_time', 'v3d_time',
-                'ssh_time', 'zeta_time'
+                'tclm_time',
+                'sclm_time',
+                'uclm_time',
+                'ssh_time',
             ]
     
             for tdim in time_dims:
@@ -625,18 +624,12 @@ class CROCO():
                 valid_max=0.
             )
             
-            # Time variables 
+            # Time variables (only those actually read by CROCO)
             time_metadata = {
                 'tclm_time': 'time for temperature climatology',
-                'temp_time': 'time for temperature climatology',
                 'sclm_time': 'time for salinity climatology',
-                'salt_time': 'time for salinity climatology',
-                'uclm_time': 'time for u-momentum climatology',
-                'vclm_time': 'time for v-momentum climatology',
-                'v2d_time': 'time for 2D velocity climatology',
-                'v3d_time': 'time for 3D velocity climatology',
+                'uclm_time': 'time for momentum climatology',
                 'ssh_time': 'time for sea surface height',
-                'zeta_time': 'time for sea surface height',
             }
     
             for name, long_name in time_metadata.items():
@@ -673,12 +666,12 @@ class CROCO():
     
             create_field(
                 nc, 'v',
-                ('vclm_time', 's_rho', 'eta_v', 'xi_v'),
+                ('uclm_time', 's_rho', 'eta_v', 'xi_v'),
                 'meter second-1',
                 'v-momentum component',
-                time_name='vclm_time'
+                time_name='uclm_time'
             )
-    
+
             create_field(
                 nc, 'ubar',
                 ('uclm_time', 'eta_u', 'xi_u'),
@@ -686,16 +679,16 @@ class CROCO():
                 'vertically integrated u-momentum component',
                 time_name='uclm_time'
             )
-    
+
             create_field(
                 nc, 'vbar',
-                ('vclm_time', 'eta_v', 'xi_v'),
+                ('uclm_time', 'eta_v', 'xi_v'),
                 'meter second-1',
                 'vertically integrated v-momentum component',
-                time_name='vclm_time'
+                time_name='uclm_time'
             )
     
-            # Sea surface height 
+            # Sea surface height
             create_field(
                 nc, 'SSH',
                 ('ssh_time', 'eta_rho', 'xi_rho'),
@@ -703,15 +696,6 @@ class CROCO():
                 'sea surface height',
                 time_name='ssh_time',
                 coordinates='lon_rho lat_rho ssh_time'
-            )
-    
-            create_field(
-                nc, 'zeta',
-                ('zeta_time', 'eta_rho', 'xi_rho'),
-                'meter',
-                'sea surface height',
-                time_name='zeta_time',
-                coordinates='lon_rho lat_rho zeta_time'
             )
 
     def create_grid_nc(self,output_file, inputs, outputs,prt_grd=None):    
@@ -910,7 +894,7 @@ class CROCO():
             fid.write('\n~')
             fid.close()
 
-    def create_tide_nc(self,filename, grdobj, created_by='make_tides.py',cur=False,pot=False):
+    def create_tide_nc(self,filename, grdobj, created_by='make_tides()',cur=False,pot=False):
         # Global attributes
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()
@@ -964,7 +948,7 @@ class CROCO():
 
         nc.close()
 
-    def create_river_nc(self,filename, grdobj,Nsrc,TS,created_by='make_river.py'):
+    def create_river_nc(self,filename, grdobj,Nsrc,TS,created_by='make_river()'):
 
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()

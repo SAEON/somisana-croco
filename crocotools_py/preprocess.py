@@ -1531,7 +1531,7 @@ def make_bry(input_file,output_dir,start_date,end_date,Yorig,fname_out):
     print(' Path to file is ', fname_out)
     print('')
 
-def make_clim(input_file,output_dir,start_date,end_date,Yorig,fname_out):
+def make_clm(input_file,output_dir,start_date,end_date,Yorig,fname_out):
     '''
     Make CROCO climatology file from an OGCM file
     
@@ -1584,44 +1584,47 @@ def make_clim(input_file,output_dir,start_date,end_date,Yorig,fname_out):
     Croco.CROCO.create_clim_nc(None,fname_out,crocogrd,params.cycle_clim,tracers=params.tracers)
     
     # --- Interpolate the input file onto the CROCO grid -------------------------
-    for t in range(clm_time.size):
+    n_times = clm_time.size
+    for t in range(n_times):
+        # t is the output index (0-based), but the input data index is dtmin + t
+        t_inp = dtmin + t
+        print(f'\n--- Time-step {t+1} / {n_times} ---')
         for vars in ['ssh','tracers','velocity']:
             print('\nProcessing *%s*' %vars)
             nc=netcdf.Dataset(fname_out, 'a')
             if vars == 'ssh' :
                 (zeta,NzGood) = interp_tools.interp_tracers(inpdat,vars,-1,crocogrd,
-                                                            t,t
+                                                            t_inp,t_inp
                                                             )
-                    
+
                 # write to the nc file
-                nc.variables['zeta'][t,:,:] = zeta[0]*crocogrd.maskr
-                nc.variables['zeta_time'][t] = clm_time[t]
+                nc.variables['SSH'][t,:,:] = zeta[0]*crocogrd.maskr
+                nc.variables['ssh_time'][t] = clm_time[t]
                 z_rho = crocogrd.scoord2z_r(zeta=zeta)
                 z_w   = crocogrd.scoord2z_w(zeta=zeta)
 
             elif vars == 'tracers':
                 for tra in params.tracers:
                     print(f'\nIn tracers processing {tra}')
-                    for i in range(2):
-                        trac_3d = interp_tools.interp(inpdat,tra,params.Nzgoodmin,z_rho,crocogrd,
-                                                      t,t
-                                                      )       
-                        
-                        # write to the nc file
-                        nc.variables[tra][t,:,:,:] = trac_3d[0]*crocogrd.mask3d()
-                        if tra == 'temp':
-                            nc.variables['tclm_time'][t] = clm_time[t]
-                        elif tra == 'salt':
-                            nc.variables['sclm_time'][t] = clm_time[t]
-                        else:
-                            print(f'\nError: tracer is {tra}')
-                            print('Correct tracers are either temp or salt.\n')
+                    trac_3d = interp_tools.interp(inpdat,tra,params.Nzgoodmin,z_rho,crocogrd,
+                                                  t_inp,t_inp
+                                                  )
+
+                    # write to the nc file
+                    nc.variables[tra][t,:,:,:] = trac_3d[0]*crocogrd.mask3d()
+                    if tra == 'temp':
+                        nc.variables['tclm_time'][t] = clm_time[t]
+                    elif tra == 'salt':
+                        nc.variables['sclm_time'][t] = clm_time[t]
+                    else:
+                        print(f'\nError: tracer is {tra}')
+                        print('Correct tracers are either temp or salt.\n')
                                   
             elif vars == 'velocity':
                 cosa=np.cos(crocogrd.angle)
                 sina=np.sin(crocogrd.angle)
                 [u,v,ubar,vbar]=interp_tools.interp_uv(inpdat,params.Nzgoodmin,z_rho,cosa,sina,crocogrd,
-                                                       t,t
+                                                       t_inp,t_inp
                                                        )
                 
                 conserv=1  # Correct the horizontal transport i.e. remove the intergrated tranport and add the OGCM transport          
@@ -1640,7 +1643,6 @@ def make_clim(input_file,output_dir,start_date,end_date,Yorig,fname_out):
                 nc.variables['ubar'][t,:,:] = ubar[0]*crocogrd.umask
                 nc.variables['vbar'][t,:,:] = vbar[0]*crocogrd.vmask
                 nc.variables['uclm_time'][t] = clm_time[t]
-                nc.variables['vclm_time'][t] = clm_time[t]
     
         nc.close()
     
@@ -1657,4 +1659,4 @@ if __name__ == '__main__':
     end_date=pd.to_datetime('2014-02-02')
     Yorig=1993
     fname_out='croco_clim_2014_02.nc'
-    make_clim(input_file,output_dir,start_date,end_date,Yorig,fname_out)
+    make_clm(input_file,output_dir,start_date,end_date,Yorig,fname_out)

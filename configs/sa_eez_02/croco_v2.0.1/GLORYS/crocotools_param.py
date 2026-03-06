@@ -1,5 +1,5 @@
 '''
-params required by make_ini(), make_bry() and make_clim()
+params required by make_ini(), make_bry() and make_clm()
 '''
 
 # Input data information and formating
@@ -31,5 +31,5 @@ obc_dict = dict(south=1, west=1, east=1, north=0) # open boundaries (1=open , [S
 cycle_bry=0
 
 # Clim filename prefinformations
-clim_prefix = 'croco_clim_GLORYS'
+clim_prefix = 'croco_clm_GLORYS'
 cycle_clim=0
