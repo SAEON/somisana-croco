@@ -164,7 +164,7 @@ class CROCO_grd(object):
 
 class CROCO():
 
-    def create_ini_nc(self, filename, grdobj, created_by='make_ini.py',tracers=['temp','salt']):#fillval
+    def create_ini_nc(self, filename, grdobj, created_by='make_ini()',tracers=['temp','salt']):#fillval
         # Global attributes
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()
@@ -303,7 +303,7 @@ class CROCO():
 
         nc.close()
 
-    def create_bry_nc(self,filename, grdobj, obc_dict, cycle, created_by='make_bdy.py',tracers=['temp','salt']):#fillval
+    def create_bry_nc(self,filename, grdobj, obc_dict, cycle, created_by='make_bry()',time=None,tracers=['temp','salt']):#fillval
         # Global attributes
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()
@@ -446,6 +446,257 @@ class CROCO():
 
         nc.close()
 
+    def create_clim_nc(self, filename, grdobj, cycle, created_by='make_clm()', tracers=['temp', 'salt']):
+    
+        # Generic functions for making the various variables
+        def create_scalar(nc, name, dtype='f8', dims=('one',), **attrs):
+            var = nc.createVariable(name, dtype, dims)
+            for k, v in attrs.items():
+                setattr(var, k, v)
+            return var
+        
+        def create_coord(nc, name, dims, data=None, **attrs):
+            var = nc.createVariable(name, 'f8', dims)
+            for k, v in attrs.items():
+                setattr(var, k, v)
+            if data is not None:
+                var[:] = data
+            return var
+    
+        def create_time_variable(nc, name, long_name):
+            return create_field(
+                nc,
+                name,
+                (name,),
+                long_name=long_name,
+                units = 'day', 
+                calendar = '360_day',
+                cycle_length=0.
+            )
+
+        def create_field(nc, name, dims, units, long_name,
+                         time_name=None, **extra_attrs):
+            var = nc.createVariable(
+                name, 'f8', dims,
+                zlib=True, complevel=4, shuffle=True
+            )
+            var.long_name = long_name
+            var.units = units
+            if time_name:
+                var.time = time_name
+            for k, v in extra_attrs.items():
+                setattr(var, k, v)
+            return var
+    
+        # Create the file
+        with netcdf.Dataset(filename, 'w', format='NETCDF4') as nc:
+    
+            # Global attributes
+            nc.date = datetime.now().strftime("%d-%b-%Y")
+            nc.clim_file = filename
+            nc.grd_file = grdobj.grid_file
+            nc.type = f'CROCO climatology file produced by {created_by}'
+            nc.hc = grdobj.hc
+            nc.theta_s = grdobj.theta_s
+            nc.theta_b = grdobj.theta_b
+            nc.VertCoordType = 'NEW'
+    
+            # Dimensions
+            eta_rho, xi_rho = grdobj.lon.shape
+    
+            dims = {
+                'xi_u': xi_rho - 1,
+                'xi_v': xi_rho,
+                'xi_rho': xi_rho,
+                'eta_u': eta_rho,
+                'eta_v': eta_rho - 1,
+                'eta_rho': eta_rho,
+                's_rho': grdobj.N,
+                's_w': grdobj.N + 1,
+                'one': 1,
+                'tracer': np.size(tracers)
+            }
+    
+            for name, size in dims.items():
+                nc.createDimension(name, size)
+    
+            time_dims = [
+                'tclm_time',
+                'sclm_time',
+                'uclm_time',
+                'ssh_time',
+            ]
+    
+            for tdim in time_dims:
+                nc.createDimension(tdim, None)
+    
+            # Classic scalar variables 
+            create_scalar(
+                nc, 'spherical', 'S1',
+                long_name='Grid type logical switch',
+                option_T='spherical Cartesian'
+            )[:] = 'T'
+    
+            create_scalar(
+                nc, 'Vtransform', 'f8',
+                long_name='vertical terrain-following transformation equation'
+            )
+    
+            create_scalar(
+                nc, 'Vstretching', 'f8',
+                long_name='vertical terrain-following stretching function'
+            )
+    
+            create_scalar(
+                nc, 'tstart', 'f8',
+                long_name='start processing day',
+                units='day'
+            )
+    
+            create_scalar(
+                nc, 'tend', 'f8',
+                long_name='end processing day',
+                units='day'
+            )
+    
+            create_scalar(
+                nc, 'theta_s', 'f8',
+                long_name='S-coordinate surface control parameter',
+                units='nondimensional'
+            )
+    
+            create_scalar(
+                nc, 'theta_b', 'f8',
+                long_name='S-coordinate bottom control parameter',
+                units='nondimensional'
+            )
+    
+            create_scalar(
+                nc, 'Tcline', 'f8',
+                long_name='S-coordinate surface/bottom layer width',
+                units='meter'
+            )[:] = grdobj.hc
+            
+            create_scalar(
+                nc, 'hc', 'f8',
+                long_name='S-coordinate parameter, critical depth',
+                units='meter'
+            )
+            
+            # Vertical coordinates
+            create_coord(
+                nc, 'sc_r', ('s_rho',),
+                data = grdobj.s_rho(),
+                long_name='S-coordinate at RHO-points',
+                valid_min=-1.,
+                valid_max=0.,
+                positive='up',
+                standard_name='ocean_s_coordinate_g2',
+                formula_terms='s: s_rho C: Cs_r eta: zeta depth: h depth_c: hc'
+            )
+    
+            create_coord(
+                nc, 'sc_w', ('s_w',),
+                data = grdobj.s_w(),
+                long_name='S-coordinate at W-points',
+                valid_min=-1.,
+                valid_max=0.,
+                positive='up',
+                standard_name='ocean_s_coordinate_g2',
+                formula_terms='s: s_w C: Cs_w eta: zeta depth: h depth_c: hc'
+            )
+            
+            create_coord(
+                nc, 'Cs_r', ('s_rho',),
+                data = grdobj.Cs_r(),
+                long_name='S-coordinate stretching curves at RHO-points',
+                units='nondimensional',
+                valid_min=-1.,
+                valid_max=0.
+            )
+            
+            create_coord(
+                nc, 'Cs_w', ('s_w',),
+                data = grdobj.Cs_w(),
+                long_name='S-coordinate stretching curves at W-points',
+                units='nondimensional',
+                valid_min=-1.,
+                valid_max=0.
+            )
+            
+            # Time variables (only those actually read by CROCO)
+            time_metadata = {
+                'tclm_time': 'time for temperature climatology',
+                'sclm_time': 'time for salinity climatology',
+                'uclm_time': 'time for momentum climatology',
+                'ssh_time': 'time for sea surface height',
+            }
+    
+            for name, long_name in time_metadata.items():
+                create_time_variable(nc, name, long_name)
+    
+            # Tracers 
+            tracer_metadata = {
+                'temp': ('tclm_time', 'potential temperature', 'Celsius'),
+                'salt': ('sclm_time', 'salinity', 'PSU'),
+            }
+    
+            for tracer in tracers:
+                if tracer not in tracer_metadata:
+                    raise ValueError(f"Unsupported tracer: {tracer}")
+                time_name, long_name, units = tracer_metadata[tracer]
+    
+                create_field(
+                    nc, tracer,
+                    (time_name, 's_rho', 'eta_rho', 'xi_rho'),
+                    units,
+                    long_name,
+                    time_name=time_name,
+                    coordinates=f"lon_rho lat_rho s_rho {time_name}"
+                )
+    
+            # Velocity fields 
+            create_field(
+                nc, 'u',
+                ('uclm_time', 's_rho', 'eta_u', 'xi_u'),
+                'meter second-1',
+                'u-momentum component',
+                time_name='uclm_time'
+            )
+    
+            create_field(
+                nc, 'v',
+                ('uclm_time', 's_rho', 'eta_v', 'xi_v'),
+                'meter second-1',
+                'v-momentum component',
+                time_name='uclm_time'
+            )
+
+            create_field(
+                nc, 'ubar',
+                ('uclm_time', 'eta_u', 'xi_u'),
+                'meter second-1',
+                'vertically integrated u-momentum component',
+                time_name='uclm_time'
+            )
+
+            create_field(
+                nc, 'vbar',
+                ('uclm_time', 'eta_v', 'xi_v'),
+                'meter second-1',
+                'vertically integrated v-momentum component',
+                time_name='uclm_time'
+            )
+    
+            # Sea surface height
+            create_field(
+                nc, 'SSH',
+                ('ssh_time', 'eta_rho', 'xi_rho'),
+                'meter',
+                'sea surface height',
+                time_name='ssh_time',
+                coordinates='lon_rho lat_rho ssh_time'
+            )
 
     def create_grid_nc(self,output_file, inputs, outputs,prt_grd=None):    
         """
@@ -492,7 +743,6 @@ class CROCO():
             nc.variables['el'][:] = inputs.ny
 
         else: # Usual case
-
             nc.nx = np.int32(inputs.nx)
             nc.ny = np.int32(inputs.ny)
             nc.size_x = inputs.size_x
@@ -573,8 +823,8 @@ class CROCO():
         nc.variables['mask_rho'].option_1 = 'water'
         nc.variables['mask_rho'][:] = outputs.mask_rho
 
-	# Extraneous variables should be placed at the end (ensures no
-	# later problems with e.g., partit
+    	# Extraneous variables should be placed at the end (ensures no
+    	# later problems with e.g., partit
         nc.createVariable('lon_psi', 'f8', ('eta_psi', 'xi_psi'))
         nc.variables['lon_psi'].long_name = 'longitude of PSI-points'
         nc.variables['lon_psi'].units = 'degree_east'
@@ -644,9 +894,7 @@ class CROCO():
             fid.write('\n~')
             fid.close()
 
-
-
-    def create_tide_nc(self,filename, grdobj, created_by='make_tides.py',cur=False,pot=False):
+    def create_tide_nc(self,filename, grdobj, created_by='make_tides()',cur=False,pot=False):
         # Global attributes
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()
@@ -700,8 +948,7 @@ class CROCO():
 
         nc.close()
 
-
-    def create_river_nc(self,filename, grdobj,Nsrc,TS,created_by='make_river.py'):
+    def create_river_nc(self,filename, grdobj,Nsrc,TS,created_by='make_river()'):
 
         nc = netcdf.Dataset(filename, 'w', format='NETCDF4')
         nc.created = datetime.now().isoformat()

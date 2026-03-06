@@ -11,7 +11,7 @@ import argparse
 import sys, os
 from datetime import datetime, timedelta
 import calendar
-from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
 from crocotools_py.postprocess import get_ts_multivar, compute_anomaly
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
@@ -443,7 +443,63 @@ def main():
             month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
         
     parser_make_bry_inter.set_defaults(func=make_bry_inter_handler)
-    
+
+    # ----------------
+    # make_clm_inter
+    # ----------------
+    parser_make_clm_inter = subparsers.add_parser('make_clm_inter',
+            help='Make monthly ocean climatology files for CROCO interannual runs')
+    parser_make_clm_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the monthly OGCM files')
+    parser_make_clm_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing files will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_clm_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_clm_inter.add_argument('--month_end', required=True, type=str,
+            help='last month in the interannual run in format "YYYY-MM"')
+    parser_make_clm_inter.add_argument('--Yorig', required=True, type=int,
+            help='the Yorig value used in setting up the CROCO model')
+    def make_clm_inter_handler(args):
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+
+        month_now = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
+        month_end = datetime.strptime(args.month_end+'-01','%Y-%m-%d')
+
+        while month_now <= month_end:
+
+            print('working on '+month_now.strftime('%Y-%m'))
+
+            # define a list of 3 input files - last month, this month and next month
+            # This is to ensure that we always have clm data for the start and end of the CROCO run for this month
+            month_prev = month_now - timedelta(days=10) # an arbitrary date in the previous month
+            month_next = month_now + timedelta(days=32) # 32 days ensures we get to the next month
+            fname_month_prev = os.path.join(args.input_dir, month_prev.strftime(params.input_file_fmt))
+            fname_month_now = os.path.join(args.input_dir, month_now.strftime(params.input_file_fmt))
+            fname_month_next = os.path.join(args.input_dir, month_next.strftime(params.input_file_fmt))
+            if not os.path.exists(fname_month_prev):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_prev)
+            if not os.path.exists(fname_month_now):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_now)
+            if not os.path.exists(fname_month_next):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_next)
+            input_file=[fname_month_prev,
+                        fname_month_now,
+                        fname_month_next]
+
+            # define ini_date and end_date using a 1 day buffer either side of the month
+            ini_date = month_now - timedelta(days=1)
+            day_end = calendar.monthrange(month_now.year,month_now.month)[1]
+            end_date = datetime(month_now.year,month_now.month,day_end) + timedelta(days=2)
+
+            # make the clm file for this month
+            fname_out = params.clim_prefix + month_now.strftime('_Y%YM%m.nc')
+            make_clm(input_file,args.output_dir,ini_date,end_date,args.Yorig,fname_out)
+
+            month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
+        
+    parser_make_clm_inter.set_defaults(func=make_clm_inter_handler)
+ 
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
