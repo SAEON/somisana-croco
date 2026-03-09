@@ -105,7 +105,8 @@ jobs:
           # It's not obvious to me what this should be. Of course we prefer to restart from our model rather than the global model
           # But the further go back to look for a restart file, the more of a forecast solution you're using
           # So it's a trade-off between the most recent global solution vs an older high res solution
-          MAX_STEPS=12 
+          # I'm opting for 5 days, so 20 time-steps in the restart file
+          MAX_STEPS=20 
 
           while [[ $step_count -lt $MAX_STEPS ]]; do
 
