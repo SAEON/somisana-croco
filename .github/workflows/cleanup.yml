@@ -21,7 +21,7 @@ jobs:
         # anything not archived will be lost!
         id: cleanup_runner
         run: |
-          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
+          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -mtime +5 -exec rm -rf {} +
   cleanup-archive:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
@@ -33,14 +33,14 @@ jobs:
         run: |
           # have to run as sudo as the archive is owned by root
           # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
-          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/* -mtime +6 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/* -mtime +6 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/* -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
         id: cleanup_saeon_mount
         run: |
-          sudo find /mnt/saeon-somisana/data/shared/ -prune -o -type f \( -name "MERCATOR*nc" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/saeon-somisana/data/shared/ -type f \( -name "*MERCATOR*nc" \) -mtime +5 -exec rm -fr {} +
   
   prune-images:
     runs-on: ${{ inputs.RUNNER_NAME }}
