@@ -28,8 +28,10 @@ jobs:
       - name: Clean /mnt/ocims-somisana
         # clean certain file types in the public facing archive
         # we only want to keep the forecast portion of the archived forecast runs
-        # (the various tiered outputs can be regenerated if needed) 
+        # (the various tiered outputs can be regenerated if needed)
+        # timeout added because /mnt/ocims-somisana is a network mount that can hang
         id: cleanup_archive
+        timeout-minutes: 30
         run: |
           # have to run as sudo as the archive is owned by root
           # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
@@ -38,7 +40,11 @@ jobs:
           sudo find /mnt/ocims-somisana/public-facing/sa-forcing/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
+        # timeout added because /mnt/saeon-somisana is a network mount that can hang
+        # if: always() ensures this step runs even if the previous step failed or timed out
         id: cleanup_saeon_mount
+        if: always()
+        timeout-minutes: 10
         run: |
           sudo find /mnt/saeon-somisana/data/shared/ -type f \( -name "*MERCATOR*nc" \) -mtime +5 -exec rm -fr {} +
   
