@@ -278,5 +278,5 @@ psource_ncfile:   Nsrc  Isrc  Jsrc  Dsrc qbardir  Lsrc  Tsrc   runoff file name
                          35  13  1  -1   T T   20.0  15.0
 
 online:    byear  bmonth recordsperday byearend bmonthend / data path
-           NYONLINE   NMONLINE      24             2019     12
-           /home/gfearon/lustre/somisana-croco/DATASETS_CROCOTOOLS/ERA5/eez_for_croco/           
+           NYONLINE   NMONLINE      24             2025     12
+           /mnt/lustre/groups/ERTH1103/data/ERA5/eez_for_croco/           

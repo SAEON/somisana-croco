@@ -21,8 +21,8 @@ Compile options
 05 - as per 04, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
 06 - as per 04, define TIDES
 07 - as per 06, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
-08 - as per 06, define COUPLING_OW
-09 - as per 08, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
+08 - as per 07, define CLIMATOLOGY and undef FRC_BRY
+
 
 Runtime input (\*.in files)
 ---------------------------

@@ -1,5 +1,5 @@
 '''
-params required by make_ini() and make_bry()
+params required by make_ini(), make_bry() and make_clm()
 '''
 
 # Input data information and formating
@@ -25,12 +25,12 @@ sigma_params = dict(theta_s=5, theta_b=7, N=30, hc=200) # Vertical streching, si
 # Ini filename prefix
 ini_prefix = 'croco_ini_GLORYS'
 
-# Bry filename prefinformations
+# Bry filename prefix and info
 bry_prefix = 'croco_bry_GLORYS' 
 obc_dict = dict(south=1, west=1, east=0, north=1) # open boundaries (1=open , [S W E N])
 cycle_bry=0
 
-# Clim filename prefinformations
+# Clim filename prefix and info
 clim_prefix = 'croco_clm_GLORYS'
 cycle_clim=0
 

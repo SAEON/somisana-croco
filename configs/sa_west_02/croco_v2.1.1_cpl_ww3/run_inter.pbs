@@ -1,0 +1,352 @@
+#!/bin/bash
+#PBS -l select=1:ncpus=24:mpiprocs=24
+#PBS -P ERTH1103
+#PBS -q smp
+#PBS -l walltime=1:00:00
+#PBS -o /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3/stdout 
+#PBS -e /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3/stderr 
+#PBS -v START_DATE,END_DATE,RSTFLAG
+
+#unalias cp
+#unalias mv
+#limit coredumpsize unlimited
+CP=/bin/cp
+MV=/bin/mv
+LN=/bin/ln
+MK=/bin/mkdir
+
+# -----------------
+# READ USER INPUTS
+# -----------------
+
+# This script runs a coupled model inside the $RUN_DIR specified below
+# The other settings for this run should be made inside the CROCO_IN and WW3_IN directories, 
+# particularly the respective myenv_inter.sh files
+
+CONFIG_DIR=/home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3
+RUN_NAME=RUN_01
+
+RUN_DIR=$CONFIG_DIR/$RUN_NAME
+cd $RUN_DIR
+
+source CROCO_IN/myenv_inter.sh
+source WW3_IN/myenv_inter.sh
+
+# -------------------
+# DEFINE DIRECTORIES
+# -------------------
+#
+# Create the scratch and output dirs
+SCRATCHDIR=$RUN_DIR/scratch
+OUTPUTDIR=$RUN_DIR/output
+$MK $SCRATCHDIR
+$MK $OUTPUTDIR
+#
+# Set up CROCO directories
+CROCO_EXEDIR=$RUN_DIR/CROCO_IN/COMP
+CROCO_INPUTDIR_IN=$RUN_DIR/CROCO_IN
+CROCO_INPUTDIR_SRF=$CONFIG_DIR/CROCO_$ATMOS_BULK # only used if not compiled with ONLINE cpp key
+CROCO_INPUTDIR_BRY=$CONFIG_DIR/CROCO_$OGCM
+CROCO_INPUTDIR_GRD=$CONFIG_DIR/CROCO_GRID
+CROCO_INPUTDIR_TID=$CONFIG_DIR/CROCO_$TIDE_FRC
+#
+# Set up WW3 directories
+WW3_INPUTDIR_BRY=$CONFIG_DIR/$WW3_SPEC_DIR_NAME
+WW3_INPUTDIR_GRD=$CONFIG_DIR/WW3_GRID
+#
+# OASIS directory
+OASIS_INPUTDIR=$RUN_DIR/OASIS_IN
+#
+# change to the scratch directory where all of the input files for running the current month will be placed
+cd $SCRATCHDIR
+
+# ---------------------------------
+# GET FILES FOR RUN INITIALISATION
+# ---------------------------------
+
+# Get the croco files
+echo "Getting croco executable from $CROCO_EXEDIR"
+$CP -f $CROCO_EXEDIR/croco crocox
+chmod u+x crocox
+#echo "Getting Agrif file from $CROCO_INPUTDIR_GRD"
+#$CP -f $CROCO_INPUTDIR_GRD/AGRIF_FixedGrids.in .
+#echo "Getting stations file from $CROCO_INPUTDIR_IN"
+#$CP -f $CROCO_INPUTDIR_IN/stations.in $SCRATCHDIR
+#
+# CROCO grid and ini file(s)
+TIME=$(date -d "$START_DATE" +Y%YM%m)
+LEVEL=0
+while [ $LEVEL != $NLEVEL ]; do
+  if [[ ${LEVEL} == 0 ]]; then
+    ENDF=
+  else
+    ENDF=.${LEVEL}
+  fi
+  echo "Getting croco_grd.nc${ENDF} from ${CROCO_INPUTDIR_GRD}${ENDF}"
+  $LN -sf ${CROCO_INPUTDIR_GRD}${ENDF}/croco_grd.nc${ENDF} $SCRATCHDIR
+  echo "Getting croco_inter.in${ENDF} from $CROCO_INPUTDIR_IN"
+  $CP -f $CROCO_INPUTDIR_IN/croco_inter.in${ENDF} $SCRATCHDIR
+  if [[ $RSTFLAG == 0 ]]; then
+    echo "Getting croco_ini_${OGCM}_${TIME}.nc${ENDF} from ${CROCO_INPUTDIR_BRY}${ENDF}"
+    $CP -f ${CROCO_INPUTDIR_BRY}${ENDF}/croco_ini_${OGCM}_${TIME}.nc${ENDF} $SCRATCHDIR
+    $CP -f croco_ini_${OGCM}_${TIME}.nc${ENDF} croco_ini.nc${ENDF}
+  else
+    RSTTIME=$(date -d "$START_DATE -1 month" +Y%YM%m)
+    RSTFILE=croco_rst_${RSTTIME}
+    echo "Getting ${RSTFILE}.nc${ENDF} from $OUTPUTDIR"
+    $CP -f $OUTPUTDIR/${RSTFILE}.nc${ENDF} $SCRATCHDIR
+    $CP -f ${RSTFILE}.nc${ENDF} croco_ini.nc${ENDF}
+  fi
+  LEVEL=$((LEVEL + 1))
+done
+#
+# WW3 restart file
+if [[ $RSTFLAG == 0 ]]; then
+  echo "using a cold start for WW3"
+else
+  WW3_RSTFILE=ww3_rst_$(date -d "$START_DATE -1 month" +Y%YM%m).ww3
+  echo "Getting ${WW3_RSTFILE} from $OUTPUTDIR"
+  $CP $OUTPUTDIR/${WW3_RSTFILE} restart.ww3 
+fi
+# WW3 grid preprocessing files
+$CP $WW3_EXE_DIR/ww3_grid .
+$CP $WW3_INPUTDIR_GRD/*.dat .
+$CP $RUN_DIR/WW3_IN/ww3_grid.nml .
+$CP $RUN_DIR/WW3_IN/namelists_config.nml .
+./ww3_grid | tee ww3_grid.out
+# boundary preprocessing files
+$CP $WW3_EXE_DIR/ww3_bounc .
+$CP $RUN_DIR/WW3_IN/ww3_bounc.nml .
+# surface preprocessing files
+$CP $WW3_EXE_DIR/ww3_prnc .
+$CP $RUN_DIR/WW3_IN/ww3_prnc.nml .
+# shel files
+# $CP $WW3_EXE_DIR/ww3_shel .
+$CP $WW3_EXE_DIR/ww3_shel wwatch # renaming the ww3_shel exe to match what is in namcouple
+$CP $RUN_DIR/WW3_IN/ww3_shel.nml ww3_shel_template.nml
+# postprocessing script to create nc outputs
+$CP $WW3_EXE_DIR/ww3_ounf .
+$CP $RUN_DIR/WW3_IN/ww3_ounf.nml ww3_ounf_template.nml
+#
+# OASIS restart files
+if [[ $RSTFLAG == 0 ]]; then
+  # Use manually created initial condition files
+  echo "Getting oce.nc and wav.nc from ${OASIS_INPUTDIR}"
+  $CP -f ${OASIS_INPUTDIR}/wav.nc $SCRATCHDIR
+  $CP -f ${OASIS_INPUTDIR}/oce.nc $SCRATCHDIR 
+else
+  # Use restart files from previous run
+  RSTTIME=$(date -d "$START_DATE -1 month" +Y%YM%m)
+  OCE_RSTFILE=oasis_oce_${RSTTIME}.nc
+  WAV_RSTFILE=oasis_wav_${RSTTIME}.nc
+  echo "Getting ${OCE_RSTFILE} and ${WAV_RSTFILE} from $OUTPUTDIR"
+  $CP -f $OUTPUTDIR/${OCE_RSTFILE} $SCRATCHDIR/oce.nc
+  $CP -f $OUTPUTDIR/${WAV_RSTFILE} $SCRATCHDIR/wav.nc
+fi
+
+CURRENT_DATE=${START_DATE}
+# Loop through months
+while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ]; do
+    
+    # Format months
+    TIME=$(date -d "$CURRENT_DATE" +Y%YM%m)
+    NY=$(date -d "$CURRENT_DATE" +%Y)
+    NM=$(date -d "$CURRENT_DATE" +%m)
+    NDAYS=$(date -d "$(date -d "$CURRENT_DATE" '+%Y-%m-01') +1 month -1 day" +%d)
+    NUMSECS=$((NDAYS * 24 * 3600))
+    
+    echo "WORKING ON MONTH:  $TIME"
+    echo
+
+    # ------------
+    # OASIS files
+    # ------------
+    sed -e 's/NUMSECS/'$NUMSECS'/g' < ${OASIS_INPUTDIR}/namcouple > namcouple
+
+    # --------------------------------------
+    # Get CROCO forcing files for this month
+    # --------------------------------------
+    #
+    # surface forcing
+    #
+    LEVEL=0
+    while [ $LEVEL != $NLEVEL ]; do
+      if [[ ${LEVEL} == 0 ]]; then
+        ENDF=
+      else
+        ENDF=.${LEVEL}
+      fi
+      if [[ ${FORCING_FILES} == 1 ]]; then
+        echo "Getting croco_frc_${ATMOS_FRC}_${TIME}.nc${ENDF} from ${CROCO_INPUTDIR_SRF}${ENDF}"
+        $LN -sf ${CROCO_INPUTDIR_SRF}${ENDF}/croco_frc_${ATMOS_FRC}_${TIME}.nc${ENDF} croco_frc.nc${ENDF}
+      fi
+      if [[ ${BULK_FILES} == 1 ]]; then
+        echo "Getting croco_blk_${ATMOS_BULK}_${TIME}.nc${ENDF} from ${CROCO_INPUTDIR_SRF}${ENDF}"
+        $LN -sf ${CROCO_INPUTDIR_SRF}${ENDF}/croco_blk_${ATMOS_BULK}_${TIME}.nc${ENDF} croco_blk.nc${ENDF}
+      fi
+      if [[ ${TIDE_FILES} == 1 ]]; then
+        echo "Getting croco_frc_${TIDE_FRC}_${TIME}.nc${ENDF} from ${CROCO_INPUTDIR_TID}${ENDF}"
+        $LN -sf ${CROCO_INPUTDIR_TID}${ENDF}/croco_frc_${TIDE_FRC}_${TIME}.nc${ENDF} croco_frc.nc${ENDF}
+      fi
+      LEVEL=$((LEVEL + 1))
+    done
+    #
+    # boundary conditions
+    # (no clm or bry files needed for child domains)
+    #
+    if [[ ${CLIMATOLOGY_FILES} == 1 ]]; then
+      echo "Getting croco_clm_${OGCM}_${TIME}.nc from ${CROCO_INPUTDIR_BRY}"
+      $LN -sf ${CROCO_INPUTDIR_BRY}/croco_clm_${OGCM}_${TIME}.nc croco_clm.nc
+    fi
+    if [[ ${BOUNDARY_FILES} == 1 ]]; then
+      echo "Getting croco_bry_${OGCM}_${TIME}.nc from ${CROCO_INPUTDIR_BRY}"
+      $LN -sf ${CROCO_INPUTDIR_BRY}/croco_bry_${OGCM}_${TIME}.nc croco_bry.nc
+    fi
+    #
+    # runtime input file(s) 
+    # 
+    T_REF=3 # Time refinement coefficient (factor to apply to time-step at each child level)
+    #
+    CROCO_DT=$CROCO_DT0
+    NUMTIMES=$((NUMSECS / CROCO_DT))
+    NUMAVG=$((NS_AVG / CROCO_DT))
+    NUMHIS=$((NS_HIS / CROCO_DT))
+    NUMAVGSURF=$((NS_AVGSURF / CROCO_DT))
+    NUMHISSURF=$((NS_HISSURF / CROCO_DT))
+    NUMSTA=$((NS_STA / CROCO_DT))
+    echo "Writing in croco_${TIME}_inter.in"
+    LEVEL=0
+    while [[ $LEVEL != $NLEVEL ]]; do
+      if [[ ${LEVEL} == 0 ]]; then
+        ENDF=
+      else
+        ENDF=.${LEVEL}
+        if [[ ${LEVEL} -gt 1 ]]; then
+          # CAUTION!
+          # this if statement is here because all of our subdomains are nested inside the same parent
+          # so we want to keep the steps as they are from LEVEL = 2 and up
+          T_REF=1
+        fi
+        CROCO_DT=$((CROCO_DT / T_REF))
+        NUMTIMES=$((T_REF * NUMTIMES))
+        NUMAVG=$((T_REF * NUMAVG))
+        NUMHIS=$((T_REF * NUMHIS))
+        NUMAVGSURF=$((T_REF * NUMAVGSURF))
+        NUMHISSURF=$((T_REF * NUMHISSURF))
+        NUMSTA=$((T_REF * NUMSTA))
+      fi
+      echo "USING NUMTIMES = $NUMTIMES"
+      sed -e 's/DTNUM/'$CROCO_DT'/' -e 's/NFAST/'$CROCO_NFAST'/' -e 's/NUMTIMES/'$NUMTIMES'/' -e 's/NUMHISSURF/'$NUMHISSURF'/' -e 's/NUMAVGSURF/'$NUMAVGSURF'/' -e 's/NUMHIS/'$NUMHIS'/' -e 's/NUMAVG/'$NUMAVG'/' -e 's/NUMSTA/'$NUMSTA'/' -e 's/NYONLINE/'$NY'/' -e 's/NMONLINE/'$NM'/' < croco_inter.in${ENDF} > croco_${TIME}_inter.in${ENDF}
+      LEVEL=$((LEVEL + 1))
+    done
+
+    # --------------------------------------
+    # Get WW3 forcing files for this month
+    # --------------------------------------
+
+    # get the spectral boundary conditions
+    # we need to add the path to the spec.list file to every line in the spec.list file so that the file names contain the absolute paths
+    sed 's|^|'$WW3_INPUTDIR_BRY/$(date -d "$CURRENT_DATE" +%Y_%m)/'|' $WW3_INPUTDIR_BRY/$(date -d "$CURRENT_DATE" +%Y_%m)/spec.list > spec.list
+    ./ww3_bounc | tee ww3_bounc_$TIME.out
+
+    # create the surface forcing
+    # using the CROCO-reformatted ERA5 files, as these are easier to work with than the raw ERA5 files
+    # Specifically, this avoids having to use ncrename which has a bug that corrupts int64 time data
+    MONTH_NOW_CROCO=$(date -d "$CURRENT_DATE" +Y%YM%-m)
+    MONTH_NEXT_CROCO=$(date -d "$CURRENT_DATE +1 month" +Y%YM%-m)
+    ufile=$WW3_INPUTDIR_SRF/U10M_$MONTH_NOW_CROCO.nc
+    vfile=$WW3_INPUTDIR_SRF/V10M_$MONTH_NOW_CROCO.nc
+    ufile_next=$WW3_INPUTDIR_SRF/U10M_$MONTH_NEXT_CROCO.nc
+    vfile_next=$WW3_INPUTDIR_SRF/V10M_$MONTH_NEXT_CROCO.nc
+    #
+    rm -f wind*
+    echo 'combine U10M and V10M into a single wind.nc file'
+    $CP $ufile wind.nc
+    ncks -A $vfile wind.nc
+    echo 'extract and append first timestep of next month for full coverage'
+    ncks -O -d time,0,0 $ufile_next wind_next.nc
+    ncks -A -d time,0,0 $vfile_next wind_next.nc
+    ncrcat -O wind.nc wind_next.nc wind.nc
+    echo 'convert time from float to double and round to exact hours to avoid float32 precision errors'
+    ncap2 -O -s 'time=round(double(time)*24.0)/24.0' wind.nc wind.nc    
+    echo 'fix time units format for ww3_prnc U2D parser (needs hh:mm:ss)'
+    ncatted -O -a units,time,o,c,"days since 1993-01-01 00:00:00" wind.nc
+    echo 'add _FillValue attribute required by ww3_prnc'
+    ncatted -O -a _FillValue,U10M,c,f,9999.0 -a _FillValue,V10M,c,f,9999.0 wind.nc
+    echo 'add calendar attribute to suppress ww3_prnc warning'
+    ncatted -O -a calendar,time,c,c,"standard" wind.nc
+    echo 'run ww3_prnc'
+    ./ww3_prnc | tee ww3_prnc_$TIME.out
+
+    # prepare the ww3_shel.nml file
+    YMD_FIRSTDAY=$(date -d "$CURRENT_DATE" +%Y%m%d)
+    YMD_NEXT_FIRSTDAY=$(date -d "$CURRENT_DATE +1 month" +%Y%m%d)
+    YMD_LASTDAY=$(date -d "$CURRENT_DATE +1 month -1 day" +%Y%m%d)
+    sed -e 's/YMD_FIRSTDAY/'$YMD_FIRSTDAY'/g' -e 's/YMD_NEXT_FIRSTDAY/'$YMD_NEXT_FIRSTDAY'/g' -e 's/YMD_LASTDAY/'$YMD_LASTDAY'/g' < ww3_shel_template.nml > ww3_shel.nml
+    
+    # --------------
+    # run the model
+    # --------------
+    mpirun -np ${WW3_MPI_NUM_PROCS} ./wwatch : -np ${CROCO_MPI_NUM_PROCS} ./crocox croco_${TIME}_inter.in > crocox_wwatch_$TIME.out
+    
+    # Test if the month has finised properly
+    echo "Test croco_wwatch_${TIME}.out"
+    status=`tail -2 crocox_wwatch_${TIME}.out | grep DONE | wc -l`
+    if [[ $status == 1 ]]; then
+      echo "CROCO is all good"
+      echo "XXXXXXXX"
+    else
+      echo
+      echo "Warning: month not finished properly"
+      echo
+      tail -20 croco_${TIME}.out
+      echo
+      echo "Month ${TIME} did not work"
+      echo
+      exit 1
+    fi
+
+    # -------------------
+    # archive the output
+    # -------------------
+
+    # OASIS restart files
+    # OASIS writes the end-of-run coupling state into loc000NNN_* variables throughout the run (WTRN).
+    # These are what OASIS reads at the next month's startup (RRST)
+    # Next month's run will use the oce.nc and wav.nc in scratch, but here we archive them for future "hot" restarts
+    $CP oce.nc ${OUTPUTDIR}/oasis_oce_${TIME}.nc 
+    $CP wav.nc ${OUTPUTDIR}/oasis_wav_${TIME}.nc 
+
+    # CROCO output
+    LEVEL=0
+    while [[ $LEVEL != $NLEVEL ]]; do
+      if [[ ${LEVEL} == 0 ]]; then
+        ENDF=
+      else
+        ENDF=.${LEVEL}
+      fi
+          $CP -f croco_rst.nc${ENDF} croco_ini.nc${ENDF}
+          $MV -f croco_his.nc${ENDF} ${OUTPUTDIR}/croco_his_${TIME}.nc${ENDF}
+          $MV -f croco_rst.nc${ENDF} ${OUTPUTDIR}/croco_rst_${TIME}.nc${ENDF}
+          $MV -f croco_avg.nc${ENDF} ${OUTPUTDIR}/croco_avg_${TIME}.nc${ENDF}
+          $MV -f croco_his_surf.nc${ENDF} ${OUTPUTDIR}/croco_his_surf_${TIME}.nc${ENDF}
+          $MV -f croco_avg_surf.nc${ENDF} ${OUTPUTDIR}/croco_avg_surf_${TIME}.nc${ENDF}
+          #$MV -f croco_sta.nc${ENDF} ${OUTPUTDIR}/croco_sta_${TIME}.nc${ENDF}
+      LEVEL=$((LEVEL + 1))
+    done
+
+    # WW3 output
+    #
+    # first we have to create netcdf files from the ww3 binary files by running ww3_ounf
+    sed -e 's/YMD_FIRSTDAY/'$YMD_FIRSTDAY'/g' < ww3_ounf_template.nml > ww3_ounf.nml
+    ./ww3_ounf | tee ww3_ounf_$TIME.out
+    # then move to the output dir
+    $MV ww3.$(date -d "$CURRENT_DATE" +%Y%m).nc $OUTPUTDIR/ww3_ounf_${TIME}.nc
+    $MV restart001.ww3 restart.ww3 # ensure that next month gets restarted from this file
+    $CP restart.ww3 $OUTPUTDIR/ww3_rst_${TIME}.ww3 # back up the restart file in case we want to restart from this month
+    
+    # Advance by one month
+    CURRENT_DATE=$(date -d "$CURRENT_DATE +1 month" +%Y-%m-01)
+
+done
+
