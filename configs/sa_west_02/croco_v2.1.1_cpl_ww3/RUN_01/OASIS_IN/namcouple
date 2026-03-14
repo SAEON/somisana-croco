@@ -197,7 +197,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # T0M1 / ww_tmn : mean period (s)
 #~~~~~~~~~~~
 WW3_T0M1 CROCO_T0M1 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -207,7 +207,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # HS / ww_hs : HS significant wave height (m) 
 #~~~~~~~~~~~
 WW3__OHS CROCO_HS 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -217,7 +217,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # THM / ww_thm : mean direction  
 #~~~~~~~~~~~
 WW3__DIR CROCO_DIR 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -227,7 +227,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # FOC : Wave-to-ocean TKE flux (W.m-2)
 #~~~~~~~~~~~
 WW3__FOC CROCO_FOC 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -237,7 +237,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # USSX : Surface Stokes drift, x-component (m.s-1)
 #~~~~~~~~~~~
 WW3_USSX CROCO_USSX 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -247,7 +247,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # USSY : Surface Stokes drift, y-component (m.s-1)
 #~~~~~~~~~~~
 WW3_USSY CROCO_USSY 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -257,7 +257,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # LM : Mean wave length (m)
 #~~~~~~~~~~~
 WW3___LM CROCO_LM 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -267,7 +267,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # BHD : Wave-induced Bernoulli head pressure (N.m-1)
 #~~~~~~~~~~~
 WW3__BHD CROCO_BHD 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -277,7 +277,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # UBRX : Bottom orbital velocity, x-component (m.s-1)
 #~~~~~~~~~~~
 WW3_UBRX CROCO_UBRX 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE
@@ -287,7 +287,7 @@ DISTWGT LR SCALAR LATLON 1 4
 # UBRY : Bottom orbital velocity, y-component (m.s-1)
 #~~~~~~~~~~~
 WW3_UBRY CROCO_UBRY 1 3600 2 wav.nc EXPORTED
-130 448 128 446 ww3t ocnt LAG=90
+130 448 128 446 ww3t ocnt LAG=120
 R  0  R  0
 LOCTRANS SCRIPR
 AVERAGE

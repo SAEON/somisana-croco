@@ -9,7 +9,7 @@ export CROCO_SRC=/home/gfearon/croco-v2.1.1/OCEAN/
 
 # MPI partitioning
 export CROCO_MPI_NUM_X=4
-export CROCO_MPI_NUM_Y=16
+export CROCO_MPI_NUM_Y=14
 export CROCO_MPI_NUM_PROCS=$(($CROCO_MPI_NUM_X * $CROCO_MPI_NUM_Y))
 
 # boundary and atmospheric forcing
