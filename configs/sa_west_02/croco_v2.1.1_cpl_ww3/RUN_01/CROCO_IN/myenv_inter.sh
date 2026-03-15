@@ -32,16 +32,16 @@ CROCO_DT0=60
 CROCO_NFAST=60
 # Number of hours for output files
 NH_AVG=24
-NH_HIS=24
-NH_AVGSURF=1
-NH_HISSURF=24
-NH_STA=1
+NH_HIS=24 # not used in the existing config - see croco_inter.in
+NH_AVGSURF=24 # not used in the existing config - see croco_inter.in 
+NH_HISSURF=1
+NH_STA=1 # not used in the existing config - undef STATION in cppdefs.h
 # Convert to seconds
 NS_AVG=$((NH_AVG*3600))
 NS_HIS=$((NH_HIS*3600))
 NS_AVGSURF=$((NH_AVGSURF*3600))
 NS_HISSURF=$((NH_HISSURF*3600))
-NS_STA=$((NH_STA*3600))
+NS_STA=$((NH_STA*3600)) 
 #
 # Number total of grid levels (1: No child grid)
 #

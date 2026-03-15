@@ -329,8 +329,8 @@ while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ];
           $MV -f croco_his.nc${ENDF} ${OUTPUTDIR}/croco_his_${TIME}.nc${ENDF}
           $MV -f croco_rst.nc${ENDF} ${OUTPUTDIR}/croco_rst_${TIME}.nc${ENDF}
           $MV -f croco_avg.nc${ENDF} ${OUTPUTDIR}/croco_avg_${TIME}.nc${ENDF}
-          $MV -f croco_his_surf.nc${ENDF} ${OUTPUTDIR}/croco_his_surf_${TIME}.nc${ENDF}
-          $MV -f croco_avg_surf.nc${ENDF} ${OUTPUTDIR}/croco_avg_surf_${TIME}.nc${ENDF}
+          $MV -f croco_surf.nc${ENDF} ${OUTPUTDIR}/croco_surf_${TIME}.nc${ENDF}
+          #$MV -f croco_avg_surf.nc${ENDF} ${OUTPUTDIR}/croco_avg_surf_${TIME}.nc${ENDF}
           #$MV -f croco_sta.nc${ENDF} ${OUTPUTDIR}/croco_sta_${TIME}.nc${ENDF}
       LEVEL=$((LEVEL + 1))
     done
