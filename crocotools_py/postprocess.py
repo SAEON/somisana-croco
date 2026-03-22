@@ -1553,6 +1553,118 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
 
+def croco_srf_2_ww3(fname, grdname=None, dir_out='.', Yorig=None):
+    """
+    Convert a CROCO surface output file to WW3-compatible netCDF files
+    for current and water level forcing.
+
+    Currents are regridded from u/v staggered grids to the rho grid and
+    rotated from grid-aligned to east/north components.
+    Water levels (zeta) are extracted directly from the rho grid.
+
+    Output files are formatted for ww3_prnc in ASIS mode (dimensions match
+    the model grid exactly, no spatial interpolation needed).
+
+    Parameters
+    ----------
+    fname : str
+        Path to a CROCO surface output file (e.g. croco_avg_surf_Y2016M01.nc).
+    grdname : str, optional
+        Path to the CROCO grid file. If None, grid info is read from fname.
+    dir_out : str
+        Output directory for the WW3-compatible files.
+    Yorig : int, optional
+        Reference year for CROCO time (seconds since Yorig-01-01).
+        Also used to set output time units: "days since {Yorig}-01-01 00:00:00".
+    """
+    import os
+
+    print('')
+    print(f'Running croco_srf_2_ww3() for {fname}')
+
+    # derive output file names from input filename
+    # robust way of getting the file extension, including CROCO child domains e.g. *.nc.2
+    basename = os.path.basename(fname)
+    match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
+    basename_no_extension = basename[:match.start()]
+    extension = match.group(0)
+    current_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_current' + extension))
+    level_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_level' + extension))
+
+    # extract u,v on rho grid, rotated to east/north components
+    ds_uv = get_uv(fname, grdname=grdname, Yorig=Yorig)
+
+    # extract water levels
+    ds_zeta = get_var(fname, 'zeta', grdname=grdname, Yorig=Yorig)
+
+    # convert datetime times to numerical values: days since Yorig-01-01
+    ref_date = datetime(Yorig, 1, 1) if Yorig is not None else datetime(2000, 1, 1)
+    time_units_str = f"days since {ref_date.strftime('%Y-%m-%d')} 00:00:00"
+
+    time_vals = ds_uv.time.values
+    time_days = (time_vals - np.datetime64(ref_date)) / np.timedelta64(1, 'D')
+
+    # round to nearest minute to avoid float precision issues
+    time_days = np.round(time_days * 1440.0) / 1440.0
+
+    # --- Write current file ---
+    print(f'  writing {current_out}')
+    ucur = ds_uv['u'].values.astype(np.float32)
+    vcur = ds_uv['v'].values.astype(np.float32)
+
+    # replace NaN with fill value
+    fill_value = np.float32(9999.0)
+    ucur = np.where(np.isnan(ucur), fill_value, ucur)
+    vcur = np.where(np.isnan(vcur), fill_value, vcur)
+
+    ds_cur_out = xr.Dataset(
+        {
+            'ucur': (['time', 'ny', 'nx'], ucur),
+            'vcur': (['time', 'ny', 'nx'], vcur),
+        },
+        coords={
+            'time': time_days,
+        }
+    )
+    ds_cur_out['time'].attrs['units'] = time_units_str
+    ds_cur_out['time'].attrs['calendar'] = 'standard'
+    ds_cur_out['ucur'].attrs['_FillValue'] = fill_value
+    ds_cur_out['ucur'].attrs['units'] = 'm/s'
+    ds_cur_out['ucur'].attrs['long_name'] = 'Eastward current velocity'
+    ds_cur_out['vcur'].attrs['_FillValue'] = fill_value
+    ds_cur_out['vcur'].attrs['units'] = 'm/s'
+    ds_cur_out['vcur'].attrs['long_name'] = 'Northward current velocity'
+
+    ds_cur_out.to_netcdf(current_out, unlimited_dims=['time'])
+    ds_cur_out.close()
+
+    # --- Write water level file ---
+    print(f'  writing {level_out}')
+    wlv = ds_zeta['zeta'].values.astype(np.float32)
+    wlv = np.where(np.isnan(wlv), fill_value, wlv)
+
+    ds_lev_out = xr.Dataset(
+        {
+            'wlv': (['time', 'ny', 'nx'], wlv),
+        },
+        coords={
+            'time': time_days,
+        }
+    )
+    ds_lev_out['time'].attrs['units'] = time_units_str
+    ds_lev_out['time'].attrs['calendar'] = 'standard'
+    ds_lev_out['wlv'].attrs['_FillValue'] = fill_value
+    ds_lev_out['wlv'].attrs['units'] = 'm'
+    ds_lev_out['wlv'].attrs['long_name'] = 'Sea surface height'
+
+    ds_lev_out.to_netcdf(level_out, unlimited_dims=['time'])
+    ds_lev_out.close()
+
+    ds_uv.close()
+    ds_zeta.close()
+
+    print(f'  done')
+
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
 #    Yorig=2000

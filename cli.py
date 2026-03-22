@@ -12,7 +12,7 @@ import sys, os
 from datetime import datetime, timedelta
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
-from crocotools_py.postprocess import get_ts_multivar, compute_anomaly
+from crocotools_py.postprocess import get_ts_multivar, compute_anomaly, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
 
@@ -500,6 +500,31 @@ def main():
         
     parser_make_clm_inter.set_defaults(func=make_clm_inter_handler)
  
+    # ----------------
+    # croco_srf_2_ww3
+    # ----------------
+    parser_croco_srf_2_ww3 = subparsers.add_parser('croco_srf_2_ww3',
+            help='Convert CROCO surface output to WW3-compatible current and water level netCDF files for use with ww3_prnc in ASIS mode')
+    parser_croco_srf_2_ww3.add_argument('--fname', required=True, type=str,
+            help='input CROCO surface filename - can include wildcards (*) to process multiple files in a single command')
+    parser_croco_srf_2_ww3.add_argument('--grdname', required=False, type=str, default=None,
+            help='optional CROCO grid file (if grid vars are not in your output files)')
+    parser_croco_srf_2_ww3.add_argument('--dir_out', required=True, type=str,
+            help='output directory for WW3-compatible current and water level files')
+    parser_croco_srf_2_ww3.add_argument('--Yorig', type=parse_int, default=None,
+            help='Origin year for CROCO time. Output time units will be "days since Yorig-01-01 00:00:00"')
+    def croco_srf_2_ww3_handler(args):
+        from glob import glob as globfn
+        fname_in = args.fname
+        if type(fname_in) == str:
+            if fname_in.find('*') > 0:
+                fname_in = sorted(globfn(fname_in))
+            else:
+                fname_in = [fname_in]
+        for f in fname_in:
+            croco_srf_2_ww3(f, grdname=args.grdname, dir_out=args.dir_out, Yorig=args.Yorig)
+    parser_croco_srf_2_ww3.set_defaults(func=croco_srf_2_ww3_handler)
+
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
