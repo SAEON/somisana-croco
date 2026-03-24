@@ -1,8 +1,8 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=24:mpiprocs=24
+#PBS -l select=5:ncpus=24:mpiprocs=24
 #PBS -P ERTH1103
-#PBS -q smp
-#PBS -l walltime=1:00:00
+#PBS -q normal
+#PBS -l walltime=24:00:00
 #PBS -o /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3/stdout 
 #PBS -e /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3/stderr 
 #PBS -v START_DATE,END_DATE,RSTFLAG
