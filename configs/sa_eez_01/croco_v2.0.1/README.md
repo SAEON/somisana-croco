@@ -25,11 +25,14 @@ Compile options
 09 - as per 08, define ERA_ECMWF (ERA5 blk files are in a different format for ONLINE processing)
 10 - as per 09, define CLIMATOLOGY
 11 - as per 10, define AGRIF and AGRIF_2WAY
+12 - as per 10, define UV_VIS2
+13 - as per 10, undef SPONGE_GRID to use x_sponge from .in file (wider sponge layer)
 
 Runtime input (\*.in files)
 ---------------------------
 `I**`
 01 - baseline runtime options, for an inter-annual hindcast, writing daily averaged outputs for the full domain, and hourly outputs for the surface
+02 - as per 01, x_sponge = 180000 m (~53 grid points, half the cross-shore eta dimension)
 99 - baseline runtime options for running a forecast simulation
 
 Surface and boundary forcing
