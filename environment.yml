@@ -15,6 +15,7 @@ dependencies:
   - pygrib
   - cartopy>=0.20
   - cmocean
+  - utide
   # some required packages for croco_pytools
   - wxpython=4.2.0
   - traits=6.4.1
