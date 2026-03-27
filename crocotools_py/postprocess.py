@@ -3,18 +3,14 @@ import xarray as xr
 import dask
 from datetime import timedelta, datetime
 from glob import glob
-from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
+from crocotools_py.define_attrs import apply_attrs
 import re
 import time
 import pandas as pd
 
-def change_attrs(attrs,da,var_str):
-    meta = getattr(attrs, var_str)
-    da.attrs['long_name'] = meta.long_name
-    da.attrs['units'] = meta.units
-    da.attrs['standard_name'] = meta.standard_name
-    
-    return da
+def change_attrs(da, var_str, rotated=False):
+    """Backwards-compatible wrapper around apply_attrs."""
+    return apply_attrs(da, var_str, rotated=rotated)
 
 def u2rho(u):
     """
@@ -839,18 +835,8 @@ def get_var(fname,var_str,
     ds_out = ds_out.squeeze()
     
     # change the attributes to make the dataset cf compliant
-    attrs = CROCO_Attrs()
-    ds_out['eta_rho'] = change_attrs(attrs,ds_out.eta_rho,'eta_rho')
-    ds_out['xi_rho']  = change_attrs(attrs,ds_out.xi_rho,'xi_rho')
-    ds_out['lon_rho'] = change_attrs(attrs,ds_out.lon_rho,'lon_rho')
-    ds_out['lat_rho']  = change_attrs(attrs,ds_out.lat_rho,'lat_rho')
-    ds_out['h'] = change_attrs(attrs,ds_out.h,'h')
-    ds_out['mask'] = change_attrs(attrs,ds_out.mask,'mask')
-    ds_out['zeta'] = change_attrs(attrs,ds_out.zeta,'zeta')
-    try:
-        ds_out[var_str] = change_attrs(attrs, ds_out[var_str], var_str)
-    except:
-        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_str}")
+    for var in ds_out:
+        apply_attrs(ds_out[var], var)
     
     if nc_out is not None:
         print('')
@@ -937,13 +923,8 @@ def get_uv(fname,
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
 
-    attrs = CROCO_Attrs_RotatedVectors()
-    
-    try:
-        u_out = change_attrs(attrs,u_out,var_u)
-        v_out = change_attrs(attrs,v_out,var_v)
-    except:
-        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_u},{var_v}")
+    apply_attrs(u_out, var_u, rotated=True)
+    apply_attrs(v_out, var_v, rotated=True)
 
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
@@ -1519,16 +1500,11 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     
     print("Computing anomalies...")
     ds_anom = xr.Dataset(coords=ds_hf.coords)
-    croco_attrs = CROCO_Attrs()
     for var in varlist:
         print(f"{var}")
         anom = ds_hf[var] - ds_clim[var]
         anom_name = f"{var}_anom"
-        anom = change_attrs(croco_attrs, anom, anom_name)
-        try:
-            anom = change_attrs(croco_attrs, anom, anom_name)
-        except:
-            print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {anom_name}")
+        apply_attrs(anom, anom_name)
 
         ds_anom[anom_name] = anom
     ds_hf.close()
