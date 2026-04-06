@@ -1002,6 +1002,58 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
+# def find_nearest_point(grdname, Longi, Latit, Bottom=None):
+#     """
+#     Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
+            
+#     Parameters:
+#     - fname :filename of the model, or the grid file
+#     - Longi :longitude
+#     - Latit :latitude
+#     - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+#       lat and lon in water that is as deep as reference. If == None then
+#       this looks for only the closest horizontal point.
+
+#     Returns:
+#     - j :the nearest eta index
+#     - i :the nearest xi index
+    
+#     j,i can be used in xarrays built-in xr.isel() function to extract data at this grid point
+    
+#     (Note j,i aren't the eta_rho,xi_rho values! 
+#      The j,i indices are one less than the eta_rho,xi_rho values
+#      because eta_rho,xi_rho are 1 based)
+
+    
+#     """
+    
+#     lon_rho = get_grd_var(grdname, 'lon_rho').values
+#     lat_rho = get_grd_var(grdname, 'lat_rho').values
+#     h = get_grd_var(grdname, 'h').values
+
+#     # Calculate the distance between (Longi, Latit) and all grid points
+#     distance = ((lon_rho - Longi) ** 2 +
+#                 (lat_rho - Latit) ** 2) ** 0.5
+    
+#     if Bottom is None:
+#         mask=h/h
+
+#     else:
+#         mask=h
+#         mask[mask<Bottom]=10000
+#         mask[mask<10000]=1
+    
+#     distance_mask=distance*mask
+
+#     # Find the indices of the minimum distance
+#     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
+#     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
+#     min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
+
+#     j, i = min_index
+
+#     return j, i
+
 def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     """
     Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
@@ -1030,25 +1082,30 @@ def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     lon_rho = get_grd_var(grdname, 'lon_rho').values
     lat_rho = get_grd_var(grdname, 'lat_rho').values
     h = get_grd_var(grdname, 'h').values
+    
+    try:
+        mask_rho = get_grd_var(grdname, 'mask_rho').values
+    except Exception:
+        mask_rho = h / h
 
     # Calculate the distance between (Longi, Latit) and all grid points
     distance = ((lon_rho - Longi) ** 2 +
                 (lat_rho - Latit) ** 2) ** 0.5
     
+    # Build valid-point mask
     if Bottom is None:
-        mask=h/h
-
+        valid_mask = (mask_rho == 1)
     else:
-        mask=h
-        mask[mask<Bottom]=10000
-        mask[mask<10000]=1
+        valid_mask = (mask_rho == 1) & (h >= Bottom)
+
+    # Apply mask: invalid points get infinity so they cannot win
+    distance_mask = np.where(valid_mask, distance, np.inf)
     
-    distance_mask=distance*mask
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
-    min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
+    min_index = np.unravel_index(np.argmin(distance_mask), distance_mask.shape)
 
     j, i = min_index
 
