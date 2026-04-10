@@ -757,7 +757,7 @@ def get_var(fname,var_str,
     
     # get dataarrays of the data we want
     da = ds[var_str]
-    if 's_rho' in da.coords:
+    if 's_rho' in da.coords or 's_w' in da.coords:
         var_is_2d=False
     else:
         var_is_2d=True
@@ -819,7 +819,7 @@ def get_var(fname,var_str,
     h = h.squeeze() * mask_nan
 
     # include the depths of the sigma levels in the output
-    if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
+    if 's_rho' in da.coords or 's_w' in da.coords:
         print('    computing depths of sigma levels...')
         depths = get_depths(ds).squeeze() * mask_nan
         print('    making the output dataset...')
