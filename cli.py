@@ -12,17 +12,19 @@ import sys, os
 from datetime import datetime, timedelta
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
-from crocotools_py.postprocess import get_ts_multivar, compute_anomaly
+from crocotools_py.postprocess import (get_ts_multivar, compute_anomaly,
+                                       get_ds, handle_time,
+                                       create_mhw_output_netcdf, process_single_level)
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
-
+ 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
     try:
         return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
     except ValueError:
         raise argparse.ArgumentTypeError("Invalid datetime format. Please use 'YYYY-MM-DD HH:MM:SS'.")
-
+ 
 def parse_int(value):
     if value is None:
         return None
@@ -30,10 +32,10 @@ def parse_int(value):
         return int(value)
     except ValueError:
         raise argparse.ArgumentTypeError(f"Invalid integer value: {value}")
-
+ 
 def parse_list(value):
     return [float(x) for x in value.split(',')]
-
+ 
 def parse_list_str(value):
     if value is None or value == 'None':
         return None
@@ -45,14 +47,14 @@ def parse_bool(s: str) -> bool:
         return {'true':True, 'false':False}[s.lower()]
     except KeyError:
         raise argparse.ArgumentTypeError(f'expect true/false, got: {s}')
-
+ 
 def main():
     
     parser = argparse.ArgumentParser(description='Command-line interface for selected functions in the somisana-croco repo')
     subparsers = parser.add_subparsers(dest='function', help='Select the function to run')
-
+ 
     # just keep adding new subparsers for each new function as we go...
-
+ 
     # ------------------
     # reformat_saws_atm
     # ------------------
@@ -232,7 +234,7 @@ def main():
                         args.Yorig, varlist=args.varlist,
                         use_constant_clim=args.use_constant_clim)
     parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
-
+ 
     # ----------------
     # make_tides_fcst
     # ----------------
@@ -444,11 +446,143 @@ def main():
         
     parser_make_bry_inter.set_defaults(func=make_bry_inter_handler)
     
+ 
+    # ----------------------
+    # detect_mhw_forecast
+    # ----------------------
+    parser_detect_mhw = subparsers.add_parser(
+        'detect_mhw_forecast',
+        help=(
+            'Detect Marine Heatwave (MHW) and Marine Cold Spell (MCS) events '
+            'in a CROCO forecast file using a pre-built 4D climatology. '
+            'Writes a single NetCDF with signed categories: '
+            '+1..+4 = MHW, 0 = no event, -1..-4 = MCS.'
+        )
+    )
+    parser_detect_mhw.add_argument(
+        '--temp_file', required=True, type=str,
+        help='Path to the CROCO forecast temperature file (or glob pattern).'
+    )
+    parser_detect_mhw.add_argument(
+        '--clim_file', required=True, type=str,
+        help=(
+            'Path to the pre-built 4D climatology NetCDF '
+            '(Climatology_4D_Unified.nc). Must contain variables '
+            'climatology, threshold_90 and threshold_10 with dimensions '
+            '(day_of_year, s_rho, eta_rho, xi_rho).'
+        )
+    )
+    parser_detect_mhw.add_argument(
+        '--fname_out', required=True, type=str,
+        help='Full path and filename for the output categories NetCDF file.'
+    )
+    parser_detect_mhw.add_argument(
+        '--temp_var', required=False, type=str, default='temp',
+        help='Name of the temperature variable in temp_file (default: temp).'
+    )
+    parser_detect_mhw.add_argument(
+        '--Yorig', required=False, type=parse_int, default=2000,
+        help=(
+            'Reference year for the CROCO time axis in the forecast file '
+            'i.e. time is in seconds since Yorig-01-01 (default: 2000).'
+        )
+    )
+    parser_detect_mhw.add_argument(
+        '--batch_size', required=False, type=parse_int, default=5,
+        help=(
+            'Number of eta_rho rows processed at once. '
+            'Reduce if you run out of memory (default: 5).'
+        )
+    )
+    def detect_mhw_forecast_handler(args):
+        import os
+        import gc
+        import numpy as np
+        import pandas as pd
+        import xarray as xr
+        from pathlib import Path
+ 
+        os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+ 
+        out_file = Path(args.fname_out)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+ 
+        # -- climatology (lazy, one level loaded per call inside process_single_level)
+        print(f'Opening climatology: {args.clim_file}')
+        ds_clim    = xr.open_dataset(args.clim_file)
+        num_levels = ds_clim.sizes['s_rho']
+        n_eta      = ds_clim.sizes['eta_rho']
+        n_xi       = ds_clim.sizes['xi_rho']
+        doy_values = ds_clim['day_of_year'].values
+ 
+        # -- temperature: get_ds + handle_time avoids the depth computation
+        #    that get_var() triggers, which would allocate ~128 GB
+        print(f'Loading temperature: {args.temp_file}')
+        ds_temp = get_ds(args.temp_file, args.temp_var)
+        ds_temp = handle_time(ds_temp, Yorig=args.Yorig)
+ 
+        # Build daily time axis from raw time bounds.
+        # Resampling happens per-batch inside process_single_level.
+        raw_times    = ds_temp.time.values
+        first_day    = pd.Timestamp(raw_times[0]).normalize()
+        last_day     = pd.Timestamp(raw_times[-1]).normalize()
+        target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
+        T       = len(target_dates)
+        t_dates = np.array([d.toordinal() for d in target_dates], dtype=int)
+ 
+        # -- initialise output
+        if out_file.exists():
+            out_file.unlink()
+ 
+        nc_out = create_mhw_output_netcdf(
+            output_file   = str(out_file),
+            n_time_daily  = T,
+            n_levels      = num_levels,
+            n_eta         = n_eta,
+            n_xi          = n_xi,
+            ds_temp_raw   = ds_temp,
+            ds_temp       = ds_temp,
+            ds_clim       = ds_clim,
+            mode_name     = 'MHW_MCS',
+        )
+        cat_var = nc_out.variables['category']
+ 
+        # -- process each level: MHW first, MCS fills no-event days
+        try:
+            for k in range(num_levels - 1, -1, -1):
+                process_single_level(k, num_levels, ds_temp, ds_clim,
+                                     args.temp_var, doy_values,
+                                     False, t_dates, args.batch_size, nc_out)
+                mhw_cats = cat_var[:, k, :, :][:]
+ 
+                cat_var[:, k, :, :] = np.zeros_like(mhw_cats)
+                process_single_level(k, num_levels, ds_temp, ds_clim,
+                                     args.temp_var, doy_values,
+                                     True, t_dates, args.batch_size, nc_out)
+                mcs_cats = cat_var[:, k, :, :][:]
+ 
+                combined = mhw_cats.copy()
+                combined[combined == 0] = mcs_cats[combined == 0]
+                cat_var[:, k, :, :] = combined
+ 
+                nc_out.sync()
+                gc.collect()
+        finally:
+            nc_out.sync()
+            nc_out.close()
+ 
+        ds_clim.close()
+        size_mb = out_file.stat().st_size / (1024 ** 2)
+        print(f'Done: {out_file}  ({size_mb:.1f} MB)')
+ 
+    parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
+ 
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
     else:
         print("Please specify a function.")
-
+ 
 if __name__ == "__main__":
     main()
+ 
