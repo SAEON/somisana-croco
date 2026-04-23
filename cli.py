@@ -101,7 +101,7 @@ def main():
     parser_crocplot.add_argument('--ticks', required=False, type=parse_list,
                          default=None, 
                          help='contour ticks to use in plotting the variable')
-    parser_crocplot.add_argument('--cbar_label', required=False, default='temperature ($\degree$C)', type=str, help='the label used for the colorbar')
+    parser_crocplot.add_argument('--cbar_label', required=False, default=r'temperature ($\degree$C)', type=str, help='the label used for the colorbar')
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
