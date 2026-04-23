@@ -12,9 +12,8 @@ CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/
 
 # Output path for the detected categories
 # Creating a dedicated output folder in your home directory is recommended
-OUTPUT_DIR="/home/philile/mhw_outputs"
-mkdir -p "$OUTPUT_DIR"
-OUTPUT_FILE="$OUTPUT_DIR/forecast_mhw_categories.nc"
+OUTPUT_DIR="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
+OUTPUT_FILE="$OUTPUT_DIR/forecast_mhw_mcs_categories.nc"
 
 # Reference year for CROCO time (seconds since Yorig-01-01)
 YORIG=2000
@@ -34,10 +33,3 @@ python3 "$CLI_PATH" detect_mhw_forecast \
     --Yorig "$YORIG" \
     --batch_size "$BATCH_SIZE"
 
-if [ $? -eq 0 ]; then
-    echo "Detection completed successfully."
-    echo "Output: $OUTPUT_FILE"
-else
-    echo "Error: MHW detection failed."
-    exit 1
-fi
