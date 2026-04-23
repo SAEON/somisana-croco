@@ -538,7 +538,7 @@ def main():
         target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
         T       = len(target_dates)
         t_dates = np.array([d.toordinal() for d in target_dates], dtype=int)
-        ds_dummy_daily = xr.Dataset(coord={'time': target_dates})
+        ds_dummy_daily = xr.Dataset(coords={'time': target_dates})
  
         # -- initialise output
         if out_file.exists():
