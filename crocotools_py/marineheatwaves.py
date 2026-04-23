@@ -69,6 +69,17 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     exceed_bool[exceed_bool <= 0]          = False
     exceed_bool[exceed_bool > 0]           = True
     exceed_bool[np.isnan(exceed_bool)]     = False
+
+    # --- NEW: Bridge gaps of 1 or 2 days (Hobday criteria) ---
+    true_indices = np.where(exceed_bool)[0]
+    if len(true_indices) > 0:
+        for i in range(len(true_indices) - 1):
+            idx_current = true_indices[i]
+            idx_next = true_indices[i+1]
+            gap = idx_next - idx_current - 1
+            if 1 <= gap <= 2:
+                exceed_bool[idx_current+1:idx_next] = True
+    # ---------------------------------------------------------
  
     events, n_events = ndimage.label(exceed_bool)
  

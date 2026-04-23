@@ -1611,11 +1611,25 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     # Exceedance: MHW = temp above threshold_90 (clim_thresh when is_cold=False)
     #             MCS = temp below threshold_10 (clim_thresh when is_cold=True)
     # No sign flipping -- threshold_10 is already the correct lower bound.
+    # Exceedance: MHW = temp above threshold_90 (clim_thresh when is_cold=False)
+    #             MCS = temp below threshold_10 (clim_thresh when is_cold=True)
     if is_cold:
         exceed_bool = (temp_clean < clim_thresh).astype(float)
     else:
         exceed_bool = (temp_clean > clim_thresh).astype(float)
     exceed_bool[np.isnan(temp_clean) | np.isnan(clim_thresh)] = 0.0
+
+    # --- NEW: Bridge gaps of 1 or 2 days (Hobday criteria) ---
+    exceed_mask = exceed_bool.astype(bool)
+    true_indices = np.where(exceed_mask)[0]
+    if len(true_indices) > 0:
+        for i in range(len(true_indices) - 1):
+            gap = true_indices[i+1] - true_indices[i] - 1
+            if 1 <= gap <= 2:
+                exceed_mask[true_indices[i]+1 : true_indices[i+1]] = True
+    # ---------------------------------------------------------
+
+    events, n_events = ndimage.label(exceed_mask) 
 
     # For intensity calculations, flip so "anomaly above threshold" is always positive
     if is_cold:
@@ -1626,8 +1640,6 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         clim_seas_use   = clim_seas
         clim_thresh_use = clim_thresh
         temp_work       = temp_clean
-
-    events, n_events = ndimage.label(exceed_bool)
 
     cat_names = ['Moderate', 'Strong', 'Severe', 'Extreme']
     min_duration = 5
@@ -1914,12 +1926,9 @@ def process_single_level(level, n_levels, ds_temp_raw, ds_clim, temp_var_name,
         target_dates = pd.date_range(
             start=pd.Timestamp.fromordinal(int(t_dates[0])),
             end=pd.Timestamp.fromordinal(int(t_dates[-1])),
-            freq='1D'
-        )
-        ds_daily = ds_daily.reindex(
-            time=target_dates, method='nearest', tolerance='1D'
-        )
-        ds_daily = ds_daily.interpolate_na(dim='time', limit=7)
+            freq='1D')
+        ds_daily = ds_daily.reindex(time=target_dates, method='nearest')
+        ds_daily = ds_daily.interpolate_na(dim='time', limit=None)
 
         temp_slice  = ds_daily[temp_var_name].values.astype('float32')  # (T, slab_Y, X)
         n_time      = temp_slice.shape[0]
@@ -1933,14 +1942,14 @@ def process_single_level(level, n_levels, ds_temp_raw, ds_clim, temp_var_name,
         batch_times = pd.DatetimeIndex(
             [pd.Timestamp.fromordinal(int(d)) for d in t_dates[:n_time]]
         )
-        for li in range(end_i - i):
-            for lj in range(n_xi):
-                clim_seas_slice[:, li, lj] = align_climatology_to_temp(
-                    batch_times, doy_values, clim_seas_level[:, i + li, lj]
-                )
-                clim_thresh_slice[:, li, lj] = align_climatology_to_temp(
-                    batch_times, doy_values, clim_thresh_level[:, i + li, lj]
-                )
+        # --- REPLACE WITH THIS ---
+        # 1. Create a mapping of dates to DOY indices (0-365)
+        doy_map = np.array([pd.Timestamp(d).dayofyear - 1 for d in batch_times])
+
+        # 2. Vectorized broadcasting: This replaces thousands of loop iterations 
+        #    with a single NumPy advanced indexing operation.
+        clim_seas_slice = clim_seas_level[doy_map, i:end_i, :]
+        clim_thresh_slice = clim_thresh_level[doy_map, i:end_i, :]
 
         categories, _ = process_level_batch(
             temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates[:n_time]
@@ -1984,7 +1993,7 @@ def resample_to_daily(ds_temp, temp_var_name):
     -------
     ds_temp_daily : xr.Dataset  -- daily-mean, gap-filled slab
     """
-    ds_temp_daily = ds_temp.resample(time='1D').mean()
+    ds_temp_daily = ds_temp[[temp_var_name]].resample(time='1D').mean()
     ds_temp_daily = ds_temp_daily.interpolate_na(dim='time', limit=7)
     return ds_temp_daily
 

@@ -456,44 +456,53 @@ def main():
             'Detect Marine Heatwave (MHW) and Marine Cold Spell (MCS) events '
             'in a CROCO forecast file using a pre-built 4D climatology. '
             'Writes a single NetCDF with signed categories: '
-            '+1..+4 = MHW, 0 = no event, -1..-4 = MCS.'
-        )
-    )
+            '+1..+4 = MHW, 0 = no event, -1..-4 = MCS.'))
     parser_detect_mhw.add_argument(
         '--temp_file', required=True, type=str,
-        help='Path to the CROCO forecast temperature file (or glob pattern).'
-    )
+        help='Path to the CROCO forecast temperature file (or glob pattern).')
     parser_detect_mhw.add_argument(
         '--clim_file', required=True, type=str,
         help=(
             'Path to the pre-built 4D climatology NetCDF '
             '(Climatology_4D_Unified.nc). Must contain variables '
             'climatology, threshold_90 and threshold_10 with dimensions '
-            '(day_of_year, s_rho, eta_rho, xi_rho).'
-        )
-    )
+            '(day_of_year, s_rho, eta_rho, xi_rho).'))
     parser_detect_mhw.add_argument(
         '--fname_out', required=True, type=str,
-        help='Full path and filename for the output categories NetCDF file.'
-    )
+        help='Full path and filename for the output categories NetCDF file.')
     parser_detect_mhw.add_argument(
         '--temp_var', required=False, type=str, default='temp',
-        help='Name of the temperature variable in temp_file (default: temp).'
-    )
+        help='Name of the temperature variable in temp_file (default: temp).')
     parser_detect_mhw.add_argument(
         '--Yorig', required=False, type=parse_int, default=2000,
         help=(
             'Reference year for the CROCO time axis in the forecast file '
-            'i.e. time is in seconds since Yorig-01-01 (default: 2000).'
-        )
-    )
+            'i.e. time is in seconds since Yorig-01-01 (default: 2000).'))
     parser_detect_mhw.add_argument(
         '--batch_size', required=False, type=parse_int, default=5,
         help=(
             'Number of eta_rho rows processed at once. '
-            'Reduce if you run out of memory (default: 5).'
+            'Reduce if you run out of memory (default: 5).'))
+
+    parser_plot_mhw = subparsers.add_parser(
+        'plot_mhw_forecast',
+        help='Generate operational MetOcean plots (timeseries, flags, and GIFs) from forecast outputs.')
+    parser_plot_mhw.add_argument('--forecast_file', required=True, type=str, help='Path to the raw CROCO forecast file.')
+    parser_plot_mhw.add_argument('--cat_file', required=True, type=str, help='Path to the processed Categories NetCDF.')
+    parser_plot_mhw.add_argument('--clim_file', required=True, type=str, help='Path to the Climatology NetCDF.')
+    parser_plot_mhw.add_argument('--out_dir', required=True, type=str, help='Output directory for the plots.')
+    parser_plot_mhw.add_argument('--start_date', required=True, type=str, help='Forecast start date (YYYY-MM-DD)')
+    parser_plot_mhw.add_argument('--end_date', required=True, type=str, help='Forecast end date (YYYY-MM-DD)')
+    parser_plot_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000, help='Reference year (default: 2000)')
+    
+    def plot_mhw_forecast_handler(args):
+        # We import here so we don't load huge plotting libraries if running a different cli command
+        from crocotools_py.plotting import plot_operational_mhw_mcs
+        plot_operational_mhw_mcs(
+            args.forecast_file, args.cat_file, args.clim_file, 
+            args.out_dir, args.start_date, args.end_date, args.Yorig
         )
-    )
+    parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
     def detect_mhw_forecast_handler(args):
         import os
         import gc
@@ -529,6 +538,7 @@ def main():
         target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
         T       = len(target_dates)
         t_dates = np.array([d.toordinal() for d in target_dates], dtype=int)
+        ds_dummy_daily = xr.Dataset(coord={'time': target_dates})
  
         # -- initialise output
         if out_file.exists():
@@ -540,7 +550,7 @@ def main():
             n_levels      = num_levels,
             n_eta         = n_eta,
             n_xi          = n_xi,
-            ds_temp_raw   = ds_temp,
+            ds_temp_daily = ds_dummy_daily,
             ds_temp       = ds_temp,
             ds_clim       = ds_clim,
             mode_name     = 'MHW_MCS',

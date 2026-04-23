@@ -14,6 +14,12 @@ import xarray as xr
 import sys
 import crocotools_py.postprocess as post
 
+import matplotlib.patches as mpatches
+import matplotlib.patheffects as pe
+from matplotlib.lines import Line2D
+from matplotlib.patches import FancyBboxPatch, Wedge
+from pathlib import Path
+
 class LandmaskFeature(cfeature.GSHHSFeature):
     """from the OpenDrift code"""
     def __init__(self, scale='auto', globe=None, **kwargs):
@@ -583,6 +589,306 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
         if gif_out is None:
             gif_out = croco_blk_file.split('.nc')[0]+'_'+var+'.gif'
         anim.save(gif_out, writer='imagemagick')
+        
+
+# MHW/MCS PLOTTING (TIME-SERIES, FLAG MAPS, INTENSITY GIF)
+
+# sites of interest
+TARGETS = {
+    "Danger Point":   (19.220, -34.802),
+    "Cape Columbine": (17.670, -32.972),
+    "Lamberts Bay":   (18.158, -32.286),
+    "Namaqua":        (17.535, -31.048),
+    "Port Nolloth":   (16.750, -29.255),
+    "Slangkop":       (18.128, -34.220),
+}
+
+WINDOW_DAYS = 10
+
+# Hobday category Colors
+
+FILL_MOD   = "#ffc73e";  FILL_STR   = "#f77819"
+FILL_SEV   = "#bf460c";  FILL_EXT   = "#4e1909"
+FILL_C_MOD = "#a6d3e8";  FILL_C_STR = "#5da6c9"
+FILL_C_SEV = "#2074a3";  FILL_C_EXT = "#103c68"
+
+MHW_FLAG_COLOURS = {0: "#4CAF7D", 1: FILL_MOD,   2: FILL_STR,   3: FILL_SEV,   4: FILL_EXT}
+MCS_FLAG_COLOURS = {0: "#4CAF7D", 1: FILL_C_MOD, 2: FILL_C_STR, 3: FILL_C_SEV, 4: FILL_C_EXT}
+
+CMAP_9 = mplc.ListedColormap([
+    FILL_C_EXT, FILL_C_SEV, FILL_C_STR, FILL_C_MOD,
+    "#ffffff",
+    FILL_MOD, FILL_STR, FILL_SEV, FILL_EXT
+])
+CMAP_9.set_bad("white")
+BNORM_9 = mplc.BoundaryNorm([-4.5, -3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5], CMAP_9.N)
+
+# --- Helpers ---
+def nearest(lon2d, lat2d, lon0, lat0):
+    d2 = (lon2d - lon0)**2 + (lat2d - lat0)**2
+    return np.unravel_index(np.argmin(d2), d2.shape)
+
+def doy_index(times):
+    return np.clip(pd.to_datetime(times).dayofyear.values - 1, 0, 365)
+
+def compute_site_flag_data(sites, cat_ds, lev):
+    site_data = {}
+    for site_name, data in sites.items():
+        pj, pi = data["pj"], data["pi"]
+        cat = (cat_ds["category"]
+               .isel(s_rho=lev, eta_rho=pj, xi_rho=pi)
+               .load().values.astype(float))
+
+        mhw_days = cat[cat > 0]
+        mcs_days = np.abs(cat[cat < 0])
+
+        avg_mhw   = float(np.mean(mhw_days)) if len(mhw_days) > 0 else 0.0
+        avg_mcs   = float(np.mean(mcs_days)) if len(mcs_days) > 0 else 0.0
+        score_mhw = avg_mhw * len(mhw_days)
+        score_mcs = avg_mcs * len(mcs_days)
+
+        if score_mhw >= score_mcs:
+            site_data[site_name] = {"mode": "MHW", "avg_cat": avg_mhw}
+        else:
+            site_data[site_name] = {"mode": "MCS", "avg_cat": avg_mcs}
+    return site_data
+
+
+def plot_timeseries_multisite(sites, today, output_dir, depth_name):
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    today   = pd.Timestamp(today)
+
+    for site_name, data in sites.items():
+        fct_dates = pd.DatetimeIndex(data["fct_dates"])
+        fct_temp  = np.asarray(data["fct_temp"])
+        fct_seas  = np.asarray(data["fct_seas"])
+        fct_h_thr = np.asarray(data["fct_h_thr"])
+        fct_c_thr = np.asarray(data["fct_c_thr"])
+
+        obs_dates = data.get("obs_dates")
+        obs_temp  = data.get("obs_temp")
+        obs_seas  = data.get("obs_seas")
+        obs_h_thr = data.get("obs_h_thr")
+        obs_c_thr = data.get("obs_c_thr")
+
+        if obs_dates is not None and obs_temp is not None:
+            cut   = np.asarray(obs_dates) < np.asarray(fct_dates[0])
+            n_cut = int(cut.sum())
+            def _cat(obs_arr, fct_arr):
+                base = np.asarray(obs_arr)[cut] if obs_arr is not None else np.full(n_cut, np.nan)
+                return np.concatenate([base, np.asarray(fct_arr)])
+            all_dates = pd.DatetimeIndex(list(np.asarray(obs_dates)[cut]) + list(fct_dates))
+            all_temp  = _cat(obs_temp,  fct_temp)
+            all_seas  = _cat(obs_seas,  fct_seas)
+            all_h_thr = _cat(obs_h_thr, fct_h_thr)
+            all_c_thr = _cat(obs_c_thr, fct_c_thr)
+        else:
+            all_dates, all_temp, all_seas, all_h_thr, all_c_thr = fct_dates, fct_temp, fct_seas, fct_h_thr, fct_c_thr
+
+        if not np.isfinite(all_temp).any():
+            continue
+
+        t_min, t_max = today - pd.Timedelta(days=int(WINDOW_DAYS * 0.5)), today + pd.Timedelta(days=int(WINDOW_DAYS * 0.5))
+        mask  = (all_dates >= t_min) & (all_dates <= t_max)
+        d, T, S, H, C = all_dates[mask], all_temp[mask], all_seas[mask], all_h_thr[mask], all_c_thr[mask]
+        obs_m, fct_m = d <= today, d >= today
+        dh, dc = np.maximum(H - S, 1e-6), np.maximum(S - C, 1e-6)
+
+        fig, ax = plt.subplots(figsize=(10, 8), dpi=150)
+        ax.yaxis.grid(True, color="#cccccc", linewidth=0.7, zorder=0)
+        ax.set_axisbelow(True)
+
+        mhw_fills = [(T > H, H, np.minimum(T, H+dh), FILL_MOD), (T > H+dh, H+dh, np.minimum(T, H+2*dh), FILL_STR),
+                     (T > H+2*dh, H+2*dh, np.minimum(T, H+3*dh), FILL_SEV), (T > H+3*dh, H+3*dh, T, FILL_EXT)]
+        mcs_fills = [(T < C, np.maximum(T, C-dc), C, FILL_C_MOD), (T < C-dc, np.maximum(T, C-2*dc), C-dc, FILL_C_STR),
+                     (T < C-2*dc, np.maximum(T, C-3*dc), C-2*dc, FILL_C_SEV), (T < C-3*dc, T, C-3*dc, FILL_C_EXT)]
+        
+        for where, lo, hi, col in mhw_fills + mcs_fills:
+            ax.fill_between(d, lo, hi, where=where, color=col, alpha=0.85, interpolate=True, zorder=1)
+
+        ax.plot(d, H, color="#d62728", ls="--", lw=1.6, zorder=4)
+        ax.plot(d, C, color="#1f77b4", ls="--", lw=1.6, zorder=4)
+        ax.plot(d, S, color="#7f7f7f", ls=":",  lw=1.4, zorder=4)
+        ax.plot(d[obs_m], T[obs_m], color="#555555", lw=2.2, zorder=5, solid_capstyle="round")
+        if fct_m.any(): ax.plot(d[fct_m], T[fct_m], color="black", lw=2.2, zorder=5, solid_capstyle="round")
+
+        ax.axvline(today, color="black", lw=1.2, zorder=6)
+        ax.text(today + pd.Timedelta(hours=6), ax.get_ylim()[1], " Today", va="top", ha="left", fontsize=9)
+
+        lon_v, lat_v = data["lon"], data["lat"]
+        ax.set_title(f"{site_name}  ({abs(lat_v):.3f}°{'S' if lat_v < 0 else 'N'}, {lon_v:.3f}°{'W' if lon_v < 0 else 'E'})", fontsize=14, fontweight="bold", pad=10)
+        ax.set_ylabel(f"Temperature [°C]", fontsize=11)
+        ax.set_xlim(t_min, t_max)
+        for spine in ("top", "right"): ax.spines[spine].set_visible(False)
+
+        handles = [Line2D([0],[0], color="#555555", lw=2.2, label="SST observed"), Line2D([0],[0], color="black", lw=2.2, label="SST forecast"),
+                   Line2D([0],[0], color="#d62728", lw=1.6, ls="--", label="MHW threshold"), Line2D([0],[0], color="#1f77b4", lw=1.6, ls="--", label="MCS threshold"),
+                   Line2D([0],[0], color="#7f7f7f", lw=1.4, ls=":", label="Climatology")]
+        ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, fontsize=9, frameon=False)
+        
+        plt.tight_layout()
+        plt.savefig(out_dir / f"{site_name.replace(' ', '_')}_{depth_name}_{today.strftime('%Y%m%d')}.png", dpi=150, bbox_inches="tight")
+        plt.close()
+
+def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, depth_name="Surface"):
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    def _flag_col(mode, cat):
+        c = max(0, min(4, int(round(cat if pd.notna(cat) else 0))))
+        return (MHW_FLAG_COLOURS if mode == "MHW" else MCS_FLAG_COLOURS)[c]
+
+    coast_order = ["Danger Point", "Slangkop", "Cape Columbine", "Lamberts Bay", "Namaqua", "Port Nolloth"]
+    BOX_SIZE, BOX_STEP, OFFSHORE, all_boxes = 0.75, 0.50, -0.10, []
+    
+    for k in range(len(coast_order) - 1):
+        lon0, lat0 = TARGETS[coast_order[k]]; lon1, lat1 = TARGETS[coast_order[k + 1]]
+        info = site_data.get(coast_order[k], {"mode": "MHW", "avg_cat": 0})
+        seg = np.hypot(lon1 - lon0, lat1 - lat0)
+        px, py = -(lat1 - lat0) / seg, (lon1 - lon0) / seg 
+        for j in range(max(2, int(seg / BOX_STEP))):
+            t = j / max(2, int(seg / BOX_STEP))
+            all_boxes.append((lon0 + t*(lon1-lon0) + px*OFFSHORE, lat0 + t*(lat1-lat0) + py*OFFSHORE, _flag_col(info["mode"], info["avg_cat"])))
+            
+    lon_l, lat_l = TARGETS[coast_order[-1]]; lon_p, lat_p = TARGETS[coast_order[-2]]
+    seg = np.hypot(lon_l - lon_p, lat_l - lat_p); px, py = -(lat_l - lat_p)/seg, (lon_l - lon_p)/seg
+    all_boxes.append((lon_l + px*OFFSHORE, lat_l + py*OFFSHORE, _flag_col(site_data.get(coast_order[-1], {"mode": "MHW", "avg_cat": 0})["mode"], site_data.get(coast_order[-1], {"mode": "MHW", "avg_cat": 0})["avg_cat"])))
+
+    fig = plt.figure(figsize=(10, 13), dpi=150)
+    fig.patch.set_facecolor("white")
+    ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
+    ax.set_extent([15.8, 20.5, -36.0, -28.0], crs=ccrs.PlateCarree())
+
+    for cx, cy, col in all_boxes:
+        ax.add_patch(FancyBboxPatch((cx - BOX_SIZE/2, cy - BOX_SIZE/2), BOX_SIZE, BOX_SIZE, boxstyle="round,pad=0.04", facecolor=col, edgecolor="white", linewidth=0.6, zorder=3, transform=ccrs.PlateCarree()))
+
+    for site_name, (site_lon, site_lat) in TARGETS.items():
+        info = site_data.get(site_name, {"mode": "MHW", "avg_cat": 0})
+        cat_int = max(0, min(4, int(round(info["avg_cat"]))))
+        ax.plot(site_lon, site_lat, "o", ms=4, color="white", zorder=8, mec="black", mew=0.8, transform=ccrs.PlateCarree())
+        ax.text(site_lon + 0.08, site_lat, f"{site_name}\n{info['mode']} – {['None', 'Moderate', 'Strong', 'Severe', 'Extreme'][cat_int]}", ha="left", va="center", fontsize=6.5, fontweight="bold", color="#1a3a5c", zorder=9, transform=ccrs.PlateCarree(), path_effects=[pe.withStroke(linewidth=2, foreground="white")])
+
+    ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=4); ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor="#555544", zorder=5)
+    gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2)
+    gl.top_labels = gl.right_labels = False
+
+    ax.set_title(f"SA West Coast  ·  MHW / MCS Flag Map  ·  {depth_name}\nForecast: {pd.to_datetime(start_date).strftime('%d %b')} – {pd.to_datetime(end_date).strftime('%d %b %Y')}", fontsize=12, color="#1a3a5c", pad=8)
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close()
+
+def _update_spatial_frame(frame, cat_data, time_data, mesh_obj, title_obj, d_name):
+    mesh_obj.set_array(cat_data[frame].ravel())
+    title_obj.set_text(f"MHW & MCS Categories ({d_name})\nDate: {str(time_data[frame])[:10]}")
+    return mesh_obj, title_obj
+
+def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_varying, idx_2d, out_path):
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    times = pd.to_datetime(cat_ds.time.values)
+
+    if is_varying:
+        nj, ni = idx_2d.shape
+        jj, ii = np.meshgrid(np.arange(nj), np.arange(ni), indexing="ij")
+        valid  = idx_2d >= 0
+        idx_cl = np.where(valid, idx_2d, 0)
+        cat = cat_ds["category"].values[:, idx_cl, jj, ii].astype(float)
+        cat[:, ~valid] = np.nan
+    else:
+        cat = cat_ds["category"].isel(s_rho=lev).values.astype(float)
+
+    mask = ds_fcst["mask_rho"].values if "mask_rho" in ds_fcst else np.ones_like(lat)
+    if mask.ndim > 2: mask = mask[0]
+    cat = np.where(mask[np.newaxis, :, :] == 1, cat, np.nan)
+
+    fig = plt.figure(figsize=(9, 8))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    mesh = ax.pcolormesh(lon, lat, cat[0], transform=ccrs.PlateCarree(), cmap=CMAP_9, norm=BNORM_9, shading="auto")
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+    ax.add_feature(cfeature.LAND, facecolor="white", edgecolor='black', zorder=2)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
+
+    cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04, ticks=[-4, -3, -2, -1, 0, 1, 2, 3, 4])
+    cbar.ax.set_yticklabels(["Ext", "Sev", "Str", "Mod", "Neut", "Mod", "Str", "Sev", "Ext"])
+    cbar.set_label("MCS (Cold)  ←  Intensity  →  MHW (Heat)")
+
+    title = ax.set_title(f"MHW & MCS Categories ({depth_name})\nDate: {str(times[0])[:10]}")
+    ani = FuncAnimation(fig, _update_spatial_frame, frames=len(times), fargs=(cat, times, mesh, title, depth_name), blit=False)
+    ani.save(out_path, writer=FuncAnimation.PillowWriter(fps=2), dpi=120)
+    plt.close(fig)
+
+# --- Master Wrapper Function ---
+def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_date, end_date, Yorig=2000):
+    """
+    Operational entry point to run time series, flag maps, and GIF animations.
+    """
+    print("\n=== Rendering Operational MHW/MCS Visuals ===")
+    out_dir = Path(out_dir)
+    ds_clim = xr.open_dataset(clim_file)
+    ds_cat  = xr.open_dataset(cat_file)
+    ds_fcst = post.handle_time(post.get_ds(forecast_file, "temp"), Yorig=Yorig)
+    
+    lat = ds_fcst.lat_rho.values if "lat_rho" in ds_fcst else ds_fcst.lat.values
+    lon = ds_fcst.lon_rho.values if "lon_rho" in ds_fcst else ds_fcst.lon.values
+    if lat.ndim > 2: lat, lon = lat[0], lon[0]
+    h = ds_fcst.h.values if "h" in ds_fcst else np.zeros_like(lat)
+    if h.ndim > 2: h = h[0]
+    nlev = len(ds_fcst.s_rho) if "s_rho" in ds_fcst else ds_fcst.dims.get("s_rho", 32)
+    today = pd.Timestamp(ds_fcst.time.values[0]).normalize()
+
+    Cs_r = ds_fcst.Cs_r.values if "Cs_r" in ds_fcst else np.linspace(-1, 0, nlev)
+    sc_r = ds_fcst.sc_r.values if "sc_r" in ds_fcst else np.linspace(-1, 0, nlev)
+    hc   = float(ds_fcst.hc.values) if "hc" in ds_fcst else 10.0
+    z = np.zeros((nlev, *h.shape))
+    for k in range(nlev): z[k] = ((hc * sc_r[k] + h * Cs_r[k]) / (hc + h)) * h
+    idx_100m = np.argmin(np.abs(z - (-100.0)), axis=0)
+    idx_100m[h < 100] = -1
+
+    depth_levels = {
+        "Surface": {"type": "fixed",   "lev": nlev - 1},
+        "100m":    {"type": "varying", "lev": idx_100m},
+        "Bottom":  {"type": "fixed",   "lev": 0},
+    }
+
+    ds_fcst_single = post.handle_time(xr.open_dataset(forecast_file, decode_times=False), Yorig=Yorig)
+
+    for depth_name, depth_info in depth_levels.items():
+        print(f"\nProcessing Depth: {depth_name}...")
+        sites = {}
+        for site_name, (site_lon, site_lat) in TARGETS.items():
+            pj, pi = nearest(lon, lat, site_lon, site_lat)
+            lev_site = depth_info["lev"] if depth_info["type"] == "fixed" else int(depth_info["lev"][pj, pi])
+            if lev_site < 0: continue
+
+            ts = ds_fcst_single["temp"].isel(s_rho=lev_site).resample(time="1D").mean().load()
+            all_dates, all_temps = pd.to_datetime(ts.time.values), ts.isel(eta_rho=pj, xi_rho=pi).values
+            doy_all = doy_index(all_dates)
+            
+            obs_m, fct_m = all_dates < today, all_dates >= today
+            sites[site_name] = dict(
+                pj=int(pj), pi=int(pi), lon=float(lon[pj, pi]), lat=float(lat[pj, pi]),
+                obs_dates=pd.DatetimeIndex(all_dates[obs_m]), obs_temp=all_temps[obs_m],
+                obs_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][obs_m],
+                obs_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][obs_m],
+                obs_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][obs_m],
+                fct_dates=pd.DatetimeIndex(all_dates[fct_m]), fct_temp=all_temps[fct_m],
+                fct_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
+                fct_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
+                fct_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
+            )
+
+        print("  -> Time Series...")
+        plot_timeseries_multisite(sites, today, out_dir / "TimeSeries" / depth_name, depth_name)
+
+        print("  -> Flag Maps...")
+        lev_flag = depth_info["lev"] if depth_info["type"] == "fixed" else int(np.median([int(depth_info["lev"][d["pj"], d["pi"]]) for d in sites.values() if int(depth_info["lev"][d["pj"], d["pi"]]) >= 0]))
+        plot_flag_map(compute_site_flag_data(sites, ds_cat, lev_flag), today, start_date, end_date, out_dir / "Maps" / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
+
+        print("  -> Spatial GIF...")
+        varying = depth_info["type"] == "varying"
+        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / "Maps" / f"Categories_Animation_{depth_name}.gif")
+
+    ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
+    print(f"\nAll visuals saved to: {out_dir}")
         
 if __name__ == "__main__":
     
