@@ -38,7 +38,7 @@ jobs:
               --rm \
               --entrypoint bash \
               -v /home/somisana/ops/update-hycom-download/20260425_00/downloaded_data/HYCOM:/tmp \
-              ghcr.io/saeon/somisana-download_cli_update-hycom-download:latest \
+              ghcr.io/saeon/somisana-download_cli_update-hycom:latest \
               -c 'python cli.py download_hycom_ops \
                 --domain 11,36,-39,-25 \
                 --run_date "2026-04-25 00:00:00" \
