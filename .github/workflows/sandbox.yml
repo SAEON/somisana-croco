@@ -44,5 +44,4 @@ jobs:
                 --run_date "2026-04-25 00:00:00" \
                 --hdays 5 \
                 --fdays 5 \
-                --savedir "/tmp" \
-                --pad True && echo "Download completed" || echo "Download failed"'
+                --outputDir "/tmp" && echo "Download completed" || echo "Download failed"'
