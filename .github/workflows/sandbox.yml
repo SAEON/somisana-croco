@@ -12,7 +12,7 @@ jobs:
 
   # Download hycom 
   download_hycom:
-    runs-on: mims1
+    runs-on: mims3
     needs: [build_cli]
     steps:
       - name: Clean and create HYCOM directory with correct permissions
