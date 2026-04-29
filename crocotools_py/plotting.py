@@ -906,7 +906,20 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
         plot_timeseries_multisite(sites, today, out_dir / "TimeSeries" / depth_name, depth_name)
 
         print("  -> Flag Maps...")
-        lev_flag = depth_info["lev"] if depth_info["type"] == "fixed" else int(np.median([int(depth_info["lev"][d["pj"], d["pi"]]) for d in sites.values() if int(depth_info["lev"][d["pj"], d["pi"]]) >= 0]))
+        if depth_info["type"] == "fixed":
+            lev_flag = depth_info["lev"] 
+        else:
+            # Get all depth values for sites
+            depth_values = [depth_info["lev"][d["pj"], d["pi"]] for d in sites.values()]
+            # Filter out NaNs and negative values
+            valid_depths = [int(v) for v in depth_values if not np.isnan(v) and v >= 0]
+    
+            if valid_depths:
+                lev_flag = int(np.median(valid_depths))
+            else:
+                # Fallback if NO sites are deep enough (e.g., all sites are < 100m)
+                lev_flag = 0
+                
         plot_flag_map(compute_site_flag_data(sites, ds_cat, lev_flag), today, start_date, end_date, out_dir / "Maps" / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
 
         print("  -> Spatial GIF...")
