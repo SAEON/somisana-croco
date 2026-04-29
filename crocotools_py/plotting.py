@@ -746,7 +746,25 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
         c = max(0, min(4, int(round(cat if pd.notna(cat) else 0))))
         return (MHW_FLAG_COLOURS if mode == "MHW" else MCS_FLAG_COLOURS)[c]
 
-    coast_order = ["Danger Point", "Slangkop", "Cape Columbine", "Lamberts Bay", "Namaqua", "Port Nolloth"]
+    coast_order = [
+    "Kleinsee",
+    "Hondeklipbaai",
+    "Doringbaai",
+    "Elandsbaai",
+    "Laaiplek",
+    "Paternoster",
+    "Saldanha",
+    "Yzerfontein",
+    "Bloubergstrand",
+    "Oudekraal",
+    "Cape Point",
+    "Simonstown",
+    "Strand",
+    "Hangklip",
+    "Kleinmond",
+    "Hermanus",
+    "Gansbaai"]
+    
     BOX_SIZE, BOX_STEP, OFFSHORE, all_boxes = 0.75, 0.50, -0.10, []
     
     for k in range(len(coast_order) - 1):
