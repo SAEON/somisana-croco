@@ -7,6 +7,7 @@ import matplotlib.colors as mplc
 import matplotlib.cm as cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.animation import FuncAnimation
+from matplotlib.animation import PillowWriter
 import cartopy
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -58,8 +59,6 @@ def setup_plot(ax, fname, extents=None, add_land=True, land_color=('k', 0), lsca
     
     lscale = resolution of land feature ('c', 'l', 'i', 'h', 'f', 'auto')
     '''
-    # extents = [lon_min, lon_max, lat_min, lat_max]
-    #
     # first need to get the domain extents if it's not set autmatically
     if extents is None:
         lon = post.get_grd_var(fname,'lon_rho')
@@ -595,12 +594,23 @@ def plot_blk(croco_grd, # the croco grid file - needed as not saved in the blk f
 
 # sites of interest
 TARGETS = {
-    "Danger Point":   (19.220, -34.802),
-    "Cape Columbine": (17.670, -32.972),
-    "Lamberts Bay":   (18.158, -32.286),
-    "Namaqua":        (17.535, -31.048),
-    "Port Nolloth":   (16.750, -29.255),
-    "Slangkop":       (18.128, -34.220),
+    "Kleinsee":       (17.030382, -29.680623),
+    "Hondeklipbaai":  (17.252461, -30.315292),
+    "Doringbaai":     (18.213554, -31.814509),
+    "Elandsbaai":     (18.30165,  -32.312317),
+    "Laaiplek":       (18.125354, -32.742041),
+    "Paternoster":    (17.870305, -32.777566),
+    "Saldanha":       (17.929861, -33.074807),
+    "Yzerfontein":    (18.13382,  -33.361876),
+    "Bloubergstrand": (18.443896, -33.803906),
+    "Oudekraal":      (18.342541, -33.980098),
+    "Cape Point":     (18.46024,  -34.358313),
+    "Simonstown":     (18.442294, -34.176514),
+    "Strand":         (18.810174, -34.120553),
+    "Hangklip":       (18.803882, -34.374716),
+    "Kleinmond":      (19.026591, -34.355882),
+    "Hermanus":       (19.256989, -34.425957),
+    "Gansbaai":       (19.323381, -34.576985),
 }
 
 WINDOW_DAYS = 10
@@ -615,9 +625,7 @@ FILL_C_SEV = "#2074a3";  FILL_C_EXT = "#103c68"
 MHW_FLAG_COLOURS = {0: "#4CAF7D", 1: FILL_MOD,   2: FILL_STR,   3: FILL_SEV,   4: FILL_EXT}
 MCS_FLAG_COLOURS = {0: "#4CAF7D", 1: FILL_C_MOD, 2: FILL_C_STR, 3: FILL_C_SEV, 4: FILL_C_EXT}
 
-CMAP_9 = mplc.ListedColormap([
-    FILL_C_EXT, FILL_C_SEV, FILL_C_STR, FILL_C_MOD,
-    "#ffffff",
+CMAP_9 = mplc.ListedColormap([FILL_C_EXT, FILL_C_SEV, FILL_C_STR, FILL_C_MOD,"#ffffff",
     FILL_MOD, FILL_STR, FILL_SEV, FILL_EXT
 ])
 CMAP_9.set_bad("white")
@@ -813,7 +821,7 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
 
     title = ax.set_title(f"MHW & MCS Categories ({depth_name})\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_spatial_frame, frames=len(times), fargs=(cat, times, mesh, title, depth_name), blit=False)
-    ani.save(out_path, writer=FuncAnimation.PillowWriter(fps=2), dpi=120)
+    ani.save(out_path, writer=PillowWriter(fps=5), dpi=120)
     plt.close(fig)
 
 # --- Master Wrapper Function ---

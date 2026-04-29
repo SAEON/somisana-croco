@@ -1820,10 +1820,10 @@ def create_mhw_output_netcdf(output_file, n_time_daily, n_levels, n_eta, n_xi,
     nc_out.createDimension('xi_rho',  n_xi)
 
     time_var       = nc_out.createVariable('time', 'f8', ('time',))
-    time_var.units    = 'days since 1993-01-01'
+    time_var.units    = 'days since 2000-01-01'
     time_var.calendar = 'standard'
     time_var[:]    = (
-        (pd.to_datetime(ds_temp_daily.time.values) - pd.Timestamp('1993-01-01'))
+        (pd.to_datetime(ds_temp_daily.time.values) - pd.Timestamp('2000-01-01'))
         .total_seconds() / 86400
     )
 
@@ -1858,7 +1858,7 @@ def create_mhw_output_netcdf(output_file, n_time_daily, n_levels, n_eta, n_xi,
     )
 
     nc_out.title       = f'{mode_name} event detection'
-    nc_out.description = 'Detected using pre-computed climatology'
+    nc_out.description = 'Marine heat waves and Marine cold spells categories computed using pre-computed climatology (1993-2019)'
     nc_out.created     = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
 
     return nc_out
