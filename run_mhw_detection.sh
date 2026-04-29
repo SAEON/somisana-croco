@@ -1,17 +1,15 @@
 #!/bin/bash
 
-# --- Configuration ---
-# Path to the python CLI script in your repo
+# Path to the python CLI script in my repo
 CLI_PATH="/home/philile/somisana-croco/cli.py"
 
 # Path to the latest forecast temperature data
 TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS/croco_avg.nc"
 
 # Path to the pre-built 4D climatology file
-CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/products/mhw/Climatology_4D_Unified.nc"
+CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
 
 # Output path for the detected categories
-# Creating a dedicated output folder in your home directory is recommended
 OUTPUT_DIR="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
 OUTPUT_FILE="$OUTPUT_DIR/forecast_mhw_mcs_categories.nc"
 
@@ -19,11 +17,10 @@ OUTPUT_FILE="$OUTPUT_DIR/forecast_mhw_mcs_categories.nc"
 YORIG=2000
 
 # Rows processed at once (batch_size)
-# Using 5 as per the CLI default
 BATCH_SIZE=5
 
 # --- Execution ---
-echo "Starting Marine Heatwave detection for forecast data..."
+echo "Starting Marine Heatwave and Marine coldspell detection for forecast data..."
 
 python3 "$CLI_PATH" detect_mhw_forecast \
     --temp_file "$TEMP_FILE" \
