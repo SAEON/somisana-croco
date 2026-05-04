@@ -182,8 +182,12 @@ def main():
     parser_regrid_tier3.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier3.add_argument('--spacing', type=float,default=0.01,
                          help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
+    parser_regrid_tier3.add_argument('--method', type=str, default='nearest',
+                         choices=['nearest', 'linear', 'cubic'],
+                         help="interpolation method passed to scipy.interpolate.griddata (default='nearest')")
     def regrid_tier3_handler(args):
-        regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link, spacing=args.spacing)
+        regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link,
+                     spacing=args.spacing, method=args.method)
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
     # ----------------

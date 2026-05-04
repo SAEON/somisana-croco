@@ -218,7 +218,8 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         print(f'Created: {fname_out}')
 
 def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
-                 varList=['temp','salt','u','v'], output_format='netcdf'):
+                 varList=['temp','salt','u','v'], output_format='netcdf',
+                 method='nearest'):
     '''
     tier 3 regridding of a CROCO output:
       -> takes the output of regrid-tier2 as input and
@@ -246,6 +247,8 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
                 visualisation pipelines that read one forecast time step at a time.
                 The output path is derived from the input by replacing '.nc' with '.zarr'
                 (e.g. 'croco_avg_t2.nc.2' -> 'croco_avg_t3.zarr.2').
+    method    : interpolation method passed to scipy.interpolate.griddata
+                (default='nearest'). Supported values: 'nearest', 'linear', 'cubic'.
 
     CAREFUL! tier3 output is useful for website visualisation (it's intended use),
     but don't use it for reasearch/analysis as it's interpolated, so can be at a
@@ -255,6 +258,9 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
 
     if output_format not in ('netcdf', 'zarr'):
         raise ValueError(f"output_format must be 'netcdf' or 'zarr', got '{output_format}'")
+
+    if method not in ('nearest', 'linear', 'cubic'):
+        raise ValueError(f"method must be 'nearest', 'linear' or 'cubic', got '{method}'")
 
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
@@ -330,7 +336,7 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
         print("Interpolating the model output onto the regular horizontal output grid")
 
         @delayed
-        def compute_2d_chunk(t, variable, method="nearest"):
+        def compute_2d_chunk(t, variable, method=method):
             return (
                 griddata(
                     lonlat_input,
@@ -342,7 +348,7 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
             )
 
         @delayed
-        def compute_3d_chunk(t, variable, n, method="nearest"):
+        def compute_3d_chunk(t, variable, n, method=method):
             return (
                 griddata(
                     lonlat_input,
