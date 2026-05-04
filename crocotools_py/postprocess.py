@@ -1847,8 +1847,8 @@ def create_mhw_output_netcdf(output_file, n_time_daily, n_levels, n_eta, n_xi,
     cat_var.long_name     = f'{mode_name} event category'
     cat_var.flag_values   = np.array([-4, -3, -2, -1, 0, 1, 2, 3, 4], dtype='int8')
     cat_var.flag_meanings = (
-        'extreme_MCS severe_MCS strong_MCS moderate_MCS '
-        'no_event '
+        'extreme_MCS severe_MCS strong_MCS moderate_MCS'
+        'no_event'
         'moderate_MHW strong_MHW severe_MHW extreme_MHW'
     )
     cat_var.description   = (
@@ -1859,7 +1859,7 @@ def create_mhw_output_netcdf(output_file, n_time_daily, n_levels, n_eta, n_xi,
 
     nc_out.title       = f'{mode_name} event detection'
     nc_out.description = 'Marine heat waves and Marine cold spells categories computed using pre-computed climatology (1993-2019)'
-    nc_out.created     = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    nc_out.created     = "Created on" + pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
 
     return nc_out
 

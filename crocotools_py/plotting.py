@@ -903,7 +903,7 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
             )
 
         print("  -> Time Series...")
-        plot_timeseries_multisite(sites, today, out_dir / "TimeSeries" / depth_name, depth_name)
+        plot_timeseries_multisite(sites, today, out_dir / depth_name, depth_name)
 
         print("  -> Flag Maps...")
         if depth_info["type"] == "fixed":
@@ -920,11 +920,11 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
                 # Fallback if NO sites are deep enough (e.g., all sites are < 100m)
                 lev_flag = 0
                 
-        plot_flag_map(compute_site_flag_data(sites, ds_cat, lev_flag), today, start_date, end_date, out_dir / "Maps" / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
+        plot_flag_map(compute_site_flag_data(sites, ds_cat, lev_flag), today, start_date, end_date, out_dir / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
 
         print("  -> Spatial GIF...")
         varying = depth_info["type"] == "varying"
-        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / "Maps" / f"Categories_Animation_{depth_name}.gif")
+        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / f"Categories_Animation_{depth_name}.gif")
 
     ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
     print(f"\nAll visuals saved to: {out_dir}")
