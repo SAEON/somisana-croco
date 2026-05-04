@@ -664,7 +664,6 @@ def compute_site_flag_data(sites, cat_ds, lev):
 
 def plot_timeseries_multisite(sites, today, output_dir, depth_name):
     out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     today   = pd.Timestamp(today)
 
     for site_name, data in sites.items():
@@ -741,7 +740,6 @@ def plot_timeseries_multisite(sites, today, output_dir, depth_name):
 
 def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, depth_name="Surface"):
     out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     def _flag_col(mode, cat):
         c = max(0, min(4, int(round(cat if pd.notna(cat) else 0))))
         return (MHW_FLAG_COLOURS if mode == "MHW" else MCS_FLAG_COLOURS)[c]
@@ -809,7 +807,6 @@ def _update_spatial_frame(frame, cat_data, time_data, mesh_obj, title_obj, d_nam
 
 def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_varying, idx_2d, out_path):
     out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     times = pd.to_datetime(cat_ds.time.values)
 
     if is_varying:
@@ -839,7 +836,7 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
 
     title = ax.set_title(f"MHW & MCS Categories ({depth_name})\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_spatial_frame, frames=len(times), fargs=(cat, times, mesh, title, depth_name), blit=False)
-    ani.save(out_path, writer=PillowWriter(fps=5), dpi=120)
+    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120)
     plt.close(fig)
 
 # --- Master Wrapper Function ---
@@ -924,7 +921,7 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
 
         print("  -> Spatial GIF...")
         varying = depth_info["type"] == "varying"
-        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / f"Categories_Animation_{depth_name}.gif")
+        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / f"Categories_Animation_{depth_name}.mp4")
 
     ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
     print(f"\nAll visuals saved to: {out_dir}")
