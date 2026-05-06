@@ -8,6 +8,7 @@ import matplotlib.path as mplPath
 from dask import delayed
 import dask.array as da
 from scipy.interpolate import griddata
+from scipy.spatial import Delaunay, cKDTree
 from glob import glob
 import subprocess
 import dask
@@ -325,39 +326,59 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
 
         # get a mask for the output grid which tells us which points are inside the CROCO model grid
         poly_boundary = mplPath.Path(np.array([lon_boundary, lat_boundary]).T)
-        mask_out = np.zeros_like(lon_out_grd)
-        for y in np.arange(Nlat):
-            for x in np.arange(Nlon):
-                if poly_boundary.contains_point((lon_out_grd[y, x], lat_out_grd[y, x])):
-                    mask_out[y, x] = 1
-                else:
-                    mask_out[y, x] = 0
+        xi_flat = np.column_stack([np.asarray(lon_out_grd).ravel(),
+                                   np.asarray(lat_out_grd).ravel()])
+        mask_out = poly_boundary.contains_points(xi_flat).reshape(Nlat, Nlon).astype(float)
+
+        # Precompute the spatial interpolation structure ONCE. The source mesh
+        # (lonlat_input) and the output points (xi_flat) are identical for every
+        # (time, depth, variable) tile, so the expensive triangulation/KDTree
+        # build and the per-output-point simplex/neighbor lookup are hoisted
+        # out of the per-chunk hot loop. Each compute_*_chunk call collapses
+        # to a fancy-indexed gather + (for linear) weighted sum.
+        if method == 'linear':
+            print("Precomputing Delaunay triangulation and barycentric weights")
+            tri = Delaunay(lonlat_input)
+            simplex = tri.find_simplex(xi_flat)             # (Nout,), -1 outside hull
+            valid = simplex >= 0
+            safe_simplex = np.where(valid, simplex, 0)
+            vtx = tri.simplices[safe_simplex]               # (Nout, 3)
+            T = tri.transform[safe_simplex]                 # (Nout, 3, 2)
+            delta = xi_flat - T[:, 2, :]                    # (Nout, 2)
+            bary = np.einsum('nij,nj->ni', T[:, :2, :], delta)
+            weights = np.column_stack([bary, 1.0 - bary.sum(axis=1)])  # (Nout, 3)
+            weights[~valid] = 0.0
+            valid_2d = valid.reshape(Nlat, Nlon)
+
+            def _interp_field(values_flat):
+                gathered = values_flat[vtx]                  # (Nout, 3)
+                out = np.einsum('ni,ni->n', gathered, weights).reshape(Nlat, Nlon)
+                out = np.where(valid_2d, out, np.nan)
+                return out * mask_out / mask_out
+        elif method == 'nearest':
+            print("Precomputing nearest-neighbour index")
+            kd = cKDTree(lonlat_input)
+            _, nn_idx = kd.query(xi_flat, k=1)               # (Nout,)
+
+            def _interp_field(values_flat):
+                out = values_flat[nn_idx].reshape(Nlat, Nlon)
+                return out * mask_out / mask_out
+        else:
+            # cubic: scipy has no clean precomputed form, fall back to per-call griddata
+            def _interp_field(values_flat):
+                out = griddata(lonlat_input, values_flat,
+                               (lon_out_grd, lat_out_grd), method)
+                return out * mask_out / mask_out
 
         print("Interpolating the model output onto the regular horizontal output grid")
 
         @delayed
-        def compute_2d_chunk(t, variable, method=method):
-            return (
-                griddata(
-                    lonlat_input,
-                    np.ravel(variable[t, ::]),
-                    (lon_out_grd, lat_out_grd),
-                    method,
-                )
-                * mask_out / mask_out
-            )
+        def compute_2d_chunk(t, variable):
+            return _interp_field(np.ravel(variable[t, ::]))
 
         @delayed
-        def compute_3d_chunk(t, variable, n, method=method):
-            return (
-                griddata(
-                    lonlat_input,
-                    np.ravel(variable[t, n, ::]),
-                    (lon_out_grd, lat_out_grd),
-                    method,
-                )
-                * mask_out / mask_out
-            )
+        def compute_3d_chunk(t, variable, n):
+            return _interp_field(np.ravel(variable[t, n, ::]))
 
         # zeta is always interpolated as a grid variable
         zeta_out = []
