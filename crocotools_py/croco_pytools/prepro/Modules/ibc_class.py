@@ -13,9 +13,12 @@ class getdata():
     def __init__(self,inputdata,inputfile,crocogrd,multi_files,tracers=[],bdy=None): # bdy=[obs,tstart,tend,cycle]
         
         self.var=dico.lookvar(inputdata) # Dictionary to find the names of the input variables
-        if bdy is None: # Ini case
+        if bdy is None: # Ini/clm case
             if  multi_files == False:
-                dataxr=xr.open_dataset(inputfile)
+                if isinstance(inputfile, list):
+                    dataxr=xr.open_mfdataset(inputfile,combine='nested',concat_dim=self.var['time_dim'])
+                else:
+                    dataxr=xr.open_dataset(inputfile)
                 self.depth=eval(''.join(("dataxr."+self.var['depth'])))
   
                 self.ncglo   = { 'ssh'  : dataxr,\

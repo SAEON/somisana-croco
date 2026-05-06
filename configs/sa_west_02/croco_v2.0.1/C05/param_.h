@@ -197,7 +197,7 @@
 #  elif defined GIBRALTAR_VHR5
        parameter (LLm0=348, MMm0=198,  N=40)
 # elif defined  SA_WEST_02
-      parameter (LLm0=128,  MMm0=446,  N=30)   ! West coast run
+      parameter (LLm0=128,  MMm0=446,  N=40)   ! West coast run
 # else
       parameter (LLm0=xx,   MMm0=xx,   N=xx)   ! YOUR REGIONAL CONFIG
 # endif

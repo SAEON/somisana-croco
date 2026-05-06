@@ -13,7 +13,7 @@ on:
         type: string
 
 jobs:
-  cleanup-files:
+  cleanup-ops-server:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: Clean /home/somisana/ops/${{ inputs.BRANCH_REF }}
@@ -21,17 +21,32 @@ jobs:
         # anything not archived will be lost!
         id: cleanup_runner
         run: |
-          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
+          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -mtime +5 -exec rm -rf {} +
+  cleanup-archive:
+    runs-on: ${{ inputs.RUNNER_NAME }}
+    steps:
       - name: Clean /mnt/ocims-somisana
         # clean certain file types in the public facing archive
         # we only want to keep the forecast portion of the archived forecast runs
-        # (the various tiered outputs can be regenerated if needed) 
+        # (the various tiered outputs can be regenerated if needed)
+        # timeout added because /mnt/ocims-somisana is a network mount that can hang
         id: cleanup_archive
+        timeout-minutes: 30
         run: |
           # have to run as sudo as the archive is owned by root
-          # BE CAREFUL IF YOU EDIT THIS LINE!! you could delete the entire archive if you get it wrong!!
           # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
-          sudo find /mnt/ocims-somisana/ -path "/mnt/ocims-somisana/lost+found" -prune -o -type f,d \( -name "*t1*" -o -name "*_06*" -o -name "*_12*" -o -name "*_18*" -o -name "*t2*" -o -name "*t3*" -o -name "*jpg" -o -name "*gif" -o -name "*_avg.nc*" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
+          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
+      - name: Clean /mnt/saeon-somisana
+        # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
+        # timeout added because /mnt/saeon-somisana is a network mount that can hang
+        # if: always() ensures this step runs even if the previous step failed or timed out
+        id: cleanup_saeon_mount
+        if: always()
+        timeout-minutes: 10
+        run: |
+          sudo find /mnt/saeon-somisana/data/shared/ -type f \( -name "*MERCATOR*nc" \) -mtime +5 -exec rm -fr {} +
   
   prune-images:
     runs-on: ${{ inputs.RUNNER_NAME }}

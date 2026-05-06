@@ -1,0 +1,67 @@
+Grid and bathy generation
+--------------------------
+
+Some general pointers for doing this in Delft3D's RGFGRID tool
+
+Firstly, you need to install the Delft3D gui, which needs you to create a user and get a license which is valid for a year
+Once installed you can open RGFGRID
+
+The first thing to do is to change you coordinate reference system to spherical (default in cartesian), as our croco models are set up to be run in spherical coordinates.
+I found this needs some hacking - 
+load a .ldb file (or a samples file - don't think it matters) then
+you need to go to "Coordinate System" -> "From cartesian into spherical coordinates"
+Then I just made all the settings "1" - it's not important
+It will do crazy stuff,
+But then you need to go file -> new project and load the .ldb file again
+It should now appear correctly in spherical coordinates - check the bottom
+
+You need to load in a land boundary (*ldb file).
+I ended up generating my own by digitising the shoreline in google earth, 
+exporting kml files and then converting them with a script. (see data/land/). 
+You can also import the bathy data to help with the grid generation
+
+Then you need to start drawing splines (edit->splines->new)
+I don't know if the tool is really buggy or I couldn't work out how to use it properly
+But once you have drawn a spline, I couldn't figure out how to move individual points, apart from the first point you draw
+(this issue actually went away another time I tried?? again, very buggy)
+Once the 4 splines defining the grid boundaries are defined you can generate a grid (Operations->change splines into grid)
+
+Most NB step here - your initial starting grid dictates you easy the refinement will go for you...:
+After a few goes, I found a way that works is to think of what size grid cells you want in your area of interest
+Multiply these highest resolution dimesions by a few factors (say 4), to give you your starting grid resolution to aim for in the initial grid generation
+Starting with a derefined grid allows you to then apply local grid refinement over your area of interest in subsequent steps
+To do this you need to change the M-refinement Factor and N-refinement Factor under Settings -> General
+Decide on this by estimating the total length and width of your grid, and divide by your target grid initial coarse size
+Go to Operations -> Change Splines Into Grid
+Check that the generated grid size in your area of interest reasonably matches what you want for your coarse grid
+You'll likely need to adjust your M- and N- refinement factors until your initial grid is suitable
+Take time to get this to the point where you have the resolution that you want - it makes everything else easier
+
+The initial grid will invariably be a bit shitty. First step is to orthoganalise a few times (Operations -> orthoganalise grid)
+and check your orthogonality is max 0.02 - 0.04. 
+Plot this by checking settings -> colour map of parameter, then you can fix the legend values under settings -> legend
+
+Once you're happy with with this you can start refining
+edit -> regular grid -> refine grid locally and select two grid lines within which to refine
+Start by changing you M- and N-refinement factor values under Settings -> general
+Why not start with your area of interest, and gradually use lower refinement as you move away 
+This worked for me, starting with a factor 6 in the area of interest, then going to 5 then 4,3 and finally factor 2 at some boundaries
+
+Remember to keep the aspect ratio of the grid cells in the 1-2 range, unless flow is predominantly along one axis
+Offshore boundaries opposite the area of interest will tend to have an aspect ratio of near 2, 
+with the shore perpendicular side as the long one
+Lateral boundaries will also have an aspect ratio of near 2 near the coast, 
+but will have the shore parallel side as the long one
+
+locally refining will create steps in the model resolution, so you need to smooth these areas
+edit -> regular grid -> block smooth
+The default settings for the block smoothing don't do much... Under settings->general I changed the smoothing parameter to 0.5 and the Nr Smoothing Iterations to 50, and still smoothed a couple of times
+
+Keep doing this until the smoothness in M and N directions is <1.2 
+
+Make sure to check all grid properties at the end
+You may need to go through a number of iterations of orthogonalizing and smoothing
+(smoothing will always lower the orthoganolity of the grid) 
+
+Keep saving your grid as you go! And keep different versions which you can always come back to later. 
+

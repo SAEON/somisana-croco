@@ -91,7 +91,12 @@ for Y=Ymin:Ymax
     nc(close);
     time=time/24; % hours to days
     Nt=length(time);
-    time_origin=ncreadatt(glorysfile,'time','units');
+    % time_origin=ncreadatt(glorysfile,'time','units');
+    % using ncdump to get units to avoid issues with different glorys file formats
+    cmd = sprintf('ncdump -h "%s" | grep "time:units"', glorysfile);
+    [~, txt] = system(cmd);
+    tokens = regexp(txt, '=\s*"(.*?)"', 'tokens', 'once');
+    time_origin = tokens{1};
     time_origin=strsplit(time_origin);
     % time_origin=char(strcat(time_origin(3)," ",time_origin(4)));
     time_origin=char(time_origin(3));

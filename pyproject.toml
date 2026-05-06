@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "somisana-croco"
+version = "0.1"
+description = "Tools for working with CROCO ocean model outputs."
+authors = [{ name = "Giles Fearon", email = "g.fearon@saeon.nrf.ac.za" }]
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+

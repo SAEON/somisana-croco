@@ -11,13 +11,10 @@ import argparse
 import sys, os
 from datetime import datetime, timedelta
 import calendar
-from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
-from crocotools_py.postprocess import get_ts_multivar
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
+from crocotools_py.postprocess import get_ts_multivar, compute_anomaly, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
-from download.cmems import download_glorys, download_cmems_monthly, download_mercator
-from download.gfs import download_gfs_atm
-from download.hycom import download_hycom
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
@@ -56,133 +53,6 @@ def main():
 
     # just keep adding new subparsers for each new function as we go...
 
-    # -----------------------
-    # download_cmems_monthly
-    # -----------------------
-    # This actually supersedes download_glorys since it is a general version of the same function
-    parser_download_cmems_monthly = subparsers.add_parser('download_cmems_monthly', 
-            help='Download month by month for any dataset from CMEMS')
-    parser_download_cmems_monthly.add_argument('--usrname', required=True, type=str, help='Copernicus username')
-    parser_download_cmems_monthly.add_argument('--passwd', required=True, help='Copernicus password')
-    parser_download_cmems_monthly.add_argument('--dataset', required=True, help='Copernicus dataset ID')
-    parser_download_cmems_monthly.add_argument('--domain', type=parse_list, 
-                        default=[23, 34, -37, -31],
-                        help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
-    parser_download_cmems_monthly.add_argument('--start_date', required=True, type=parse_datetime, 
-                        help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_cmems_monthly.add_argument('--end_date', required=True, type=parse_datetime, 
-                        help='end time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_cmems_monthly.add_argument('--varList', type=parse_list_str, 
-                        default=['so', 'thetao', 'zos', 'uo', 'vo'],
-                        help='comma separated list of variables to download e.g. "so,thetao,zos,uo,vo"')
-    parser_download_cmems_monthly.add_argument('--depths', type=parse_list, 
-                        default=[0.493, 5727.918],
-                        help='comma separated list of depth extent to download (positive down). For all depths use "0.493,5727.918"')
-    parser_download_cmems_monthly.add_argument('--outputDir', required=True, help='Directory to save files')
-    def download_cmems_monthly_handler(args):
-        download_cmems_monthly(args.usrname, args.passwd, args.dataset, args.domain, args.start_date,args.end_date,args.varList, args.depths, args.outputDir)
-    parser_download_cmems_monthly.set_defaults(func=download_cmems_monthly_handler)
-
-    # ----------------
-    # download_glorys
-    # ----------------
-    parser_download_glorys = subparsers.add_parser('download_glorys', 
-            help='Download month by month of daily MERCATOR 1/12 deg reanalysis data (GLORYS) from CMEMS')
-    parser_download_glorys.add_argument('--usrname', required=True, type=str, help='Copernicus username')
-    parser_download_glorys.add_argument('--passwd', required=True, help='Copernicus password')
-    parser_download_glorys.add_argument('--domain', type=parse_list, 
-                        default=[23, 34, -37, -31],
-                        help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
-    parser_download_glorys.add_argument('--start_date', required=True, type=parse_datetime, 
-                        help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_glorys.add_argument('--end_date', required=True, type=parse_datetime, 
-                        help='end time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_glorys.add_argument('--varList', type=parse_list, 
-                        default=['so', 'thetao', 'zos', 'uo', 'vo'],
-                        help='comma separated list of variables to download e.g. "so,thetao,zos,uo,vo"')
-    parser_download_glorys.add_argument('--depths', type=parse_list, 
-                        default=[0.493, 5727.918],
-                        help='comma separated list of depth extent to download (positive down). For all depths use "0.493,5727.918"')
-    parser_download_glorys.add_argument('--outputDir', required=True, help='Directory to save files')
-    def download_glorys_handler(args):
-        download_glorys(args.usrname, args.passwd, args.domain, args.start_date,args.end_date,args.varList, args.depths, args.outputDir)
-    parser_download_glorys.set_defaults(func=download_glorys_handler)
-    
-    # -------------------
-    # download_mercator
-    # -------------------
-    parser_download_mercator = subparsers.add_parser('download_mercator', 
-            help='Download a subset of daily MERCATOR 1/12 deg analysis data from CMEMS')
-    parser_download_mercator.add_argument('--usrname', required=True, type=str, help='Copernicus username')
-    parser_download_mercator.add_argument('--passwd', required=True, help='Copernicus password')
-    parser_download_mercator.add_argument('--domain', type=parse_list, 
-                        default=[10, 25, -40, -25],
-                        help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
-    parser_download_mercator.add_argument('--run_date', required=True, type=parse_datetime, 
-                        help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_mercator.add_argument('--hdays', required=True, type=float,
-                        default=5.,
-                        help='hindcast days i.e before run_date')
-    parser_download_mercator.add_argument('--fdays', required=True, type=float,
-                        default=5.,
-                        help='forecast days i.e before run_date')
-    parser_download_mercator.add_argument('--outputDir', required=True, help='Directory to save files') 
-    def download_mercator_handler(args):
-        download_mercator(args.usrname, args.passwd, args.domain, args.run_date,args.hdays, args.fdays,args.outputDir)
-    parser_download_mercator.set_defaults(func=download_mercator_handler)
-    
-    # ------------------
-    # download_gfs_atm
-    # ------------------
-    parser_download_gfs_atm = subparsers.add_parser('download_gfs_atm', 
-            help='Download a subset of hourly 0.25 deg gfs atmospheric data from NOAA')
-    parser_download_gfs_atm.add_argument('--domain', type=parse_list, 
-                        default=[10, 25, -40, -25],
-                        help='comma separated list of domain extent to download i.e. "lon0,lon1,lat0,lat1"')
-    parser_download_gfs_atm.add_argument('--run_date', required=True, type=parse_datetime, 
-                        help='start time in format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_gfs_atm.add_argument('--hdays', required=True, type=float,
-                        default=5.,
-                        help='hindcast days i.e before run_date')
-    parser_download_gfs_atm.add_argument('--fdays', required=True, type=float,
-                        default=5.,
-                        help='forecast days i.e before run_date')
-    parser_download_gfs_atm.add_argument('--outputDir', required=True, help='Directory to save files')
-    def download_gfs_atm_handler(args):
-        download_gfs_atm(args.domain, args.run_date, args.hdays, args.fdays, args.outputDir)
-    parser_download_gfs_atm.set_defaults(func=download_gfs_atm_handler) 
-    
-    # -------------------
-    # download_hycom
-    # -------------------
-    parser_download_hycom = subparsers.add_parser('download_hycom', 
-            help='Download a subset of  HYCOM analysis data using xarray OpenDAP')
-    parser_download_hycom.add_argument('--variables',required=False,
-                                       default = ['salinity', 'water_temp', 'surf_el', 'water_u', 'water_v'],
-                                       help='List of variables to download.')    
-    parser_download_hycom.add_argument('--domain', required=False, type=parse_list,
-                                       default=[10, 25, -40, -25],
-                                       help='comma separated list of domain extent to download i.e. [lon_min,lon_max,lat_min,lat_max]')
-    parser_download_hycom.add_argument('--depths', required=False, type=parse_list,
-                                       default=[0,5000],
-                                       help='Minimum and maximum depths to download. Values must be positive. Default is [0,5000]')
-    parser_download_hycom.add_argument('--run_date', required=True, type=parse_datetime,
-                                       help='start time in datetime format "YYYY-MM-DD HH:MM:SS"')
-    parser_download_hycom.add_argument('--hdays', required=False, type=float,
-                                       default=5.,
-                                       help='hindcast days i.e before run_date')
-    parser_download_hycom.add_argument('--fdays', required=False, type=float, 
-                                       default=5.,
-                                       help='forecast days i.e before run_date')
-    parser_download_hycom.add_argument('--savedir', required=True, 
-                                       help='Directory to save files')
-    parser_download_hycom.add_argument('--pad',required=False, type=parse_bool,
-                                       default=False,
-                                       help='Pad all time-dependent variables in the dataset by one timestep at the start and end. At the start, we download and extra day and at the end we copy the last timestep (Default is False). This is used operationally for our forecast models.')
-    def download_hycom_handler(args):
-        download_hycom(args.variables,args.domain, args.depths, args.run_date, args.hdays, args.fdays, args.savedir, args.pad)
-    parser_download_hycom.set_defaults(func=download_hycom_handler)
-    
     # ------------------
     # reformat_saws_atm
     # ------------------
@@ -233,11 +103,14 @@ def main():
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
+    parser_crocplot.add_argument('--add_vectors', type=parse_bool, 
+                       default='True',
+                       help='If True, current vectors are added to the plot')
     parser_crocplot.add_argument('--skip_time', required=False, type=int, default=1,
             help='Number of time-steps to skip between frames in the animation')
-    parser_crocplot.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_crocplot.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     def crocplot_handler(args):
         # a lot of the crocplot inputs are hard coded below but could be made configurable in future
         # there are also other potential optional inputs to this function which we aren't specifying here
@@ -249,9 +122,9 @@ def main():
                       ticks = args.ticks,
                       cmap = 'Spectral_r',
                       extents = None,
-                      ref_date = args.ref_date,
+                      Yorig = args.Yorig,
                       cbar_label=args.cbar_label,
-                      add_vectors = True,
+                      add_vectors = args.add_vectors,
                       skip_time = args.skip_time,
                       isobaths=args.isobaths,
                       gif_out=args.gif_out,
@@ -264,44 +137,57 @@ def main():
     # --------------
     parser_regrid_tier1 = subparsers.add_parser('regrid_tier1', 
             help='tier 1 regridding of a raw CROCO output file: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> adds a depth variable providing the depths of each sigma level at each time-step')
-    parser_regrid_tier1.add_argument('--fname', required=True, type=str, help='input native CROCO filename')
-    parser_regrid_tier1.add_argument('--fname_out', required=True, help='tier 1 output filename')
-    parser_regrid_tier1.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_regrid_tier1.add_argument('--fname', required=True, type=str, help='input native CROCO filename - can include wildcards (*) to process multiple files in a single command')
+    parser_regrid_tier1.add_argument('--grdname', required=False, type=str,
+                                     help='optional input to provide a separate grid file (if grid vars arent in your output files)')
+    parser_regrid_tier1.add_argument('--dir_out', required=True, help='tier 1 output directory')
+    parser_regrid_tier1.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
+    parser_regrid_tier1.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     def regrid_tier1_handler(args):
-        regrid_tier1(args.fname, args.fname_out, args.ref_date)
+        regrid_tier1(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
     
     # --------------
     # regrid_tier2
     # --------------
     parser_regrid_tier2 = subparsers.add_parser('regrid_tier2', 
-            help='tier 2 regridding of a CROCO output: takes the output of regrid-tier1 as input and regrids the sigma levels to constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
-    parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input native CROCO filename')
-    parser_regrid_tier2.add_argument('--fname_out', required=True, help='tier 2 output filename')
-    parser_regrid_tier2.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+            help='tier 2 regridding of a raw CROCO output file: regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid -> rotates u/v to be east/north components instead of grid-aligned components -> regrids the sigma levels to the user defined constant z levels, including the surface and bottom layers -> output variables are the same as tier 1, only depths is now a dimension with the user specified values')
+    parser_regrid_tier2.add_argument('--fname', required=True, type=str, help='input native CROCO filename - can include wildcards (*) to process multiple files in a single command')
+    parser_regrid_tier2.add_argument('--grdname', required=False, type=str,
+                                     help='optional input to provide a separate grid file (if grid vars arent in your output files)')
+    parser_regrid_tier2.add_argument('--dir_out', required=True, help='tier 2 output directory')
+    parser_regrid_tier2.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
+    parser_regrid_tier2.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
                          default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],  
                          help='list of depths to extract (in metres, negative down)')
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.fname_out, args.ref_date, depths = args.depths)
+        regrid_tier2(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link, depths = args.depths)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------
     # regrid_tier3
     # --------------
     parser_regrid_tier3 = subparsers.add_parser('regrid_tier3', 
-            help='tier 3 regridding of a CROCO output: takes the output of regrid-tier3 as input and regrids the horizontal grid to be regular with a specified grid spacing. Output variables are the same as tier 1 and 2, only horizontal grid is now rectilinear with hz dimensions of longitude,latitude i.e. horizontal grid is no longer curvilinear. The extents of the rectilinear grid are automatically determined using the curvilinear grid extents.')    
-    parser_regrid_tier3.add_argument('--fname', required=True, type=str, help='input regridded tier2 filename')
-    parser_regrid_tier3.add_argument('--fname_out', required=True, help='tier 3 output filename')
-    parser_regrid_tier3.add_argument('--spacing', type=str,
-                         default='0.01', 
+            help='tier 3 regridding of a CROCO output: takes the output of regrid-tier2 as input and regrids the horizontal grid to a regular grid with a specified grid spacing. Output variables are the same as tier 1 and 2, only horizontal grid is now rectilinear with hz dimensions of longitude,latitude i.e. horizontal grid is no longer curvilinear. The extents of the rectilinear grid are automatically determined using the curvilinear grid extents.')
+    parser_regrid_tier3.add_argument('--fname', required=True, type=str, help='input regridded tier2 filename - can include wildcards (*) to process multiple files in a single command')
+    parser_regrid_tier3.add_argument('--dir_out', required=True, help='tier 3 output directory')
+    parser_regrid_tier3.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
+    parser_regrid_tier3.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
+    parser_regrid_tier3.add_argument('--spacing', type=float,default=0.01,
                          help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
+    parser_regrid_tier3.add_argument('--method', type=str, default='nearest',
+                         choices=['nearest', 'linear', 'cubic'],
+                         help="interpolation method passed to scipy.interpolate.griddata (default='nearest')")
     def regrid_tier3_handler(args):
-        regrid_tier3(args.fname, args.fname_out, spacing = args.spacing)
+        regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link,
+                     spacing=args.spacing, method=args.method)
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
     # ----------------
@@ -311,9 +197,9 @@ def main():
     parser_get_ts_multivar.add_argument('--fname', required=True, type=str, help='input CROCO filename')
     parser_get_ts_multivar.add_argument('--lon', required=True, type=float, help='Longitude of data extraction')
     parser_get_ts_multivar.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
-    parser_get_ts_multivar.add_argument('--ref_date', type=parse_datetime, 
-                        default=datetime(2000,1,1,0,0,0), 
-                        help='CROCO reference date in format "YYYY-MM-DD HH:MM:SS"')
+    parser_get_ts_multivar.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
     parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
                         default=['temp', 'salt'],
                         help='optional list of CROCO variable names')
@@ -322,12 +208,34 @@ def main():
                         help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')
     def get_ts_multivar_handler(args):
-        get_ts_multivar(args.fname, args.lon, args.lat, args.ref_date, 
+        get_ts_multivar(args.fname, args.lon, args.lat, Yorig=args.Yorig, 
                vars = args.vars, 
                depths = args.depths,
                write_nc=True, # default behaviour in the cli is to write a file
                fname_nc=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
+    
+    # ----------------
+    # compute_anomaly
+    # ----------------
+    parser_compute_anomaly=subparsers.add_parser('compute_anomaly', help='Compute anomalies by subtracting monthly climatology from high-frequency CROCO output.')
+    parser_compute_anomaly.add_argument('--fname_clim', required=True, type=str, help='input climatology file')
+    parser_compute_anomaly.add_argument('--fname_in', required=True, type=str, help='input high frequency (forecast) file')
+    parser_compute_anomaly.add_argument('--fname_out', required=True, type=str, help='output directory')
+    parser_compute_anomaly.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
+    parser_compute_anomaly.add_argument('--varlist', type=parse_list_str, 
+                        default=['temp','u','v', 'salt','zeta'],
+                        help='optional list of CROCO variable names')
+    parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_bool, 
+                       default='False',
+                       help='If True, subtract a constant value from fname_in, computed as the climatology at the midpoint of the time axis of fname_in')
+    def compute_anomaly_handler(args):
+        compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, 
+                        args.Yorig, varlist=args.varlist,
+                        use_constant_clim=args.use_constant_clim)
+    parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
 
     # ----------------
     # make_tides_fcst
@@ -383,7 +291,7 @@ def main():
             
             print('working on '+month_now.strftime('%Y-%m'))
             
-            fname_out = params.croco_prefix + month_now.strftime('_Y%YM%m.nc')
+            fname_out = params.croco_prefix + month_now.strftime('_Y%YM%m.nc') + params.croco_suffix
             
             make_tides(args.input_dir,args.output_dir,month_now,args.Yorig,fname_out)
             
@@ -438,7 +346,7 @@ def main():
         ini_date = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
         fname_in = os.path.join(args.input_dir, ini_date.strftime(params.input_file_fmt))
         
-        fname_out = params.ini_prefix + ini_date.strftime('_Y%YM%m.nc')
+        fname_out = params.ini_prefix + ini_date.strftime('_Y%YM%m.nc') + params.ini_suffix
         
         make_ini(fname_in,args.output_dir,ini_date,args.Yorig,fname_out)
     
@@ -539,7 +447,88 @@ def main():
             month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
         
     parser_make_bry_inter.set_defaults(func=make_bry_inter_handler)
-    
+
+    # ----------------
+    # make_clm_inter
+    # ----------------
+    parser_make_clm_inter = subparsers.add_parser('make_clm_inter',
+            help='Make monthly ocean climatology files for CROCO interannual runs')
+    parser_make_clm_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the monthly OGCM files')
+    parser_make_clm_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing files will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_clm_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_clm_inter.add_argument('--month_end', required=True, type=str,
+            help='last month in the interannual run in format "YYYY-MM"')
+    parser_make_clm_inter.add_argument('--Yorig', required=True, type=int,
+            help='the Yorig value used in setting up the CROCO model')
+    def make_clm_inter_handler(args):
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+
+        month_now = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
+        month_end = datetime.strptime(args.month_end+'-01','%Y-%m-%d')
+
+        while month_now <= month_end:
+
+            print('working on '+month_now.strftime('%Y-%m'))
+
+            # define a list of 3 input files - last month, this month and next month
+            # This is to ensure that we always have clm data for the start and end of the CROCO run for this month
+            month_prev = month_now - timedelta(days=10) # an arbitrary date in the previous month
+            month_next = month_now + timedelta(days=32) # 32 days ensures we get to the next month
+            fname_month_prev = os.path.join(args.input_dir, month_prev.strftime(params.input_file_fmt))
+            fname_month_now = os.path.join(args.input_dir, month_now.strftime(params.input_file_fmt))
+            fname_month_next = os.path.join(args.input_dir, month_next.strftime(params.input_file_fmt))
+            if not os.path.exists(fname_month_prev):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_prev)
+            if not os.path.exists(fname_month_now):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_now)
+            if not os.path.exists(fname_month_next):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_next)
+            input_file=[fname_month_prev,
+                        fname_month_now,
+                        fname_month_next]
+
+            # define ini_date and end_date using a 1 day buffer either side of the month
+            ini_date = month_now - timedelta(days=1)
+            day_end = calendar.monthrange(month_now.year,month_now.month)[1]
+            end_date = datetime(month_now.year,month_now.month,day_end) + timedelta(days=2)
+
+            # make the clm file for this month
+            fname_out = params.clim_prefix + month_now.strftime('_Y%YM%m.nc')
+            make_clm(input_file,args.output_dir,ini_date,end_date,args.Yorig,fname_out)
+
+            month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
+        
+    parser_make_clm_inter.set_defaults(func=make_clm_inter_handler)
+ 
+    # ----------------
+    # croco_srf_2_ww3
+    # ----------------
+    parser_croco_srf_2_ww3 = subparsers.add_parser('croco_srf_2_ww3',
+            help='Convert CROCO surface output to WW3-compatible current and water level netCDF files for use with ww3_prnc in ASIS mode')
+    parser_croco_srf_2_ww3.add_argument('--fname', required=True, type=str,
+            help='input CROCO surface filename - can include wildcards (*) to process multiple files in a single command')
+    parser_croco_srf_2_ww3.add_argument('--grdname', required=False, type=str, default=None,
+            help='optional CROCO grid file (if grid vars are not in your output files)')
+    parser_croco_srf_2_ww3.add_argument('--dir_out', required=True, type=str,
+            help='output directory for WW3-compatible current and water level files')
+    parser_croco_srf_2_ww3.add_argument('--Yorig', type=parse_int, default=None,
+            help='Origin year for CROCO time. Output time units will be "days since Yorig-01-01 00:00:00"')
+    def croco_srf_2_ww3_handler(args):
+        from glob import glob as globfn
+        fname_in = args.fname
+        if type(fname_in) == str:
+            if fname_in.find('*') > 0:
+                fname_in = sorted(globfn(fname_in))
+            else:
+                fname_in = [fname_in]
+        for f in fname_in:
+            croco_srf_2_ww3(f, grdname=args.grdname, dir_out=args.dir_out, Yorig=args.Yorig)
+    parser_croco_srf_2_ww3.set_defaults(func=croco_srf_2_ww3_handler)
+
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)
