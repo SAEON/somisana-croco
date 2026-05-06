@@ -987,9 +987,14 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
                 ds_file = ds_file.sel(lon=lon_lims, lat=lat_lims)
                 # extract the variable
                 da_file = ds_file[var_dict['shortName']].squeeze()
+                # some SAWS files contain a duplicated leading time step (the analysis
+                # hour appearing both as the initial state and as the first forecast step).
+                # Without dropping them, the slice below fails with
+                # "Cannot get left slice bound for non-unique label".
+                da_file = da_file.drop_duplicates(dim='time', keep='first')
                 # the concatenation step below seems to take quite long
                 # but pre-chunking the lon and lat dimensions seems to speed it up a bit
-                da_file = da_file.chunk({'time': 1, 'lat': 100, 'lon': 100}) 
+                da_file = da_file.chunk({'time': 1, 'lat': 100, 'lon': 100})
                 if da is None:
                     da = da_file
                 else:
