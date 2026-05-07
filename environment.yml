@@ -11,6 +11,8 @@ dependencies:
   - ffmpeg
   - xarray>=2023.4.0
   - dask>=2023.4.0
+  - zarr
+  - numcodecs
   - cfgrib
   - pygrib
   - cartopy>=0.20

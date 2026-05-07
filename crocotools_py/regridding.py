@@ -1,13 +1,14 @@
 import crocotools_py.postprocess as post
 import numpy as np
 import xarray as xr
-import os,sys
+import os,sys,shutil
 from datetime import datetime
 #import pandas as pd
 import matplotlib.path as mplPath
 from dask import delayed
 import dask.array as da
 from scipy.interpolate import griddata
+from scipy.spatial import Delaunay, cKDTree
 from glob import glob
 import subprocess
 import dask
@@ -218,7 +219,8 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         print(f'Created: {fname_out}')
 
 def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
-                 varList=['temp','salt','u','v']):
+                 varList=['temp','salt','u','v'], output_format='netcdf',
+                 method='nearest'):
     '''
     tier 3 regridding of a CROCO output:
       -> takes the output of regrid-tier2 as input and
@@ -239,12 +241,27 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
     varList   : list of variable names to interpolate (default=['temp','salt','u','v']).
                 Variables are read from the tier 2 input file and interpolated onto the regular grid.
                 3D variables (with a depth dimension) and 2D variables are handled automatically.
+    output_format : 'netcdf' (default) or 'zarr'.
+                When 'zarr', writes a compressed Zarr store (a directory) instead of a NetCDF file.
+                Zarr output uses Blosc/Zstd compression and chunking tuned for per-map access
+                (time=1, depth=1, full lat/lon plane per chunk) — well suited for web
+                visualisation pipelines that read one forecast time step at a time.
+                The output path is derived from the input by replacing '.nc' with '.zarr'
+                (e.g. 'croco_avg_t2.nc.2' -> 'croco_avg_t3.zarr.2').
+    method    : interpolation method passed to scipy.interpolate.griddata
+                (default='nearest'). Supported values: 'nearest', 'linear', 'cubic'.
 
     CAREFUL! tier3 output is useful for website visualisation (it's intended use),
     but don't use it for reasearch/analysis as it's interpolated, so can be at a
     totally different resolution to the native CROCO grid
 
     '''
+
+    if output_format not in ('netcdf', 'zarr'):
+        raise ValueError(f"output_format must be 'netcdf' or 'zarr', got '{output_format}'")
+
+    if method not in ('nearest', 'linear', 'cubic'):
+        raise ValueError(f"method must be 'nearest', 'linear' or 'cubic', got '{method}'")
 
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
@@ -309,39 +326,59 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
 
         # get a mask for the output grid which tells us which points are inside the CROCO model grid
         poly_boundary = mplPath.Path(np.array([lon_boundary, lat_boundary]).T)
-        mask_out = np.zeros_like(lon_out_grd)
-        for y in np.arange(Nlat):
-            for x in np.arange(Nlon):
-                if poly_boundary.contains_point((lon_out_grd[y, x], lat_out_grd[y, x])):
-                    mask_out[y, x] = 1
-                else:
-                    mask_out[y, x] = 0
+        xi_flat = np.column_stack([np.asarray(lon_out_grd).ravel(),
+                                   np.asarray(lat_out_grd).ravel()])
+        mask_out = poly_boundary.contains_points(xi_flat).reshape(Nlat, Nlon).astype(float)
+
+        # Precompute the spatial interpolation structure ONCE. The source mesh
+        # (lonlat_input) and the output points (xi_flat) are identical for every
+        # (time, depth, variable) tile, so the expensive triangulation/KDTree
+        # build and the per-output-point simplex/neighbor lookup are hoisted
+        # out of the per-chunk hot loop. Each compute_*_chunk call collapses
+        # to a fancy-indexed gather + (for linear) weighted sum.
+        if method == 'linear':
+            print("Precomputing Delaunay triangulation and barycentric weights")
+            tri = Delaunay(lonlat_input)
+            simplex = tri.find_simplex(xi_flat)             # (Nout,), -1 outside hull
+            valid = simplex >= 0
+            safe_simplex = np.where(valid, simplex, 0)
+            vtx = tri.simplices[safe_simplex]               # (Nout, 3)
+            T = tri.transform[safe_simplex]                 # (Nout, 3, 2)
+            delta = xi_flat - T[:, 2, :]                    # (Nout, 2)
+            bary = np.einsum('nij,nj->ni', T[:, :2, :], delta)
+            weights = np.column_stack([bary, 1.0 - bary.sum(axis=1)])  # (Nout, 3)
+            weights[~valid] = 0.0
+            valid_2d = valid.reshape(Nlat, Nlon)
+
+            def _interp_field(values_flat):
+                gathered = values_flat[vtx]                  # (Nout, 3)
+                out = np.einsum('ni,ni->n', gathered, weights).reshape(Nlat, Nlon)
+                out = np.where(valid_2d, out, np.nan)
+                return out * mask_out / mask_out
+        elif method == 'nearest':
+            print("Precomputing nearest-neighbour index")
+            kd = cKDTree(lonlat_input)
+            _, nn_idx = kd.query(xi_flat, k=1)               # (Nout,)
+
+            def _interp_field(values_flat):
+                out = values_flat[nn_idx].reshape(Nlat, Nlon)
+                return out * mask_out / mask_out
+        else:
+            # cubic: scipy has no clean precomputed form, fall back to per-call griddata
+            def _interp_field(values_flat):
+                out = griddata(lonlat_input, values_flat,
+                               (lon_out_grd, lat_out_grd), method)
+                return out * mask_out / mask_out
 
         print("Interpolating the model output onto the regular horizontal output grid")
 
         @delayed
-        def compute_2d_chunk(t, variable, method="nearest"):
-            return (
-                griddata(
-                    lonlat_input,
-                    np.ravel(variable[t, ::]),
-                    (lon_out_grd, lat_out_grd),
-                    method,
-                )
-                * mask_out / mask_out
-            )
+        def compute_2d_chunk(t, variable):
+            return _interp_field(np.ravel(variable[t, ::]))
 
         @delayed
-        def compute_3d_chunk(t, variable, n, method="nearest"):
-            return (
-                griddata(
-                    lonlat_input,
-                    np.ravel(variable[t, n, ::]),
-                    (lon_out_grd, lat_out_grd),
-                    method,
-                )
-                * mask_out / mask_out
-            )
+        def compute_3d_chunk(t, variable, n):
+            return _interp_field(np.ravel(variable[t, n, ::]))
 
         # zeta is always interpolated as a grid variable
         zeta_out = []
@@ -444,10 +481,15 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
         data_out.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
         if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-        # Explicitly set chunk sizes of some dimensions
-        chunksizes = {
-            "time": ds.time.size,
-        }
+        # Explicitly set chunk sizes of some dimensions.
+        # NetCDF default: time=full, depth=1 (good for point-timeseries analysis).
+        # Zarr default:   time=1,    depth=1 (good for reading one map at a time,
+        #                 e.g. web visualisation pipelines).
+        chunksizes = {}
+        if output_format == 'zarr':
+            chunksizes["time"] = 1
+        else:
+            chunksizes["time"] = ds.time.size
         if has_depth:
             chunksizes["depth"] = 1
 
@@ -456,13 +498,25 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
         # or the length of the dimension
         default_chunksizes = {dim: len(data_out[dim]) for dim in data_out.dims}
 
-        encoding = {
-            var: {
-                "dtype": "float32",
-                "chunksizes": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims]
+        if output_format == 'zarr':
+            from numcodecs import Blosc
+            compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.SHUFFLE)
+            encoding = {
+                var: {
+                    "dtype": "float32",
+                    "chunks": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims],
+                    "compressor": compressor,
+                }
+                for var in data_out.data_vars
             }
-            for var in data_out.data_vars
-        }
+        else:
+            encoding = {
+                var: {
+                    "dtype": "float32",
+                    "chunksizes": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims]
+                }
+                for var in data_out.data_vars
+            }
 
         # Adjust for non-chunked variables
         encoding["time"] = {"units": f"seconds since {Yorig}-01-01 00:00:00",
@@ -479,22 +533,40 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
         basename_no_extension = basename[:match.start()]
         extension = match.group(0)
         basename_no_extension = basename_no_extension.replace('_t2', '_t3')
+        if output_format == 'zarr':
+            # e.g. '.nc' -> '.zarr', '.nc.2' -> '.zarr.2'
+            extension = extension.replace('.nc', '.zarr')
 
         fname_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + extension))
 
-        # If the file already exists, we remove it to avoid permission errors.
-        if os.path.exists(fname_out): os.remove(fname_out)
+        # If the output already exists, we remove it to avoid permission errors.
+        # Zarr is a directory; NetCDF is a single file.
+        if os.path.exists(fname_out):
+            if output_format == 'zarr':
+                shutil.rmtree(fname_out)
+            else:
+                os.remove(fname_out)
 
-        print("Generating NetCDF data")
-        write_op = data_out.to_netcdf(
-                fname_out,
-                encoding=encoding,
-                mode="w",
-                compute=False,
-                )
-
-        print("Writing NetCDF file")
-        dask.compute(write_op)
+        if output_format == 'zarr':
+            print("Generating Zarr store")
+            write_op = data_out.to_zarr(
+                    fname_out,
+                    encoding=encoding,
+                    mode="w",
+                    compute=False,
+                    )
+            print("Writing Zarr store")
+            dask.compute(write_op)
+        else:
+            print("Generating NetCDF data")
+            write_op = data_out.to_netcdf(
+                    fname_out,
+                    encoding=encoding,
+                    mode="w",
+                    compute=False,
+                    )
+            print("Writing NetCDF file")
+            dask.compute(write_op)
 
         subprocess.call(["chmod", "-R", "775", fname_out])
         print(f'Created: {fname_out}')

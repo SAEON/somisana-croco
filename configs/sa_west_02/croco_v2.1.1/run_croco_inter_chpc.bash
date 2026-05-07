@@ -5,7 +5,7 @@
 # this is needed to ensure we stay under the 48 hr job length for each job submission
 
 CURRENT_DATE="2008-01-01"
-END_DATE="2013-12-31"
+END_DATE="2013-12-01"
 RSTFLAG=0 # set to 1 if you want to restart from a previous months output
 prev_jobid=""
 

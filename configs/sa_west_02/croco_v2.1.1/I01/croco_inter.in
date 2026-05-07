@@ -37,7 +37,7 @@ restart:          NRST, NRPFRST / filename
     croco_rst.nc
     
 history: LDEFHIS, NWRT, NRPFHIS / filename 
-            F     NUMHIS     0
+            F     NUMTIMES    0
     croco_his.nc
 averages: NTSAVG, NAVG, NRPFAVG / filename
             1     NUMAVG     0
@@ -53,7 +53,7 @@ gls_history_fields:   TKE  GLS  Lscale
 primary_averages: zeta UBAR VBAR  U  V   wrtT(1:NT)
                    T    T    T    T  T   50*T
 auxiliary_averages: rho Omega  W  Akv  Akt  Aks  Bvf Visc3d Diff3d HBL HBBL Bostr Bustr Bvstr Wstr Ustr Vstr Shfl Swfl rsw rlw lat sen HEL
-                     F   T     T   F    T    F    F    F     F      T   T    T     F     F     T   T    T     T    T   30*T
+                     F   F     T   F    F    T    F    F     F      T   T    T     F     F     T   T    T     T    T   30*T
 gls_averages:   TKE  GLS  Lscale
                  T     T    T
 
@@ -155,11 +155,11 @@ diags_ek_average_fields: diags_ek_avg
                             T
 
 surf:   ldefsurf, nwrtsurf, nrpfsurf /filename
-                   T          1        0
+                   T        NUMHISSURF        0
     croco_surf.nc
 
 surf_avg: ldefsurf_avg  ntssurf_avg  nwrtsurf_avg  nprfsurf_avg /filename
-               F          1           4          0
+               F          1           NUMAVGSURF          0
     croco_surf_avg.nc
 
 surf_history_fields: surf
@@ -167,7 +167,6 @@ surf_history_fields: surf
 
 surf_average_fields: surf_avg
                             F
-
 
 diags_pv:   ldefdiags_pv, nwrtdiags_pv, nrpfdiags_pv /filename
                    T          NUMHIS        0

@@ -310,7 +310,7 @@
                       /* Input/Output */
 # define AVERAGES
 # define AVERAGES_K
-# undef  OUTPUTS_SURFACE
+# define  OUTPUTS_SURFACE
 # undef  HOURLY_VELOCITIES
                      /* Exact restart */
 # undef EXACT_RESTART

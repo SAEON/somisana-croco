@@ -26,7 +26,7 @@ Compile options
 10 - as per 09, define CLIMATOLOGY
 11 - as per 10, define AGRIF and AGRIF_2WAY
 12 - as per 10, define UV_VIS2
-13 - as per 10, undef SPONGE_GRID to use x_sponge from .in file (wider sponge layer)
+13 - as per 12, undef SPONGE_GRID to use x_sponge from .in file (wider sponge layer)
 
 Runtime input (\*.in files)
 ---------------------------
