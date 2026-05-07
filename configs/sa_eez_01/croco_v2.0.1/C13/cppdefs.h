@@ -220,7 +220,7 @@
 # undef  UV_HADV_WENO5
 # undef  UV_HADV_TVD
                       /* Lateral Explicit Momentum Mixing */
-# undef  UV_VIS2
+# define  UV_VIS2
 # ifdef UV_VIS2
 #  define UV_VIS_SMAGO
 # endif
@@ -243,7 +243,17 @@
 # undef  TS_VADV_WENO5
                       /* Sponge layers for UV and TS */
 # define SPONGE
-# undef  SPONGE_GRID    /* use x_sponge from .in file */
+/*
+   In this configuration we want 
+   undef SPONGE_GRID
+   but this gets over-ridden by cppdefs_dev.h
+   So we put this at the very end of this file
+   So caution - don't use this cppdefs.h file without knowing that
+   we've undefined SPONGE_GRID!!!!
+   in other words, the width of the sponge layer is being determined 
+   from x_sponge which is set in the .in runtime input file
+*/
+
                       /* Semi-implicit Vertical Tracer/Mom Advection */
 # define  VADV_ADAPT_IMP
                       /* Bottom friction in fast 3D step */
@@ -2030,4 +2040,5 @@
 #endif /* END OF CONFIGURATION CHOICE */
 
 #include "cppdefs_dev.h"
+#undef SPONGE_GRID    /* override cppdefs_dev.h default; use x_sponge from .in file */
 #include "set_global_definitions.h"

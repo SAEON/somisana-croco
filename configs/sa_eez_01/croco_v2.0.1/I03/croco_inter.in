@@ -76,7 +76,7 @@ sponge:          X_SPONGE [m]
                    180000.
 
 nudg_cof:    TauT_in, TauT_out, TauM_in, TauM_out  [days for all]
-                1.       360.      1.      360.
+                1.       30.      1.      30.
 
 diagnostics:   ldefdia   nwrtdia    nrpfdia /filename
                   T        NUMHIS         0
