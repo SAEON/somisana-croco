@@ -2,9 +2,11 @@
 CF-compliant attributes for CROCO output variables.
 
 ATTRS: dict of variable name -> VarAttrs for scalars and grid variables.
-VECTOR_ATTRS: dict of variable name -> (grid-aligned VarAttrs, rotated VarAttrs)
-              for vector components that have different metadata depending on
-              whether they have been rotated to east/north components.
+VECTOR_ATTRS: dict of variable name -> (grid-aligned, eastnorth-rotated,
+              section-rotated) VarAttrs triple for vector components. The
+              section-rotated form is "across-section" for x-side keys
+              (u, ubar, sustr, ...) and "along-section" for y-side keys
+              (v, vbar, svstr, ...).
 
 apply_attrs(): applies CF attributes to a DataArray, with a warning if
                the variable is not in the registry.
@@ -36,31 +38,41 @@ ATTRS = {
     'w':         VarAttrs('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component'),
 }
 
-# Vector variables: (grid-aligned attrs, rotated/east-north attrs)
+# Vector variables: (grid-aligned attrs, eastnorth-rotated attrs, section-rotated attrs)
 VECTOR_ATTRS = {
     'u':         (VarAttrs('Sea water velocity in x direction', 'm s-1', 'sea_water_x_velocity'),
-                  VarAttrs('Eastward component of baroclinic velocity', 'm s-1', 'baroclinic_eastward_sea_water_velocity')),
+                  VarAttrs('Eastward component of baroclinic velocity', 'm s-1', 'baroclinic_eastward_sea_water_velocity'),
+                  VarAttrs('Across-section component of baroclinic velocity', 'm s-1', 'baroclinic_across_section_sea_water_velocity')),
     'u_anom':    (VarAttrs('Sea water velocity in x direction Anomaly', 'm s-1', 'sea_water_x_velocity_anomaly'),
-                  VarAttrs('Eastward component of baroclinic velocity anomaly', 'm s-1', 'baroclinic_eastward_sea_water_velocity_anomaly')),
+                  VarAttrs('Eastward component of baroclinic velocity anomaly', 'm s-1', 'baroclinic_eastward_sea_water_velocity_anomaly'),
+                  VarAttrs('Across-section component of baroclinic velocity anomaly', 'm s-1', 'baroclinic_across_section_sea_water_velocity_anomaly')),
     'v':         (VarAttrs('Sea water velocity in y direction', 'm s-1', 'sea_water_y_velocity'),
-                  VarAttrs('Northward component of baroclinic velocity', 'm s-1', 'baroclinic_northward_sea_water_velocity')),
+                  VarAttrs('Northward component of baroclinic velocity', 'm s-1', 'baroclinic_northward_sea_water_velocity'),
+                  VarAttrs('Along-section component of baroclinic velocity', 'm s-1', 'baroclinic_along_section_sea_water_velocity')),
     'v_anom':    (VarAttrs('Sea water velocity in y direction Anomaly', 'm s-1', 'sea_water_y_velocity_anom'),
-                  VarAttrs('Northward component of baroclinic velocity anomaly', 'm s-1', 'baroclinic_northward_sea_water_velocity_anomaly')),
+                  VarAttrs('Northward component of baroclinic velocity anomaly', 'm s-1', 'baroclinic_northward_sea_water_velocity_anomaly'),
+                  VarAttrs('Along-section component of baroclinic velocity anomaly', 'm s-1', 'baroclinic_along_section_sea_water_velocity_anomaly')),
     'ubar':      (VarAttrs('Barotropic velocity of sea water in x direction', 'm s-1', 'barotropic_sea_water_x_velocity'),
-                  VarAttrs('Eastward component of barotropic velocity', 'm s-1', 'barotropic_eastward_sea_water_velocity')),
+                  VarAttrs('Eastward component of barotropic velocity', 'm s-1', 'barotropic_eastward_sea_water_velocity'),
+                  VarAttrs('Across-section component of barotropic velocity', 'm s-1', 'barotropic_across_section_sea_water_velocity')),
     'vbar':      (VarAttrs('Barotropic velocity of sea water in y direction', 'm s-1', 'barotropic_sea_water_y_velocity'),
-                  VarAttrs('Northward component of barotropic velocity', 'm s-1', 'barotropic_northward_sea_water_velocity')),
+                  VarAttrs('Northward component of barotropic velocity', 'm s-1', 'barotropic_northward_sea_water_velocity'),
+                  VarAttrs('Along-section component of barotropic velocity', 'm s-1', 'barotropic_along_section_sea_water_velocity')),
     'sustr':     (VarAttrs('Wind stress on sea surface in x direction', 'N m-2', 'surface_downward_x_stress'),
-                  VarAttrs('Eastward component of surface stress', 'N m-2', 'surface_eastward_stress')),
+                  VarAttrs('Eastward component of surface stress', 'N m-2', 'surface_eastward_stress'),
+                  VarAttrs('Across-section component of surface stress', 'N m-2', 'surface_across_section_stress')),
     'svstr':     (VarAttrs('Wind stress on sea surface in y direction', 'N m-2', 'surface_downward_y_stress'),
-                  VarAttrs('Northward component of surface stress', 'N m-2', 'surface_northward_stress')),
+                  VarAttrs('Northward component of surface stress', 'N m-2', 'surface_northward_stress'),
+                  VarAttrs('Along-section component of surface stress', 'N m-2', 'surface_along_section_stress')),
     'bustr':     (VarAttrs('Stress due to sea water on sea floor in x direction', 'N m-2', 'stress_due_to_sea_water_on_sea_floor_in_x_direction'),
-                  VarAttrs('Eastward component of bottom stress', 'N m-2', 'bottom_eastward_stress')),
+                  VarAttrs('Eastward component of bottom stress', 'N m-2', 'bottom_eastward_stress'),
+                  VarAttrs('Across-section component of bottom stress', 'N m-2', 'bottom_across_section_stress')),
     'bvstr':     (VarAttrs('Stress due to sea water on sea floor in y direction', 'N m-2', 'stress_due_to_sea_water_on_sea_floor_in_y_direction'),
-                  VarAttrs('Northward component of bottom stress', 'N m-2', 'bottom_northward_stress')),
+                  VarAttrs('Northward component of bottom stress', 'N m-2', 'bottom_northward_stress'),
+                  VarAttrs('Along-section component of bottom stress', 'N m-2', 'bottom_along_section_stress')),
 }
 
-def apply_attrs(da, var_str, rotated=False):
+def apply_attrs(da, var_str, rotated=False, section=False):
     """
     Apply CF-compliant attributes to a DataArray.
 
@@ -68,14 +80,22 @@ def apply_attrs(da, var_str, rotated=False):
     ----------
     da       : xarray DataArray to update
     var_str  : variable name to look up in the registry
-    rotated  : if True, use east/north attrs for vector variables
+    rotated  : if True, use east/north attrs for vector variables.
+               Ignored when section=True.
+    section  : if True, use section-rotated (across/along) attrs for vector
+               variables. Takes precedence over `rotated`.
 
     Returns the DataArray (modified in place).
     """
     if var_str in ATTRS:
         meta = ATTRS[var_str]
     elif var_str in VECTOR_ATTRS:
-        meta = VECTOR_ATTRS[var_str][1 if rotated else 0]
+        if section:
+            meta = VECTOR_ATTRS[var_str][2]
+        elif rotated:
+            meta = VECTOR_ATTRS[var_str][1]
+        else:
+            meta = VECTOR_ATTRS[var_str][0]
     else:
         print(f"WARNING: no CF compliant attributes defined for '{var_str}' - metadata not updated to be CF compliant")
         return da
