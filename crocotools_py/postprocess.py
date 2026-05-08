@@ -1365,7 +1365,13 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
         R: Earth radius in meters.
 
     Returns:
-        lons, lats, distances: Arrays of longitudes, latitudes, and cumulative distances.
+        lons, lats, distances, bearings: Arrays of longitudes (deg), latitudes (deg),
+        cumulative distances (m), and per-point local bearings of the path
+        (radians, clockwise from north). The bearing at point i is the heading from
+        point i to point i+1; the final point reuses the previous segment's bearing.
+
+    Raises:
+        ValueError: if section_start and section_end are too close to define a section.
     """
     # Convert inputs to radians
     lat0, lon0, lat1, lon1 = map(np.radians, [lat0, lon0, lat1, lon1])
@@ -1377,6 +1383,14 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
     sigma_total = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))  # Central angle
     dist_total = R * sigma_total  # Convert to meters
 
+    # Reject degenerate sections (single-point "sections" are profiles, not sections)
+    if dist_total < dgc / 10:
+        raise ValueError(
+            "section_start and section_end are too close to define a section "
+            f"(separation {dist_total:.1f} m < {dgc/10:.1f} m). "
+            "Use a profile extraction (e.g. get_ts) instead."
+        )
+
     # Determine the number of segments
     npsec = int(dist_total // dgc) + 1  # Number of points
 
@@ -1387,7 +1401,7 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
 
     # Generate points along the great-circle path
     lons, lats, distances = [lon0], [lat0], [0]
-    
+
     for i in range(1, npsec):
         sigma = i * dgc / R  # Angular distance along the sphere
 
@@ -1400,10 +1414,23 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
         lons.append(lon_new)
         distances.append(i * dgc)  # Keep cumulative distance
 
-    # Convert back to degrees
-    lons, lats = np.degrees(lons), np.degrees(lats)
+    lons_rad = np.array(lons)
+    lats_rad = np.array(lats)
 
-    return np.array(lons), np.array(lats), np.array(distances)
+    # Per-point local bearing: bearing at point i = heading from P[i] to P[i+1].
+    # Final point reuses the bearing of the previous segment.
+    lat_a, lat_b = lats_rad[:-1], lats_rad[1:]
+    lon_a, lon_b = lons_rad[:-1], lons_rad[1:]
+    dlon = lon_b - lon_a
+    Xb = np.cos(lat_b) * np.sin(dlon)
+    Yb = np.cos(lat_a) * np.sin(lat_b) - np.sin(lat_a) * np.cos(lat_b) * np.cos(dlon)
+    seg_bearings = np.arctan2(Xb, Yb)
+    bearings = np.concatenate([seg_bearings, seg_bearings[-1:]])
+
+    # Convert back to degrees
+    lons_deg, lats_deg = np.degrees(lons_rad), np.degrees(lats_rad)
+
+    return lons_deg, lats_deg, np.array(distances), bearings
 
 def get_section(fname,
                 var_str,
@@ -1459,14 +1486,14 @@ def get_section(fname,
         dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
         res = min(dy_min,dx_min)
     
-    # Make the transect on which the interpolation will take place    
-    section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
-    
+    # Make the transect on which the interpolation will take place
+    section_lons,section_lats,section_dist,section_bearings = get_section_coords(lon0,lat0,lon1,lat1,res)
+
     # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
     print('')
     print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
     eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
-    
+
     # Interpolate the variable along the line
     print('')
     print('  interpolating along the section...')
@@ -1476,7 +1503,7 @@ def get_section(fname,
     # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
     # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
     # The error is however much less than the model grid size, so I am not too bothered by this
-    
+
     # add the section distance to the ds
     ds["distance"] = xr.DataArray(
         section_dist, dims=("points",),
@@ -1486,14 +1513,150 @@ def get_section(fname,
             "units": "meter",
             "standard_name": "distance",
         })
-    
+
+    # add the local section bearing as a coord on the points dim
+    ds.coords["section_bearing"] = xr.DataArray(
+        np.degrees(section_bearings), dims=("points",),
+        attrs={
+            "units": "degree",
+            "standard_name": "platform_orientation",
+            "long_name": "local bearing of section path (clockwise from north)",
+        })
+
     if nc_out is not None:
         print('')
         print(f'  writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
-    
+
     return ds
 
+def get_section_uv(fname,
+                   section_start,
+                   section_end,
+                   grdname=None,
+                   time=slice(None),
+                   level=slice(None),
+                   Yorig=None,
+                   res=None,
+                   var_u='u',
+                   var_v='v',
+                   nc_out=None,
+                   ):
+
+    """
+    Extract a vertical section of velocity components from a CROCO output
+    file(s), in both east/north and section-rotated (across/along) form.
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    Inputs:
+    see get_var() for a description of some of the inputs. In addition to the get_var inputs there is:
+    section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
+    section_end = End points of transect (list; eg. section_end = [lon1, lat1])
+    res = Horizontal resolution of the section in meters (eg. res = 300). Default is None in which case
+         it takes the smallest grid size as the resolution.
+    var_u, var_v = Names of the x- and y-component variables to extract. Default
+         is the baroclinic velocity ('u', 'v'); other valid pairs include
+         ('ubar', 'vbar'), ('sustr', 'svstr'), ('bustr', 'bvstr').
+
+    Returns:
+    - ds, an xarray dataset containing along the section:
+        var_u, var_v       : east/north components (rotated from grid)
+        across_section     : component normal to the section, positive 90° CCW
+                             from the start->end heading (left-hand convention)
+        along_section      : component tangential to the section, positive in
+                             the start->end direction
+        distance           : cumulative distance along the section (m)
+        section_bearing    : local bearing of the section path, clockwise from
+                             north (degrees), as a coord on the points dim
+    """
+
+    print('')
+    print('Running get_section_uv()')
+
+    # if the gridname is not provided, we use the fname for the gridname
+    if grdname is None:
+        grdname = fname
+
+    # Define the start and end points of the transect
+    lon0,lat0 = section_start[0],section_start[1]
+    lon1,lat1 = section_end[0],section_end[1]
+
+    # extract the data for the defined subdomain which covers the section extents
+    subdomain = [lon0,lon1,lat0,lat1]
+    ds = get_uv(fname,
+                 grdname=grdname,
+                 time=time,
+                 level=level,
+                 subdomain=subdomain,
+                 Yorig=Yorig,
+                 var_u=var_u,
+                 var_v=var_v)
+
+    # if the grid resolution is not provided, we use the smallest grid size as the resolution.
+    if res is None:
+        dy_min=np.min(1/get_grd_var(grdname, 'pn').values[:])
+        dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
+        res = min(dy_min,dx_min)
+
+    # Make the transect on which the interpolation will take place
+    section_lons,section_lats,section_dist,section_bearings = get_section_coords(lon0,lat0,lon1,lat1,res)
+
+    # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('')
+    print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
+
+    # Interpolate the variable along the line
+    print('')
+    print('  interpolating along the section...')
+    ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
+    # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
+    # section_lons, section_lats, while theoretically they should be identical
+    # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
+    # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
+    # The error is however much less than the model grid size, so I am not too bothered by this
+
+    # Rotate east/north components to section-relative (across/along).
+    # Bearing theta is clockwise from north; tangent unit vector in (east,north)
+    # is (sin theta, cos theta); left-hand normal is (-cos theta, sin theta).
+    # Sign convention: positive across = 90 deg CCW from start->end heading.
+    print('')
+    print('  rotating east/north components to across/along-section ...')
+    cos_b = np.cos(section_bearings)
+    sin_b = np.sin(section_bearings)
+    u_ds = ds[var_u]
+    v_ds = ds[var_v]
+    ds['across_section'] = -u_ds * cos_b + v_ds * sin_b
+    ds['along_section']  =  u_ds * sin_b + v_ds * cos_b
+    apply_attrs(ds['across_section'], var_u, section=True)
+    apply_attrs(ds['along_section'],  var_v, section=True)
+
+    # add the section distance to the ds
+    ds["distance"] = xr.DataArray(
+        section_dist, dims=("points",),
+        coords={"points": ds.coords["points"]},
+        name="distance_along_section",
+        attrs={
+            "units": "meter",
+            "standard_name": "distance",
+        })
+
+    # add the local section bearing as a coord on the points dim
+    ds.coords["section_bearing"] = xr.DataArray(
+        np.degrees(section_bearings), dims=("points",),
+        attrs={
+            "units": "degree",
+            "standard_name": "platform_orientation",
+            "long_name": "local bearing of section path (clockwise from north)",
+        })
+
+    if nc_out is not None:
+        print('')
+        print(f'  writing the netcdf file: {nc_out}')
+        ds.to_netcdf(nc_out)
+
+    return ds
+    
 def compute_anomaly(fname_clim, fname_in, fname_out,
                     Yorig=2000,
                     varlist=["temp", "u", "v", "salt", "zeta"],
@@ -1702,4 +1865,3 @@ def croco_srf_2_ww3(fname, grdname=None, dir_out='.', Yorig=None):
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
 #    Yorig=2000
 #    ds_temp = get_var(file, "temp", Yorig=Yorig)
-
