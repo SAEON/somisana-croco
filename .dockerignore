@@ -1,0 +1,50 @@
+# git
+.git
+.gitignore
+
+# huge data directories not needed in the image
+configs/
+DATASETS_CROCOTOOLS/
+DATA/
+
+# Fortran build artefacts (re-built inside container)
+*.o
+*.mod
+*_.f
+
+# numerical / output data
+*.npz
+*.nc
+*.nc.*
+*.cdf*
+*.zarr*
+
+# logs / scratch / outputs
+*.log
+*.out
+*.stdout
+stdout
+stderr
+**/scratch/
+**/output/
+
+# misc
+*.swp
+*.jpg
+Untitled.ipynb
+Phyical/
+C*_I*_*
+spec.list
+*.ww3
+*post*
+copy2chpc.bash
+
+# editor / OS / Python caches
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+.DS_Store
+
+# the egg-info recreated by `pip install -e .`
+somisana_croco.egg-info/
