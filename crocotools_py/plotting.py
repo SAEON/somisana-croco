@@ -856,7 +856,8 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
     h = ds_fcst.h.values if "h" in ds_fcst else np.zeros_like(lat)
     if h.ndim > 2: h = h[0]
     nlev = len(ds_fcst.s_rho) if "s_rho" in ds_fcst else ds_fcst.dims.get("s_rho", 32)
-    today = pd.Timestamp(ds_fcst.time.values[0]).normalize()
+    # today = pd.Timestamp(ds_fcst.time.values[0]).normalize()
+    today = pd.Timestamp.now().normalize()
 
     Cs_r = ds_fcst.Cs_r.values if "Cs_r" in ds_fcst else np.linspace(-1, 0, nlev)
     sc_r = ds_fcst.sc_r.values if "sc_r" in ds_fcst else np.linspace(-1, 0, nlev)

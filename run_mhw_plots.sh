@@ -10,10 +10,10 @@ CAT_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCAT
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
 
 # Output directory for the images and GIFs
-OUT_DIR="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
+OUT_DIR="/mnt/ocims-somisana/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
 
 # Define forecast dates
-START_DATE=$(date +%Y-%m-%d)
+START_DATE=$(date -d "-5 days" +%Y-%m-%d)
 END_DATE=$(date -d "+5 days" +%Y-%m-%d)
 
 # Reference year for CROCO time
