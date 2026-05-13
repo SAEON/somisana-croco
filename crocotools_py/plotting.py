@@ -744,6 +744,59 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
         c = max(0, min(4, int(round(cat if pd.notna(cat) else 0))))
         return (MHW_FLAG_COLOURS if mode == "MHW" else MCS_FLAG_COLOURS)[c]
 
+    def _draw_gauge(ax_g):
+        cat_labels = {1: "Mod", 2: "Str", 3: "Sev", 4: "Ext"}
+        ax_g.set_xlim(-1.55, 1.55); ax_g.set_ylim(-1.55, 1.55)
+        ax_g.set_aspect("equal");   ax_g.axis("off")
+
+        n, r_out, r_in = 4, 1.30, 0.48
+
+        # MHW top half
+        for k, (th1, th2) in enumerate(zip(
+                np.degrees(np.linspace(0, np.pi, n + 1)),
+                np.degrees(np.linspace(0, np.pi, n + 1))[1:])):
+            cat = k + 1
+            ax_g.add_patch(Wedge((0, 0), r_out, th1, th2,
+                                  width=r_out - r_in,
+                                  fc=MHW_FLAG_COLOURS[cat], ec="white",
+                                  lw=0.8, zorder=1))
+            mid = np.radians((th1 + th2) / 2)
+            rl  = (r_out + r_in) / 2
+            ax_g.text(rl * np.cos(mid), rl * np.sin(mid),
+                      cat_labels[cat], ha="center", va="center",
+                      fontsize=7.0, fontweight="bold", color="white",
+                      rotation=np.degrees(mid) - 90, zorder=3)
+
+        # MCS bottom half (Extreme → Moderate, left to right)
+        for k, (th1, th2) in enumerate(zip(
+                np.degrees(np.linspace(np.pi, 2 * np.pi, n + 1)),
+                np.degrees(np.linspace(np.pi, 2 * np.pi, n + 1))[1:])):
+            cat = n - k
+            ax_g.add_patch(Wedge((0, 0), r_out, th1, th2,
+                                  width=r_out - r_in,
+                                  fc=MCS_FLAG_COLOURS[cat], ec="white",
+                                  lw=0.8, zorder=1))
+            mid = np.radians((th1 + th2) / 2)
+            rl  = (r_out + r_in) / 2
+            ax_g.text(rl * np.cos(mid), rl * np.sin(mid),
+                      cat_labels[cat], ha="center", va="center",
+                      fontsize=7.0, fontweight="bold", color="white",
+                      rotation=np.degrees(mid) - 90, zorder=3)
+
+        # Centre hub
+        ax_g.add_patch(plt.Circle((0, 0), r_in,
+                                   fc=MHW_FLAG_COLOURS[0], ec="white",
+                                   lw=1.0, zorder=2))
+        ax_g.text(0, 0, "None", ha="center", va="center",
+                  fontsize=8, fontweight="bold", color="white", zorder=4)
+        ax_g.text(0,  r_out + 0.10, "MHW", ha="center", va="bottom",
+                  fontsize=7.5, fontweight="bold", color=MHW_FLAG_COLOURS[2])
+        ax_g.text(0, -(r_out + 0.10), "MCS", ha="center", va="top",
+                  fontsize=7.5, fontweight="bold", color=MCS_FLAG_COLOURS[3])
+        ax_g.set_title("Avg intensity\n(5-day forecast)",
+                       fontsize=7, fontweight="bold", pad=3, color="#1a3a5c")
+
+
     coast_order = [
     "Kleinsee",
     "Hondeklipbaai",
@@ -763,7 +816,7 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
     "Hermanus",
     "Gansbaai"]
     
-    BOX_SIZE, BOX_STEP, OFFSHORE, all_boxes = 0.75, 0.50, -0.10, []
+    BOX_SIZE, BOX_STEP, OFFSHORE, all_boxes = 0.5, 1, -0.10, []
     
     for k in range(len(coast_order) - 1):
         lon0, lat0 = TARGETS[coast_order[k]]; lon1, lat1 = TARGETS[coast_order[k + 1]]
@@ -795,6 +848,9 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
     ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=4); ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor="#555544", zorder=5)
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2)
     gl.top_labels = gl.right_labels = False
+    
+    # Gauge inset
+    _draw_gauge(fig.add_axes([0.53, 0.61, 0.28, 0.28]))
 
     ax.set_title(f"SA West Coast  ·  MHW / MCS Flag Map  ·  {depth_name}\nForecast: {pd.to_datetime(start_date).strftime('%d %b')} – {pd.to_datetime(end_date).strftime('%d %b %Y')}", fontsize=12, color="#1a3a5c", pad=8)
     plt.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
