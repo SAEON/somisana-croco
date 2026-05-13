@@ -680,7 +680,7 @@ def plot_timeseries_multisite(sites, today, output_dir, depth_name):
         obs_c_thr = data.get("obs_c_thr")
 
         if obs_dates is not None and obs_temp is not None:
-            cut   = np.asarray(obs_dates) < np.asarray(fct_dates[0])
+            cut   = pd.to_datetime(np.asarray(obs_dates)) < pd.to_datetime(fct_dates[0])
             n_cut = int(cut.sum())
             def _cat(obs_arr, fct_arr):
                 base = np.asarray(obs_arr)[cut] if obs_arr is not None else np.full(n_cut, np.nan)
