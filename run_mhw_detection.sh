@@ -10,7 +10,7 @@ TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCA
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
 
 # Output path for the detected categories
-OUTPUT_DIR="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
+OUTPUT_DIR="/mnt/ocims-somisana/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
 OUTPUT_FILE="$OUTPUT_DIR/forecast_mhw_mcs_categories.nc"
 
 # Reference year for CROCO time (seconds since Yorig-01-01)

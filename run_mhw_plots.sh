@@ -6,7 +6,7 @@ CLI_PATH="/home/philile/somisana-croco/cli.py"
 
 # Input files
 FORECAST_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS/croco_avg.nc"
-CAT_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS/forecast_mhw_mcs_categories.nc"
+CAT_FILE="/mnt/ocims-somisana/sa-west/v1.0/forecasts/latest/MERCATOR-GFS/forecast_mhw_mcs_categories.nc"
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
 
 # Output directory for the images and GIFs
