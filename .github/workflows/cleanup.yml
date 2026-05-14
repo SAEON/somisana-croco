@@ -30,14 +30,35 @@ jobs:
         # we only want to keep the forecast portion of the archived forecast runs
         # (the various tiered outputs can be regenerated if needed)
         # timeout added because /mnt/ocims-somisana is a network mount that can hang
+        # Retries + fail-soft per directory: /mnt/ocims-somisana is a CIFS mount of a
+        # dual-protocol NAS (reparse=nfs). NFS clients elsewhere can leave server-side
+        # silly-rename reparse points that make rm -rf fail with "Directory not empty".
+        # We retry with find -depth -delete and skip stuck dirs so one wedged directory
+        # doesn't take down the rest of cleanup (or the docker prune that follows).
         id: cleanup_archive
         timeout-minutes: 30
         run: |
-          # have to run as sudo as the archive is owned by root
-          # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
-          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/20* -maxdepth 0 -type d -mtime +6 -exec rm -rf {} +
+          cleanup_dir() {
+            local d="$1"
+            for attempt in 1 2 3; do
+              if sudo find "$d" -depth -delete 2>/dev/null; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "WARN: could not fully remove $d after 3 attempts; leaving for sysadmin"
+            sudo ls -la "$d" 2>/dev/null | head -20 || true
+            return 0
+          }
+          export -f cleanup_dir
+
+          for base in \
+            /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts \
+            /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts \
+            /mnt/ocims-somisana/public-facing/sa-forcing; do
+            sudo find "$base" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +6 \
+              -exec bash -c 'cleanup_dir "$0"' {} \;
+          done
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
         # timeout added because /mnt/saeon-somisana is a network mount that can hang
