@@ -4,7 +4,7 @@
 CLI_PATH="/home/philile/somisana-croco/cli.py"
 
 # Path to the latest forecast temperature data
-TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/latest/MERCATOR-GFS/croco_avg.nc"
+TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/20260513_00/MERCATOR-GFS/croco_avg.nc"
 
 # Path to the pre-built 4D climatology file
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
