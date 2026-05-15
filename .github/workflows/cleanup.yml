@@ -38,26 +38,26 @@ jobs:
         id: cleanup_archive
         timeout-minutes: 30
         run: |
-          cleanup_dir() {
-            local d="$1"
-            for attempt in 1 2 3; do
-              if sudo find "$d" -depth -delete 2>/dev/null; then
-                return 0
-              fi
-              sleep 5
-            done
-            echo "WARN: could not fully remove $d after 3 attempts; leaving for sysadmin"
-            sudo ls -la "$d" 2>/dev/null | head -20 || true
-            return 0
-          }
-          export -f cleanup_dir
-
+          # Inline the retry logic inside -exec bash -c: sudo sanitises the environment,
+          # so exported functions don't survive the sudo -> bash hop. The outer sudo find
+          # already runs bash as root via -exec, so no inner sudo is needed.
           for base in \
             /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts \
             /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts \
             /mnt/ocims-somisana/public-facing/sa-forcing; do
             sudo find "$base" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +6 \
-              -exec bash -c 'cleanup_dir "$0"' {} \;
+              -exec bash -c '
+                d="$1"
+                for attempt in 1 2 3; do
+                  if find "$d" -depth -delete 2>/dev/null; then
+                    exit 0
+                  fi
+                  sleep 5
+                done
+                echo "WARN: could not fully remove $d after 3 attempts; leaving for sysadmin"
+                ls -la "$d" 2>/dev/null | head -20 || true
+                exit 0
+              ' _ {} \;
           done
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
