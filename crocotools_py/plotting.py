@@ -834,7 +834,7 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
     dists = np.zeros(len(dense_lons))
     dists[1:] = np.cumsum(np.hypot(dx, dy))
     
-    BOX_STEP_DIST = 0.28
+    BOX_STEP_DIST = 0.50
     target_dists = np.arange(0, dists[-1], BOX_STEP_DIST)
     
     for bd in target_dists:
