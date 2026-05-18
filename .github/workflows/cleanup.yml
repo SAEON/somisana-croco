@@ -30,17 +30,9 @@ jobs:
         # we only want to keep the forecast portion of the archived forecast runs
         # (the various tiered outputs can be regenerated if needed)
         # timeout added because /mnt/ocims-somisana is a network mount that can hang
-        # Retries + fail-soft per directory: /mnt/ocims-somisana is a CIFS mount of a
-        # dual-protocol NAS (reparse=nfs). NFS clients elsewhere can leave server-side
-        # silly-rename reparse points that make rm -rf fail with "Directory not empty".
-        # We retry with find -depth -delete and skip stuck dirs so one wedged directory
-        # doesn't take down the rest of cleanup (or the docker prune that follows).
         id: cleanup_archive
         timeout-minutes: 30
         run: |
-          # Inline the retry logic inside -exec bash -c: sudo sanitises the environment,
-          # so exported functions don't survive the sudo -> bash hop. The outer sudo find
-          # already runs bash as root via -exec, so no inner sudo is needed.
           for base in \
             /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts \
             /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts \
@@ -48,14 +40,13 @@ jobs:
             sudo find "$base" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +6 \
               -exec bash -c '
                 d="$1"
-                for attempt in 1 2 3; do
-                  if find "$d" -depth -delete 2>/dev/null; then
-                    exit 0
-                  fi
-                  sleep 5
-                done
-                echo "WARN: could not fully remove $d after 3 attempts; leaving for sysadmin"
-                ls -la "$d" 2>/dev/null | head -20 || true
+                # timeout kills a hung/slow CIFS delete after 90s instead of letting it block.
+                # if the delete did not work, warn but still exit 0 so the outer find
+                # keeps going - one bad dir should not fail the whole step
+                # (only the 30-min step timeout does that).
+                if ! timeout -k 10 90 rm -rf "$d"; then
+                  echo "WARN: could not remove $d this run (left for next run / sysadmin)"
+                fi
                 exit 0
               ' _ {} \;
           done
