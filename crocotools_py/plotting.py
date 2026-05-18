@@ -863,8 +863,8 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
             linewidth=0.6, zorder=3, transform=ccrs.PlateCarree()))
 
     for site_name, (site_lon, site_lat) in TARGETS.items():
-        info = site_data.get(site_name, {"mode": "MHW", "avg_cat": 0})
-        cat_int = max(0, min(4, int(round(info["avg_cat"]))))
+        info = site_data.get(site_name, {"mode": "MHW", "max_cat": 0})
+        cat_int = max(0, min(4, int(round(info["max_cat"]))))
         ax.plot(site_lon, site_lat, "o", ms=4, color="white", zorder=8, mec="black", mew=0.8, transform=ccrs.PlateCarree())
         ax.text(site_lon + 0.08, site_lat, f"{site_name}\n{info['mode']} – {['None', 'Moderate', 'Strong', 'Severe', 'Extreme'][cat_int]}", ha="left", va="center", fontsize=6.5, fontweight="bold", color="#1a3a5c", zorder=9, transform=ccrs.PlateCarree(), path_effects=[pe.withStroke(linewidth=2, foreground="white")])
 
