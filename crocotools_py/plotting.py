@@ -650,15 +650,13 @@ def compute_site_flag_data(sites, cat_ds, lev):
         mhw_days = cat[cat > 0]
         mcs_days = np.abs(cat[cat < 0])
 
-        avg_mhw   = float(np.mean(mhw_days)) if len(mhw_days) > 0 else 0.0
-        avg_mcs   = float(np.mean(mcs_days)) if len(mcs_days) > 0 else 0.0
-        score_mhw = avg_mhw * len(mhw_days)
-        score_mcs = avg_mcs * len(mcs_days)
+        max_mhw = float(np.max(mhw_days)) if len(mhw_days) > 0 else 0.0
+        max_mcs = float(np.max(mcs_days)) if len(mcs_days) > 0 else 0.0
 
-        if score_mhw >= score_mcs:
-            site_data[site_name] = {"mode": "MHW", "avg_cat": avg_mhw}
+        if max_mhw >= max_mcs:
+            site_data[site_name] = {"mode": "MHW", "max_cat": max_mhw}
         else:
-            site_data[site_name] = {"mode": "MCS", "avg_cat": avg_mcs}
+            site_data[site_name] = {"mode": "MCS", "max_cat": max_mcs}
     return site_data
 
 
@@ -740,6 +738,7 @@ def plot_timeseries_multisite(sites, today, output_dir, depth_name):
 
 def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, depth_name="Surface"):
     out_path = Path(out_path)
+    
     def _flag_col(mode, cat):
         c = max(0, min(4, int(round(cat if pd.notna(cat) else 0))))
         return (MHW_FLAG_COLOURS if mode == "MHW" else MCS_FLAG_COLOURS)[c]
@@ -816,28 +815,52 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
     "Hermanus",
     "Gansbaai"]
     
-    BOX_SIZE, BOX_STEP, OFFSHORE, all_boxes = 0.5, 1, -0.10, []
+    BOX_SIZE, OFFSHORE, all_boxes = 0.5, -0.10, []
+    dense_lons = []
+    dense_lats = []
     
     for k in range(len(coast_order) - 1):
-        lon0, lat0 = TARGETS[coast_order[k]]; lon1, lat1 = TARGETS[coast_order[k + 1]]
-        info = site_data.get(coast_order[k], {"mode": "MHW", "avg_cat": 0})
-        seg = np.hypot(lon1 - lon0, lat1 - lat0)
-        px, py = -(lat1 - lat0) / seg, (lon1 - lon0) / seg 
-        for j in range(max(2, int(seg / BOX_STEP))):
-            t = j / max(2, int(seg / BOX_STEP))
-            all_boxes.append((lon0 + t*(lon1-lon0) + px*OFFSHORE, lat0 + t*(lat1-lat0) + py*OFFSHORE, _flag_col(info["mode"], info["avg_cat"])))
-            
-    lon_l, lat_l = TARGETS[coast_order[-1]]; lon_p, lat_p = TARGETS[coast_order[-2]]
-    seg = np.hypot(lon_l - lon_p, lat_l - lat_p); px, py = -(lat_l - lat_p)/seg, (lon_l - lon_p)/seg
-    all_boxes.append((lon_l + px*OFFSHORE, lat_l + py*OFFSHORE, _flag_col(site_data.get(coast_order[-1], {"mode": "MHW", "avg_cat": 0})["mode"], site_data.get(coast_order[-1], {"mode": "MHW", "avg_cat": 0})["avg_cat"])))
-
+        lon0, lat0 = TARGETS[coast_order[k]]; 
+        lon1, lat1 = TARGETS[coast_order[k + 1]]
+        ts = np.linspace(0, 1, 100)
+        dense_lons.extend(lon0 + ts * (lon1 - lon0))
+        dense_lats.extend(lat0 + ts * (lat1 - lat0))
+        
+    dense_lons = np.array(dense_lons)
+    dense_lats = np.array(dense_lats)
+    
+    dx = np.diff(dense_lons)
+    dy = np.diff(dense_lats)
+    dists = np.zeros(len(dense_lons))
+    dists[1:] = np.cumsum(np.hypot(dx, dy))
+    
+    BOX_STEP_DIST = 0.28
+    target_dists = np.arange(0, dists[-1], BOX_STEP_DIST)
+    
+    for bd in target_dists:
+        cx = np.interp(bd, dists, dense_lons)
+        cy = np.interp(bd, dists, dense_lats)
+        
+        nearest_site = min(coast_order, key=lambda s: np.hypot(cx - TARGETS[s][0], cy - TARGETS[s][1]))
+        info = site_data.get(nearest_site, {"mode": "MHW", "max_cat": 0})
+        
+        idx = max(1, min(np.searchsorted(dists, bd), len(dists) - 1))
+        seg_len = np.hypot(dense_lons[idx] - dense_lons[idx-1], dense_lats[idx] - dense_lats[idx-1]) or 1.0
+        px = -(dense_lats[idx] - dense_lats[idx-1]) / seg_len
+        py = (dense_lons[idx] - dense_lons[idx-1]) / seg_len
+        
+        all_boxes.append((cx + px * OFFSHORE, cy + py * OFFSHORE, _flag_col(info["mode"], info["max_cat"])))
+    
     fig = plt.figure(figsize=(10, 13), dpi=150)
     fig.patch.set_facecolor("white")
     ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
     ax.set_extent([15.8, 20.5, -36.0, -28.0], crs=ccrs.PlateCarree())
 
     for cx, cy, col in all_boxes:
-        ax.add_patch(FancyBboxPatch((cx - BOX_SIZE/2, cy - BOX_SIZE/2), BOX_SIZE, BOX_SIZE, boxstyle="round,pad=0.04", facecolor=col, edgecolor="white", linewidth=0.6, zorder=3, transform=ccrs.PlateCarree()))
+        ax.add_patch(FancyBboxPatch(
+            (cx - BOX_SIZE/2, cy - BOX_SIZE/2), BOX_SIZE, BOX_SIZE, 
+            boxstyle="round,pad=0.04", facecolor=col, edgecolor="white", 
+            linewidth=0.6, zorder=3, transform=ccrs.PlateCarree()))
 
     for site_name, (site_lon, site_lat) in TARGETS.items():
         info = site_data.get(site_name, {"mode": "MHW", "avg_cat": 0})
