@@ -20,6 +20,7 @@ import matplotlib.patheffects as pe
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch, Wedge
 from pathlib import Path
+from matplotlib.collections import LineCollection
 
 class LandmaskFeature(cfeature.GSHHSFeature):
     """from the OpenDrift code"""
@@ -815,52 +816,62 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
     "Hermanus",
     "Gansbaai"]
     
-    BOX_SIZE, OFFSHORE, all_boxes = 0.5, -0.10, []
+    BAND_WIDTH = 14 
+    OFFSHORE = -0.12
+    
     dense_lons = []
     dense_lats = []
     
     for k in range(len(coast_order) - 1):
         lon0, lat0 = TARGETS[coast_order[k]]; 
         lon1, lat1 = TARGETS[coast_order[k + 1]]
-        ts = np.linspace(0, 1, 100)
+        ts = np.linspace(0, 1, 500)
         dense_lons.extend(lon0 + ts * (lon1 - lon0))
         dense_lats.extend(lat0 + ts * (lat1 - lat0))
         
     dense_lons = np.array(dense_lons)
     dense_lats = np.array(dense_lats)
     
-    dx = np.diff(dense_lons)
-    dy = np.diff(dense_lats)
-    dists = np.zeros(len(dense_lons))
-    dists[1:] = np.cumsum(np.hypot(dx, dy))
+    ox_points = []
+    oy_points = []
+    colors_list = []
     
-    BOX_STEP_DIST = 0.50
-    target_dists = np.arange(0, dists[-1], BOX_STEP_DIST)
-    
-    for bd in target_dists:
-        cx = np.interp(bd, dists, dense_lons)
-        cy = np.interp(bd, dists, dense_lats)
+    for idx in range(len(dense_lons)):
+        cx = dense_lons[idx]
+        cy = dense_lats[idx]
+        
+        if idx == 0:
+            dx_local = dense_lons[1] - dense_lons[0]
+            dy_local = dense_lats[1] - dense_lats[0]
+        elif idx == len(dense_lons) - 1:
+            dx_local = dense_lons[-1] - dense_lons[-2]
+            dy_local = dense_lats[-1] - dense_lats[-2]
+        else:
+            dx_local = dense_lons[idx+1] - dense_lons[idx-1]
+            dy_local = dense_lats[idx+1] - dense_lats[idx-1]
+            
+        seg_len = np.hypot(dx_local, dy_local) or 1.0
+        px = -dy_local / seg_len
+        py = dx_local / seg_len
+        
+        ox_points.append(cx + px * OFFSHORE)
+        oy_points.append(cy + py * OFFSHORE)
         
         nearest_site = min(coast_order, key=lambda s: np.hypot(cx - TARGETS[s][0], cy - TARGETS[s][1]))
         info = site_data.get(nearest_site, {"mode": "MHW", "max_cat": 0})
-        
-        idx = max(1, min(np.searchsorted(dists, bd), len(dists) - 1))
-        seg_len = np.hypot(dense_lons[idx] - dense_lons[idx-1], dense_lats[idx] - dense_lats[idx-1]) or 1.0
-        px = -(dense_lats[idx] - dense_lats[idx-1]) / seg_len
-        py = (dense_lons[idx] - dense_lons[idx-1]) / seg_len
-        
-        all_boxes.append((cx + px * OFFSHORE, cy + py * OFFSHORE, _flag_col(info["mode"], info["max_cat"])))
+        colors_list.append(_flag_col(info["mode"], info["max_cat"]))
+    
+    points = np.array([ox_points, oy_points]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
     
     fig = plt.figure(figsize=(10, 13), dpi=150)
     fig.patch.set_facecolor("white")
     ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
     ax.set_extent([15.8, 20.5, -36.0, -28.0], crs=ccrs.PlateCarree())
 
-    for cx, cy, col in all_boxes:
-        ax.add_patch(FancyBboxPatch(
-            (cx - BOX_SIZE/2, cy - BOX_SIZE/2), BOX_SIZE, BOX_SIZE, 
-            boxstyle="round,pad=0.04", facecolor=col, edgecolor="white", 
-            linewidth=0.6, zorder=3, transform=ccrs.PlateCarree()))
+    lc = LineCollection(segments, colors=colors_list[:-1], linewidth=BAND_WIDTH, 
+                        transform=ccrs.PlateCarree(), zorder=3, capstyle='round', joinstyle='round')
+    ax.add_collection(lc)
 
     for site_name, (site_lon, site_lat) in TARGETS.items():
         info = site_data.get(site_name, {"mode": "MHW", "max_cat": 0})
@@ -935,8 +946,8 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
     h = ds_fcst.h.values if "h" in ds_fcst else np.zeros_like(lat)
     if h.ndim > 2: h = h[0]
     nlev = len(ds_fcst.s_rho) if "s_rho" in ds_fcst else ds_fcst.dims.get("s_rho", 32)
-    # today = pd.Timestamp(ds_fcst.time.values[0]).normalize()
-    today = pd.Timestamp.now().normalize()
+    today = pd.Timestamp(ds_fcst.time.values[4]).normalize()
+    # today = pd.Timestamp.now().normalize()
 
     Cs_r = ds_fcst.Cs_r.values if "Cs_r" in ds_fcst else np.linspace(-1, 0, nlev)
     sc_r = ds_fcst.sc_r.values if "sc_r" in ds_fcst else np.linspace(-1, 0, nlev)

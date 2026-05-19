@@ -12,9 +12,11 @@ CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/
 # Output directory for the images and GIFs
 OUT_DIR="/mnt/ocims-somisana/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
 
+BASE_DATE="2026-05-17"
+
 # Define forecast dates
-START_DATE=$(date -d "-5 days" +%Y-%m-%d)
-END_DATE=$(date -d "+5 days" +%Y-%m-%d)
+START_DATE=$(date -d "$BASE_DATE -4 days" +%Y-%m-%d)
+END_DATE=$(date -d "$BASE_DATE +4 days" +%Y-%m-%d)
 
 # Reference year for CROCO time
 YORIG=2000
