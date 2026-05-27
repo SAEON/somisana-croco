@@ -550,7 +550,7 @@ def main():
                          
         nc_out.createDimension('xi_rho', n_xi)
         nc_out.createDimension('eta_rho', n_eta)
-        nc_out.createDimension('s_rho', n_xi)
+        nc_out.createDimension('s_rho', num_levels)
         nc_out.createDimension('time', T_daily)
         
         lon_var = nc_out.createVariable('lon_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
