@@ -450,42 +450,30 @@ def main():
     # ----------------------
     # detect_mhw_forecast
     # ----------------------
-    parser_detect_mhw = subparsers.add_parser(
-        'detect_mhw_forecast',
-        help=(
-            'Detect Marine Heatwave (MHW) and Marine Cold Spell (MCS) events '
+    parser_detect_mhw = subparsers.add_parser('detect_mhw_forecast',
+        help=('Detect Marine Heatwave (MHW) and Marine Cold Spell (MCS) events '
             'in a CROCO forecast file using a pre-built 4D climatology. '
             'Writes a single NetCDF with signed categories: '
             '+1..+4 = MHW, 0 = no event, -1..-4 = MCS.'))
-    parser_detect_mhw.add_argument(
-        '--temp_file', required=True, type=str,
+    parser_detect_mhw.add_argument('--temp_file', required=True, type=str,
         help='Path to the CROCO forecast temperature file (or glob pattern).')
-    parser_detect_mhw.add_argument(
-        '--clim_file', required=True, type=str,
-        help=(
-            'Path to the pre-built 4D climatology NetCDF '
+    parser_detect_mhw.add_argument('--clim_file', required=True, type=str,
+        help=('Path to the pre-built 4D climatology NetCDF '
             '(Climatology_4D_Unified.nc). Must contain variables '
             'climatology, threshold_90 and threshold_10 with dimensions '
             '(day_of_year, s_rho, eta_rho, xi_rho).'))
-    parser_detect_mhw.add_argument(
-        '--fname_out', required=True, type=str,
+    parser_detect_mhw.add_argument('--fname_out', required=True, type=str,
         help='Full path and filename for the output categories NetCDF file.')
-    parser_detect_mhw.add_argument(
-        '--temp_var', required=False, type=str, default='temp',
+    parser_detect_mhw.add_argument('--temp_var', required=False, type=str, default='temp',
         help='Name of the temperature variable in temp_file (default: temp).')
-    parser_detect_mhw.add_argument(
-        '--Yorig', required=False, type=parse_int, default=2000,
-        help=(
-            'Reference year for the CROCO time axis in the forecast file '
+    parser_detect_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000,
+        help=('Reference year for the CROCO time axis in the forecast file '
             'i.e. time is in seconds since Yorig-01-01 (default: 2000).'))
-    parser_detect_mhw.add_argument(
-        '--batch_size', required=False, type=parse_int, default=5,
-        help=(
-            'Number of eta_rho rows processed at once. '
+    parser_detect_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5,
+        help=('Number of eta_rho rows processed at once. '
             'Reduce if you run out of memory (default: 5).'))
 
-    parser_plot_mhw = subparsers.add_parser(
-        'plot_mhw_forecast',
+    parser_plot_mhw = subparsers.add_parser('plot_mhw_forecast',
         help='Generate operational MetOcean plots (timeseries, flags, and GIFs) from forecast outputs.')
     parser_plot_mhw.add_argument('--forecast_file', required=True, type=str, help='Path to the raw CROCO forecast file.')
     parser_plot_mhw.add_argument('--cat_file', required=True, type=str, help='Path to the processed Categories NetCDF.')
@@ -587,29 +575,6 @@ def main():
         temp_anom_var.units = "degC"
         temp_anom_var.coordinates = "lat_rho lon_rho"
 
-        zeta_var = nc_out.createVariable('zeta', 'f4', ('time', 'eta_rho', 'xi_rho'), zlib=True, fill_value=np.nan)
-        zeta_var.long_name = "daily averaged free-surface"
-        zeta_var.units = "meter"
-        zeta_var.coordinates = "lat_rho lon_rho"
-
-        zeta_anom_var = nc_out.createVariable('zeta_anom', 'f4', ('time', 'eta_rho', 'xi_rho'), zlib=True, fill_value=np.nan)
-        zeta_anom_var.long_name = "Sea Surface Elevation Daily Anomaly"
-        zeta_anom_var.units = "m"
-        zeta_anom_var.coordinates = "lat_rho lon_rho"
-
-        # Compute Daily Zeta and daily Zeta Anomalies
-        print("Computing Daily Zeta and Zeta Anomalies...")
-        if 'zeta' in ds_temp and 'zeta' in ds_clim:
-            ds_zeta_daily = (ds_temp['zeta']
-                             .resample(time='1D').mean()
-                             .reindex(time=target_dates, method='nearest')
-                             .interpolate_na(dim='time', limit=None)
-                             .compute())
-            clim_zeta = ds_clim['zeta'].values  # (366, eta, xi)
-            
-            zeta_var[:] = ds_zeta_daily.values
-            zeta_anom_var[:] = ds_zeta_daily.values - clim_zeta[daily_doy_map, :, :]
-
         # Stream MHW categories and daily temperature anomalies level-by-level
         print("Processing vertical planes...")
         try:
@@ -630,6 +595,13 @@ def main():
                 # Combine tracking arrays
                 combined = mhw_cats.copy()
                 combined[combined == 0] = mcs_cats[combined == 0]
+                
+                mask_rho_2d = ds_temp['mask_rho'].values
+                if mask_rho_2d.ndim > 2:
+                    mask_rho_2d = mask_rho_2d[0]
+                    
+                combined[:, mask_rho_2d == 0] = -127
+                
                 cat_var[:, k, :, :] = combined
 
                 # Compute Daily Temperature Anomaly for this level
