@@ -510,6 +510,7 @@ def main():
         import pandas as pd
         import xarray as xr
         from pathlib import Path
+        from netCDF4 import Dataset
  
         os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
  
@@ -536,54 +537,121 @@ def main():
         first_day    = pd.Timestamp(raw_times[0]).normalize()
         last_day     = pd.Timestamp(raw_times[-1]).normalize()
         target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
-        T       = len(target_dates)
+        T_daily      = len(target_dates)
         t_dates = np.array([d.toordinal() for d in target_dates], dtype=int)
         ds_dummy_daily = xr.Dataset(coords={'time': target_dates})
+        daily_doy_map = np.clip(target_dates.dayofyear.values - 1,0,365)
  
         # -- initialise output
         if out_file.exists():
             out_file.unlink()
  
-        nc_out = create_mhw_output_netcdf(
-            output_file   = str(out_file),
-            n_time_daily  = T,
-            n_levels      = num_levels,
-            n_eta         = n_eta,
-            n_xi          = n_xi,
-            ds_temp_daily = ds_dummy_daily,
-            ds_temp       = ds_temp,
-            ds_clim       = ds_clim,
-            mode_name     = 'MHW_MCS',
-        )
-        cat_var = nc_out.variables['category']
- 
-        # -- process each level: MHW first, MCS fills no-event days
+        nc_out = Dataset(str(out_file), mode='w', format='NETCDF4')
+                         
+        nc_out.createDimension('xi_rho', n_xi)
+        nc_out.createDimension('eta_rho', n_eta)
+        nc_out.createDimension('s_rho', n_xi)
+        nc_out.createDimension('time', T_daily)
+        
+        lon_var = nc_out.createVariable('lon_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
+        lat_var = nc_out.createVariable('lat_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
+        h_var   = nc_out.createVariable('h', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
+        mask_v  = nc_out.createVariable('mask_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
+        
+        lon_var[:] = ds_temp['lon_rho'].values if 'lon_rho' in ds_temp else ds_clim['lon_rho'].values
+        lat_var[:] = ds_temp['lat_rho'].values if 'lat_rho' in ds_temp else ds_clim['lat_rho'].values
+        h_var[:]   = ds_temp['h'].values
+        mask_v[:]  = ds_temp['mask_rho'].values
+
+        time_var = nc_out.createVariable('time', 'f8', ('time',))
+        time_var.units = f'days since {first_day.strftime("%Y-%m-%d")}'
+        time_var[:] = (target_dates - first_day).total_seconds() / 86400.0
+
+        nc_out.createVariable('s_rho', 'f4', ('s_rho',))[:] = np.arange(num_levels)
+        for attr in ['hc', 'Vtransform', 'theta_s', 'theta_b']:
+            if attr in ds_temp:
+                nc_out.setncattr(attr, float(ds_temp[attr].values))
+            elif attr in ds_temp.attrs:
+                nc_out.setncattr(attr, float(ds_temp.attrs[attr]))
+        
+        # Define category variable
+        cat_var = nc_out.createVariable('category', 'i1', ('time', 's_rho', 'eta_rho', 'xi_rho'), 
+                                         zlib=True, fill_value=-127, chunksizes=(T_daily, 1, n_eta, n_xi))
+        cat_var.long_name = 'MHW_MCS Combined Event Categories'
+        cat_var.description = 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral'
+
+        # Define daily anomaly variables
+        temp_anom_var = nc_out.createVariable('temp_anom', 'f4', ('time', 's_rho', 'eta_rho', 'xi_rho'), 
+                                               zlib=True, fill_value=np.nan, chunksizes=(T_daily, 1, n_eta, n_xi))
+        temp_anom_var.long_name = "Sea Water Temperature Daily Anomaly"
+        temp_anom_var.units = "degC"
+        temp_anom_var.coordinates = "lat_rho lon_rho"
+
+        zeta_var = nc_out.createVariable('zeta', 'f4', ('time', 'eta_rho', 'xi_rho'), zlib=True, fill_value=np.nan)
+        zeta_var.long_name = "daily averaged free-surface"
+        zeta_var.units = "meter"
+        zeta_var.coordinates = "lat_rho lon_rho"
+
+        zeta_anom_var = nc_out.createVariable('zeta_anom', 'f4', ('time', 'eta_rho', 'xi_rho'), zlib=True, fill_value=np.nan)
+        zeta_anom_var.long_name = "Sea Surface Elevation Daily Anomaly"
+        zeta_anom_var.units = "m"
+        zeta_anom_var.coordinates = "lat_rho lon_rho"
+
+        # Compute Daily Zeta and daily Zeta Anomalies
+        print("Computing Daily Zeta and Zeta Anomalies...")
+        if 'zeta' in ds_temp and 'zeta' in ds_clim:
+            ds_zeta_daily = (ds_temp['zeta']
+                             .resample(time='1D').mean()
+                             .reindex(time=target_dates, method='nearest')
+                             .interpolate_na(dim='time', limit=None)
+                             .compute())
+            clim_zeta = ds_clim['zeta'].values  # (366, eta, xi)
+            
+            zeta_var[:] = ds_zeta_daily.values
+            zeta_anom_var[:] = ds_zeta_daily.values - clim_zeta[daily_doy_map, :, :]
+
+        # Stream MHW categories and daily temperature anomalies level-by-level
+        print("Processing vertical planes...")
         try:
             for k in range(num_levels - 1, -1, -1):
+                # Run Heatwave classification
                 process_single_level(k, num_levels, ds_temp, ds_clim,
                                      args.temp_var, doy_values,
                                      False, t_dates, args.batch_size, nc_out)
                 mhw_cats = cat_var[:, k, :, :][:]
- 
+
+                # Reset and run Cold Spell classification
                 cat_var[:, k, :, :] = np.zeros_like(mhw_cats)
                 process_single_level(k, num_levels, ds_temp, ds_clim,
                                      args.temp_var, doy_values,
                                      True, t_dates, args.batch_size, nc_out)
                 mcs_cats = cat_var[:, k, :, :][:]
- 
+
+                # Combine tracking arrays
                 combined = mhw_cats.copy()
                 combined[combined == 0] = mcs_cats[combined == 0]
                 cat_var[:, k, :, :] = combined
- 
+
+                # Compute Daily Temperature Anomaly for this level
+                print(f"      -> Calculating daily temperature anomalies for level {k}...")
+                ds_level_daily = (ds_temp[args.temp_var].isel(s_rho=k)
+                                  .resample(time='1D').mean()
+                                  .reindex(time=target_dates, method='nearest')
+                                  .interpolate_na(dim='time', limit=None)
+                                  .compute())
+                clim_temp_level = ds_clim['climatology'].isel(s_rho=k).values  # (366, eta, xi)
+                
+                temp_anom_var[:, k, :, :] = ds_level_daily.values - clim_temp_level[daily_doy_map, :, :]
+
                 nc_out.sync()
                 gc.collect()
         finally:
             nc_out.sync()
             nc_out.close()
- 
+
         ds_clim.close()
         size_mb = out_file.stat().st_size / (1024 ** 2)
-        print(f'Done: {out_file}  ({size_mb:.1f} MB)')
+        print(f'Done: {out_file} ({size_mb:.1f} MB)')
  
     parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
  
