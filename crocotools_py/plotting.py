@@ -816,8 +816,10 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
     "Hermanus",
     "Gansbaai"]
     
-    BAND_WIDTH = 14 
-    OFFSHORE = -0.12
+    BOX_SIZE = 0.45 
+    OFFSHORE = -0.10
+    BOX_STEP_DIST = 0.50
+    all_boxes = []
     
     dense_lons = []
     dense_lats = []
@@ -831,47 +833,38 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
         
     dense_lons = np.array(dense_lons)
     dense_lats = np.array(dense_lats)
+    dx, dy = np.diff(dense_lons), np.diff(dense_lats)
+    dists = np.zeros(len(dense_lons))
+    dists[1:] = np.cumsum(np.hypot(dx, dy))
     
-    ox_points = []
-    oy_points = []
-    colors_list = []
-    
-    for idx in range(len(dense_lons)):
-        cx = dense_lons[idx]
-        cy = dense_lats[idx]
-        
-        if idx == 0:
-            dx_local = dense_lons[1] - dense_lons[0]
-            dy_local = dense_lats[1] - dense_lats[0]
-        elif idx == len(dense_lons) - 1:
-            dx_local = dense_lons[-1] - dense_lons[-2]
-            dy_local = dense_lats[-1] - dense_lats[-2]
-        else:
-            dx_local = dense_lons[idx+1] - dense_lons[idx-1]
-            dy_local = dense_lats[idx+1] - dense_lats[idx-1]
-            
-        seg_len = np.hypot(dx_local, dy_local) or 1.0
-        px = -dy_local / seg_len
-        py = dx_local / seg_len
-        
-        ox_points.append(cx + px * OFFSHORE)
-        oy_points.append(cy + py * OFFSHORE)
+    target_dists = np.arange(0, dists[-1], BOX_STEP_DIST)
+    for bd in target_dists:
+        cx = np.interp(bd, dists, dense_lons)
+        cy = np.interp(bd, dists, dense_lats)
         
         nearest_site = min(coast_order, key=lambda s: np.hypot(cx - TARGETS[s][0], cy - TARGETS[s][1]))
         info = site_data.get(nearest_site, {"mode": "MHW", "max_cat": 0})
-        colors_list.append(_flag_col(info["mode"], info["max_cat"]))
-    
-    points = np.array([ox_points, oy_points]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    
+        
+        idx = max(1, min(np.searchsorted(dists, bd), len(dists) - 1))
+        seg_len = np.hypot(dense_lons[idx] - dense_lons[idx-1], dense_lats[idx] - dense_lats[idx-1]) or 1.0
+        px = -(dense_lats[idx] - dense_lats[idx-1]) / seg_len
+        py = (dense_lons[idx] - dense_lons[idx-1]) / seg_len
+        
+        all_boxes.append((cx + px * OFFSHORE, cy + py * OFFSHORE, _flag_col(info["mode"], info["max_cat"])))
+
+    # Draw Map Canvas
     fig = plt.figure(figsize=(10, 13), dpi=150)
     fig.patch.set_facecolor("white")
     ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
     ax.set_extent([15.8, 20.5, -36.0, -28.0], crs=ccrs.PlateCarree())
 
-    lc = LineCollection(segments, colors=colors_list[:-1], linewidth=BAND_WIDTH, 
-                        transform=ccrs.PlateCarree(), zorder=3, capstyle='round', joinstyle='round')
-    ax.add_collection(lc)
+    # Draw standalone discrete bounding boxes
+    for cx, cy, col in all_boxes:
+        ax.add_patch(FancyBboxPatch(
+            (cx - BOX_SIZE/2, cy - BOX_SIZE/2), BOX_SIZE, BOX_SIZE, 
+            boxstyle="round,pad=0.04", facecolor=col, edgecolor="white", 
+            linewidth=0.6, zorder=3, transform=ccrs.PlateCarree()
+        ))
 
     for site_name, (site_lon, site_lat) in TARGETS.items():
         info = site_data.get(site_name, {"mode": "MHW", "max_cat": 0})
@@ -879,16 +872,17 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
         ax.plot(site_lon, site_lat, "o", ms=4, color="white", zorder=8, mec="black", mew=0.8, transform=ccrs.PlateCarree())
         ax.text(site_lon + 0.08, site_lat, f"{site_name}\n{info['mode']} – {['None', 'Moderate', 'Strong', 'Severe', 'Extreme'][cat_int]}", ha="left", va="center", fontsize=6.5, fontweight="bold", color="#1a3a5c", zorder=9, transform=ccrs.PlateCarree(), path_effects=[pe.withStroke(linewidth=2, foreground="white")])
 
-    ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=4); ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor="#555544", zorder=5)
+    ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=4)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor="#555544", zorder=5)
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2)
     gl.top_labels = gl.right_labels = False
     
-    # Gauge inset
     _draw_gauge(fig.add_axes([0.53, 0.61, 0.28, 0.28]))
 
     ax.set_title(f"SA West Coast  ·  MHW / MCS Flag Map  ·  {depth_name}\nForecast: {pd.to_datetime(start_date).strftime('%d %b')} – {pd.to_datetime(end_date).strftime('%d %b %Y')}", fontsize=12, color="#1a3a5c", pad=8)
     plt.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
-    plt.close()
+    plt.close()       
+
 
 def _update_spatial_frame(frame, cat_data, time_data, mesh_obj, title_obj, d_name):
     mesh_obj.set_array(cat_data[frame].ravel())
@@ -928,8 +922,38 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
     ani = FuncAnimation(fig, _update_spatial_frame, frames=len(times), fargs=(cat, times, mesh, title, depth_name), blit=False)
     ani.save(out_path, writer='ffmpeg', fps=5, dpi=120)
     plt.close(fig)
+    
+def _update_anomaly_frame(frame, anom_data, time_data, mesh_obj, title_obj):
+    mesh_obj.set_array(anom_data[frame].ravel())
+    title_obj.set_text(f"Sea Water Temperature Daily Anomaly (Surface)\nDate: {str(time_data[frame])[:10]}")
+    return mesh_obj, title_obj
 
-# --- Master Wrapper Function ---
+def animate_surface_anomalies(cat_ds, lat, lon, out_path):
+    out_path = Path(out_path)
+        
+    times = pd.to_datetime(cat_ds.time.values)
+    # Extract daily surface anomalies (s_rho = -1)
+    anom = cat_ds["temp_anom"].isel(s_rho=-1).values.astype(float)
+
+    fig = plt.figure(figsize=(9, 8))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    
+    # Diverging colormap centered on 0°C to highlight cold vs warm variations
+    mesh = ax.pcolormesh(lon, lat, anom[0], transform=ccrs.PlateCarree(), cmap='RdBu_r', vmin=-3.0, vmax=3.0, shading="auto")
+    
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+    ax.add_feature(cfeature.LAND, facecolor="lightgray", edgecolor='black', zorder=2)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
+    
+    cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04)
+    cbar.set_label("Temperature Anomaly (°C)")
+    
+    title = ax.set_title(f"Sea Water Temperature Daily Anomaly (Surface)\nDate: {str(times[0])[:10]}")
+    ani = FuncAnimation(fig, _update_anomaly_frame, frames=len(times), fargs=(anom, times, mesh, title), blit=False)
+    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120)
+    plt.close(fig)
+
+# Master Wrapper Function ---
 def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_date, end_date, Yorig=2000):
     """
     Operational entry point to run time series, flag maps, and GIF animations.
@@ -990,10 +1014,10 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
                 fct_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
             )
 
-        print("  -> Time Series...")
+        print("  Generating Time Series")
         plot_timeseries_multisite(sites, today, out_dir / depth_name, depth_name)
 
-        print("  -> Flag Maps...")
+        print("  Generating Flag Maps")
         if depth_info["type"] == "fixed":
             lev_flag = depth_info["lev"] 
         else:
@@ -1010,9 +1034,12 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
                 
         plot_flag_map(compute_site_flag_data(sites, ds_cat, lev_flag), today, start_date, end_date, out_dir / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
 
-        print("  -> Spatial GIF...")
+        print(" Generating mhw_mcs categories Spatial MP4")
         varying = depth_info["type"] == "varying"
         animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / f"Categories_Animation_{depth_name}.mp4")
+        
+        if depth_name == "Surface":
+            print(" Generating Temperature anomaly MP4"
 
     ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
     print(f"\nAll visuals saved to: {out_dir}")
