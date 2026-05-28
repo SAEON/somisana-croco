@@ -1039,7 +1039,7 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
         animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], varying, depth_info["lev"] if varying else None, out_dir / f"Categories_Animation_{depth_name}.mp4")
         
         if depth_name == "Surface":
-            print(" Generating Temperature anomaly MP4"
+            print(" Generating Temperature anomaly MP4")
 
     ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
     print(f"\nAll visuals saved to: {out_dir}")
