@@ -632,7 +632,6 @@ CMAP_9 = mplc.ListedColormap([FILL_C_EXT, FILL_C_SEV, FILL_C_STR, FILL_C_MOD,"#f
 CMAP_9.set_bad("white")
 BNORM_9 = mplc.BoundaryNorm([-4.5, -3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5], CMAP_9.N)
 
-# --- Helpers ---
 def nearest(lon2d, lat2d, lon0, lat0):
     d2 = (lon2d - lon0)**2 + (lat2d - lat0)**2
     return np.unravel_index(np.argmin(d2), d2.shape)
@@ -654,7 +653,9 @@ def compute_site_flag_data(sites, cat_ds, lev):
         max_mhw = float(np.max(mhw_days)) if len(mhw_days) > 0 else 0.0
         max_mcs = float(np.max(mcs_days)) if len(mcs_days) > 0 else 0.0
 
-        if max_mhw >= max_mcs:
+        if max_mhw == 0.0 and max_mcs == 0.0:
+            site_data[site_name] = {"mode": "None", "max_cat": 0.0}
+        elif max_mhw >= max_mcs:
             site_data[site_name] = {"mode": "MHW", "max_cat": max_mhw}
         else:
             site_data[site_name] = {"mode": "MCS", "max_cat": max_mcs}
@@ -724,7 +725,7 @@ def plot_timeseries_multisite(sites, today, output_dir, depth_name):
 
         lon_v, lat_v = data["lon"], data["lat"]
         ax.set_title(f"{site_name}  ({abs(lat_v):.3f}°{'S' if lat_v < 0 else 'N'}, {lon_v:.3f}°{'W' if lon_v < 0 else 'E'})", fontsize=14, fontweight="bold", pad=10)
-        ax.set_ylabel(f"Temperature [°C]", fontsize=11)
+        ax.set_ylabel("Temperature [°C]", fontsize=11)
         ax.set_xlim(t_min, t_max)
         for spine in ("top", "right"): ax.spines[spine].set_visible(False)
 
@@ -798,23 +799,9 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
 
 
     coast_order = [
-    "Kleinsee",
-    "Hondeklipbaai",
-    "Doringbaai",
-    "Elandsbaai",
-    "Laaiplek",
-    "Paternoster",
-    "Saldanha",
-    "Yzerfontein",
-    "Bloubergstrand",
-    "Oudekraal",
-    "Cape Point",
-    "Simonstown",
-    "Strand",
-    "Hangklip",
-    "Kleinmond",
-    "Hermanus",
-    "Gansbaai"]
+    "Kleinsee","Hondeklipbaai", "Doringbaai", "Elandsbaai", "Laaiplek",
+    "Paternoster", "Saldanha", "Yzerfontein", "Bloubergstrand", "Oudekraal","Cape Point",
+    "Simonstown", "Strand", "Hangklip", "Kleinmond", "Hermanus", "Gansbaai"]
     
     BOX_SIZE = 0.45 
     OFFSHORE = -0.10
@@ -843,7 +830,7 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
         cy = np.interp(bd, dists, dense_lats)
         
         nearest_site = min(coast_order, key=lambda s: np.hypot(cx - TARGETS[s][0], cy - TARGETS[s][1]))
-        info = site_data.get(nearest_site, {"mode": "MHW", "max_cat": 0})
+        info = site_data.get(nearest_site, {"mode": "None", "max_cat": 0})
         
         idx = max(1, min(np.searchsorted(dists, bd), len(dists) - 1))
         seg_len = np.hypot(dense_lons[idx] - dense_lons[idx-1], dense_lats[idx] - dense_lats[idx-1]) or 1.0
@@ -867,10 +854,16 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
         ))
 
     for site_name, (site_lon, site_lat) in TARGETS.items():
-        info = site_data.get(site_name, {"mode": "MHW", "max_cat": 0})
+        info = site_data.get(site_name, {"mode": "None", "max_cat": 0})
         cat_int = max(0, min(4, int(round(info["max_cat"]))))
         ax.plot(site_lon, site_lat, "o", ms=4, color="white", zorder=8, mec="black", mew=0.8, transform=ccrs.PlateCarree())
-        ax.text(site_lon + 0.08, site_lat, f"{site_name}\n{info['mode']} – {['None', 'Moderate', 'Strong', 'Severe', 'Extreme'][cat_int]}", ha="left", va="center", fontsize=6.5, fontweight="bold", color="#1a3a5c", zorder=9, transform=ccrs.PlateCarree(), path_effects=[pe.withStroke(linewidth=2, foreground="white")])
+        
+        if info["mode"] == "None" or cat_int == 0:
+            lbl_txt = f"{site_name}\nNone"
+        else:
+            lbl_txt = f"{site_name}\n{info['mode']} - {['None', 'Moderate', 'Strong', 'Severe', 'Extreme'][cat_int]}"
+        
+        ax.text(site_lon + 0.08, site_lat, lbl_txt, ha="left", va="center", fontsize=6.5, fontweight="bold", color="#1a3a5c", zorder=9, transform=ccrs.PlateCarree(), path_effects=[pe.withStroke(linewidth=2, foreground="white")])
 
     ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=4)
     ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor="#555544", zorder=5)
@@ -913,6 +906,8 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
     ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
     ax.add_feature(cfeature.LAND, facecolor="white", edgecolor='black', zorder=2)
     ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
+    gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2)
+    gl.top_labels = gl.right_labels = False
 
     cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04, ticks=[-4, -3, -2, -1, 0, 1, 2, 3, 4])
     cbar.ax.set_yticklabels(["Ext", "Sev", "Str", "Mod", "Neut", "Mod", "Str", "Sev", "Ext"])
@@ -944,6 +939,8 @@ def animate_surface_anomalies(cat_ds, lat, lon, out_path):
     ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
     ax.add_feature(cfeature.LAND, facecolor="lightgray", edgecolor='black', zorder=2)
     ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
+    gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2)
+    gl.top_labels = gl.right_labels = False
     
     cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04)
     cbar.set_label("Temperature Anomaly (°C)")
