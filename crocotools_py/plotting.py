@@ -949,6 +949,39 @@ def animate_surface_anomalies(cat_ds, lat, lon, out_path):
     ani = FuncAnimation(fig, _update_anomaly_frame, frames=len(times), fargs=(anom, times, mesh, title), blit=False)
     ani.save(out_path, writer='ffmpeg', fps=1, dpi=120)
     plt.close(fig)
+    
+def _update_front_frame(frame, front_data, time_data, mesh_obj, title_obj):
+    mesh_obj.set_array(front_data[frame].ravel())
+    title_obj.set_text(f"Horizontal Thermal Front Magnitude (Surface)\nDate: {str(time_data[frame])[:10]}")
+    return mesh_obj, title_obj
+
+def animate_surface_fronts(cat_ds, lat, lon, out_path):
+    out_path = Path(out_path)
+        
+    times = pd.to_datetime(cat_ds.time.values)
+    front_mag = cat_ds["sst_front"].values.astype(float)
+
+    fig = plt.figure(figsize=(9, 8))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    
+    # Render using the saved front tracking array
+    mesh = ax.pcolormesh(lon, lat, front_mag[0], transform=ccrs.PlateCarree(), 
+                         cmap='inferno', vmin=0.05, vmax=0.5, shading="auto")
+    
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+    ax.add_feature(cfeature.LAND, facecolor="lightgray", edgecolor='black', zorder=2)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
+    gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2)
+    gl.top_labels = gl.right_labels = False
+    
+    cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04)
+    cbar.set_label("SST Gradient Magnitude (°C / km)")
+    
+    title = ax.set_title(f"Horizontal Thermal Front Magnitude (Surface)\nDate: {str(times[0])[:10]}")
+    ani = FuncAnimation(fig, _update_front_frame, frames=len(times), fargs=(front_mag, times, mesh, title), blit=False)
+    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120)
+    plt.close(fig)    
+    
 
 # Master Wrapper Function ---
 def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_date, end_date, Yorig=2000):
@@ -1038,6 +1071,9 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_
         if depth_name == "Surface":
             print(" Generating Temperature anomaly MP4")
             animate_surface_anomalies(ds_cat, lat, lon, out_dir / "Temperature_Anomaly_Animation_Surface.mp4")
+            
+            print(" Generating Horizontal Thermal Front MP4")
+            animate_surface_fronts(ds_cat, lat, lon, out_dir / "Thermal_Front_Animation_Surface.mp4")
 
     ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
     print(f"\nAll visuals saved to: {out_dir}")

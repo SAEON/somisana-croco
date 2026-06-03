@@ -574,6 +574,13 @@ def main():
         temp_anom_var.long_name = "Sea Water Temperature Daily Anomaly"
         temp_anom_var.units = "degC"
         temp_anom_var.coordinates = "lat_rho lon_rho"
+        
+        # Define daily Surface Thermal Front Magnitude Variable
+        sst_front_var = nc_out.createVariable('sst_front', 'f4', ('time', 'eta_rho', 'xi_rho'), 
+                                               zlib=True, fill_value=np.nan)
+        sst_front_var.long_name = "Sea Surface Temperature Horizontal Front Magnitude"
+        sst_front_var.units = "degC / km"
+        sst_front_var.coordinates = "lat_rho lon_rho"
 
         # Stream MHW categories and daily temperature anomalies level-by-level
         print("Processing vertical planes...")
@@ -614,6 +621,29 @@ def main():
                 clim_temp_level = ds_clim['climatology'].isel(s_rho=k).values  # (366, eta, xi)
                 
                 temp_anom_var[:, k, :, :] = ds_level_daily.values - clim_temp_level[daily_doy_map, :, :]
+                
+                # Compute daily SST Front Magnitude for the the Surface Layer
+                if k == num_levels - 1:
+                    print("      -> Calculating daily surface thermal fronts (SST fronts)...")
+                    pm = ds_temp['pm'].values if 'pm' in ds_temp else np.ones((n_eta, n_xi))
+                    pn = ds_temp['pn'].values if 'pn' in ds_temp else np.ones((n_eta, n_xi))
+                    if pm.ndim > 2: pm, pn = pm[0], pm[0]
+                    
+                    sst_front_data = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
+                    sst_vals = ds_level_daily.values  # Already resampled daily surface temperatures
+                    
+                    for t_idx in range(T_daily):
+                        d_eta, d_xi = np.gradient(sst_vals[t_idx])
+                        # Scale metrics into °C per meter, then multiply by 1000 for °C/km
+                        grad_km = np.hypot(d_xi * pm, d_eta * pn) * 1000.0
+                        sst_front_data[t_idx] = grad_km
+                        
+                    # Apply land mask boundary lines safely
+                    mask_rho_2d = ds_temp['mask_rho'].values
+                    if mask_rho_2d.ndim > 2: mask_rho_2d = mask_rho_2d[0]
+                    sst_front_data = np.where(mask_rho_2d[np.newaxis, :, :] == 1, sst_front_data, np.nan)
+                    
+                    sst_front_var[:] = sst_front_data
 
                 nc_out.sync()
                 gc.collect()
