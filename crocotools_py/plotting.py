@@ -915,7 +915,7 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
 
     title = ax.set_title(f"MHW & MCS Categories ({depth_name})\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_spatial_frame, frames=len(times), fargs=(cat, times, mesh, title, depth_name), blit=False)
-    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120)
+    ani.save(out_path, writer='ffmpeg', fps=1, dpi=120)
     plt.close(fig)
     
 def _update_anomaly_frame(frame, anom_data, time_data, mesh_obj, title_obj):
@@ -947,7 +947,7 @@ def animate_surface_anomalies(cat_ds, lat, lon, out_path):
     
     title = ax.set_title(f"Sea Water Temperature Daily Anomaly (Surface)\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_anomaly_frame, frames=len(times), fargs=(anom, times, mesh, title), blit=False)
-    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120)
+    ani.save(out_path, writer='ffmpeg', fps=1, dpi=120)
     plt.close(fig)
 
 # Master Wrapper Function ---
