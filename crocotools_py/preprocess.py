@@ -998,8 +998,9 @@ def reformat_saws_atm(saws_dir,backup_dir,out_dir,run_date,hdays,Yorig):
                 if da is None:
                     da = da_file
                 else:
-                    # extract the non-overlapping data
-                    da_file = da_file.sel(time=slice(da_file.time[0],da.time[0]-1))
+                    # extract the non-overlapping data: only the steps in this
+                    # (older) file that fall before what we've already accumulated.
+                    da_file = da_file.isel(time=(da_file.time < da.time.min()).values)
                     # and combine with the full dataset
                     da = xr.concat([da_file, da], dim='time')
                 da_file.close()
