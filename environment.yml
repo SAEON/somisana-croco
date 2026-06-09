@@ -15,7 +15,7 @@ dependencies:
   - numcodecs
   - cfgrib
   - pygrib
-  - cartopy
+  - cartopy>=0.20
   - cmocean
   - utide
   # some required packages for croco_pytools
