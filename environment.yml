@@ -15,13 +15,13 @@ dependencies:
   - numcodecs
   - cfgrib
   - pygrib
-  - cartopy>=0.20
+  - cartopy
   - cmocean
   - utide
   # some required packages for croco_pytools
   - wxpython
-  - traits<6.4.0
-  - traitsui<7.4.0
+  - traits=6.4.1
+  - traitsui=7.4.2
   - geopandas
   - regionmask
   - pyinterp
@@ -29,4 +29,4 @@ dependencies:
   - gfortran
   - netcdf-fortran
   # this is to try and handle dependency issues with compiling with f2py 
-  - setuptools<70.0.0
+  - setuptools=72.1.0
