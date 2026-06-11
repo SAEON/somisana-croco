@@ -1,6 +1,15 @@
 name: build and push docker image
 
 on:
+  workflow_dispatch:
+    inputs:
+      IMAGE_ID:
+        description: 'Which image to build (cli or run)'
+        required: true
+        type: choice
+        options:
+          - cli
+          - run
   workflow_call:
     inputs:
       # which image are we building? IMAGE_ID can either be `cli` or `run`

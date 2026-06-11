@@ -3,18 +3,14 @@ import xarray as xr
 import dask
 from datetime import timedelta, datetime
 from glob import glob
-from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
+from crocotools_py.define_attrs import apply_attrs
 import re
 import time
 import pandas as pd
 
-def change_attrs(attrs,da,var_str):
-    meta = getattr(attrs, var_str)
-    da.attrs['long_name'] = meta.long_name
-    da.attrs['units'] = meta.units
-    da.attrs['standard_name'] = meta.standard_name
-    
-    return da
+def change_attrs(da, var_str, rotated=False):
+    """Backwards-compatible wrapper around apply_attrs."""
+    return apply_attrs(da, var_str, rotated=rotated)
 
 def u2rho(u):
     """
@@ -761,7 +757,7 @@ def get_var(fname,var_str,
     
     # get dataarrays of the data we want
     da = ds[var_str]
-    if 's_rho' in da.coords:
+    if 's_rho' in da.coords or 's_w' in da.coords:
         var_is_2d=False
     else:
         var_is_2d=True
@@ -823,7 +819,7 @@ def get_var(fname,var_str,
     h = h.squeeze() * mask_nan
 
     # include the depths of the sigma levels in the output
-    if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
+    if 's_rho' in da.coords or 's_w' in da.coords:
         print('    computing depths of sigma levels...')
         depths = get_depths(ds).squeeze() * mask_nan
         print('    making the output dataset...')
@@ -839,18 +835,8 @@ def get_var(fname,var_str,
     ds_out = ds_out.squeeze()
     
     # change the attributes to make the dataset cf compliant
-    attrs = CROCO_Attrs()
-    ds_out['eta_rho'] = change_attrs(attrs,ds_out.eta_rho,'eta_rho')
-    ds_out['xi_rho']  = change_attrs(attrs,ds_out.xi_rho,'xi_rho')
-    ds_out['lon_rho'] = change_attrs(attrs,ds_out.lon_rho,'lon_rho')
-    ds_out['lat_rho']  = change_attrs(attrs,ds_out.lat_rho,'lat_rho')
-    ds_out['h'] = change_attrs(attrs,ds_out.h,'h')
-    ds_out['mask'] = change_attrs(attrs,ds_out.mask,'mask')
-    ds_out['zeta'] = change_attrs(attrs,ds_out.zeta,'zeta')
-    try:
-        ds_out[var_str] = change_attrs(attrs, ds_out[var_str], var_str)
-    except:
-        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_str}")
+    for var in ds_out:
+        apply_attrs(ds_out[var], var)
     
     if nc_out is not None:
         print('')
@@ -937,13 +923,8 @@ def get_uv(fname,
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
 
-    attrs = CROCO_Attrs_RotatedVectors()
-    
-    try:
-        u_out = change_attrs(attrs,u_out,var_u)
-        v_out = change_attrs(attrs,v_out,var_v)
-    except:
-        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_u},{var_v}")
+    apply_attrs(u_out, var_u, rotated=True)
+    apply_attrs(v_out, var_v, rotated=True)
 
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
@@ -1021,6 +1002,58 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
+# def find_nearest_point(grdname, Longi, Latit, Bottom=None):
+#     """
+#     Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
+            
+#     Parameters:
+#     - fname :filename of the model, or the grid file
+#     - Longi :longitude
+#     - Latit :latitude
+#     - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+#       lat and lon in water that is as deep as reference. If == None then
+#       this looks for only the closest horizontal point.
+
+#     Returns:
+#     - j :the nearest eta index
+#     - i :the nearest xi index
+    
+#     j,i can be used in xarrays built-in xr.isel() function to extract data at this grid point
+    
+#     (Note j,i aren't the eta_rho,xi_rho values! 
+#      The j,i indices are one less than the eta_rho,xi_rho values
+#      because eta_rho,xi_rho are 1 based)
+
+    
+#     """
+    
+#     lon_rho = get_grd_var(grdname, 'lon_rho').values
+#     lat_rho = get_grd_var(grdname, 'lat_rho').values
+#     h = get_grd_var(grdname, 'h').values
+
+#     # Calculate the distance between (Longi, Latit) and all grid points
+#     distance = ((lon_rho - Longi) ** 2 +
+#                 (lat_rho - Latit) ** 2) ** 0.5
+    
+#     if Bottom is None:
+#         mask=h/h
+
+#     else:
+#         mask=h
+#         mask[mask<Bottom]=10000
+#         mask[mask<10000]=1
+    
+#     distance_mask=distance*mask
+
+#     # Find the indices of the minimum distance
+#     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
+#     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
+#     min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
+
+#     j, i = min_index
+
+#     return j, i
+
 def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     """
     Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
@@ -1049,25 +1082,30 @@ def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     lon_rho = get_grd_var(grdname, 'lon_rho').values
     lat_rho = get_grd_var(grdname, 'lat_rho').values
     h = get_grd_var(grdname, 'h').values
+    
+    try:
+        mask_rho = get_grd_var(grdname, 'mask_rho').values
+    except Exception:
+        mask_rho = h / h
 
     # Calculate the distance between (Longi, Latit) and all grid points
     distance = ((lon_rho - Longi) ** 2 +
                 (lat_rho - Latit) ** 2) ** 0.5
     
+    # Build valid-point mask
     if Bottom is None:
-        mask=h/h
-
+        valid_mask = (mask_rho == 1)
     else:
-        mask=h
-        mask[mask<Bottom]=10000
-        mask[mask<10000]=1
+        valid_mask = (mask_rho == 1) & (h >= Bottom)
+
+    # Apply mask: invalid points get infinity so they cannot win
+    distance_mask = np.where(valid_mask, distance, np.inf)
     
-    distance_mask=distance*mask
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
-    min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
+    min_index = np.unravel_index(np.argmin(distance_mask), distance_mask.shape)
 
     j, i = min_index
 
@@ -1327,7 +1365,13 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
         R: Earth radius in meters.
 
     Returns:
-        lons, lats, distances: Arrays of longitudes, latitudes, and cumulative distances.
+        lons, lats, distances, bearings: Arrays of longitudes (deg), latitudes (deg),
+        cumulative distances (m), and per-point local bearings of the path
+        (radians, clockwise from north). The bearing at point i is the heading from
+        point i to point i+1; the final point reuses the previous segment's bearing.
+
+    Raises:
+        ValueError: if section_start and section_end are too close to define a section.
     """
     # Convert inputs to radians
     lat0, lon0, lat1, lon1 = map(np.radians, [lat0, lon0, lat1, lon1])
@@ -1339,6 +1383,14 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
     sigma_total = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))  # Central angle
     dist_total = R * sigma_total  # Convert to meters
 
+    # Reject degenerate sections (single-point "sections" are profiles, not sections)
+    if dist_total < dgc / 10:
+        raise ValueError(
+            "section_start and section_end are too close to define a section "
+            f"(separation {dist_total:.1f} m < {dgc/10:.1f} m). "
+            "Use a profile extraction (e.g. get_ts) instead."
+        )
+
     # Determine the number of segments
     npsec = int(dist_total // dgc) + 1  # Number of points
 
@@ -1349,7 +1401,7 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
 
     # Generate points along the great-circle path
     lons, lats, distances = [lon0], [lat0], [0]
-    
+
     for i in range(1, npsec):
         sigma = i * dgc / R  # Angular distance along the sphere
 
@@ -1362,10 +1414,23 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
         lons.append(lon_new)
         distances.append(i * dgc)  # Keep cumulative distance
 
-    # Convert back to degrees
-    lons, lats = np.degrees(lons), np.degrees(lats)
+    lons_rad = np.array(lons)
+    lats_rad = np.array(lats)
 
-    return np.array(lons), np.array(lats), np.array(distances)
+    # Per-point local bearing: bearing at point i = heading from P[i] to P[i+1].
+    # Final point reuses the bearing of the previous segment.
+    lat_a, lat_b = lats_rad[:-1], lats_rad[1:]
+    lon_a, lon_b = lons_rad[:-1], lons_rad[1:]
+    dlon = lon_b - lon_a
+    Xb = np.cos(lat_b) * np.sin(dlon)
+    Yb = np.cos(lat_a) * np.sin(lat_b) - np.sin(lat_a) * np.cos(lat_b) * np.cos(dlon)
+    seg_bearings = np.arctan2(Xb, Yb)
+    bearings = np.concatenate([seg_bearings, seg_bearings[-1:]])
+
+    # Convert back to degrees
+    lons_deg, lats_deg = np.degrees(lons_rad), np.degrees(lats_rad)
+
+    return lons_deg, lats_deg, np.array(distances), bearings
 
 def get_section(fname,
                 var_str,
@@ -1421,14 +1486,14 @@ def get_section(fname,
         dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
         res = min(dy_min,dx_min)
     
-    # Make the transect on which the interpolation will take place    
-    section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
-    
+    # Make the transect on which the interpolation will take place
+    section_lons,section_lats,section_dist,section_bearings = get_section_coords(lon0,lat0,lon1,lat1,res)
+
     # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
     print('')
     print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
     eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
-    
+
     # Interpolate the variable along the line
     print('')
     print('  interpolating along the section...')
@@ -1438,7 +1503,7 @@ def get_section(fname,
     # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
     # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
     # The error is however much less than the model grid size, so I am not too bothered by this
-    
+
     # add the section distance to the ds
     ds["distance"] = xr.DataArray(
         section_dist, dims=("points",),
@@ -1448,14 +1513,150 @@ def get_section(fname,
             "units": "meter",
             "standard_name": "distance",
         })
-    
+
+    # add the local section bearing as a coord on the points dim
+    ds.coords["section_bearing"] = xr.DataArray(
+        np.degrees(section_bearings), dims=("points",),
+        attrs={
+            "units": "degree",
+            "standard_name": "platform_orientation",
+            "long_name": "local bearing of section path (clockwise from north)",
+        })
+
     if nc_out is not None:
         print('')
         print(f'  writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
-    
+
     return ds
 
+def get_section_uv(fname,
+                   section_start,
+                   section_end,
+                   grdname=None,
+                   time=slice(None),
+                   level=slice(None),
+                   Yorig=None,
+                   res=None,
+                   var_u='u',
+                   var_v='v',
+                   nc_out=None,
+                   ):
+
+    """
+    Extract a vertical section of velocity components from a CROCO output
+    file(s), in both east/north and section-rotated (across/along) form.
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    Inputs:
+    see get_var() for a description of some of the inputs. In addition to the get_var inputs there is:
+    section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
+    section_end = End points of transect (list; eg. section_end = [lon1, lat1])
+    res = Horizontal resolution of the section in meters (eg. res = 300). Default is None in which case
+         it takes the smallest grid size as the resolution.
+    var_u, var_v = Names of the x- and y-component variables to extract. Default
+         is the baroclinic velocity ('u', 'v'); other valid pairs include
+         ('ubar', 'vbar'), ('sustr', 'svstr'), ('bustr', 'bvstr').
+
+    Returns:
+    - ds, an xarray dataset containing along the section:
+        var_u, var_v       : east/north components (rotated from grid)
+        across_section     : component normal to the section, positive 90° CCW
+                             from the start->end heading (left-hand convention)
+        along_section      : component tangential to the section, positive in
+                             the start->end direction
+        distance           : cumulative distance along the section (m)
+        section_bearing    : local bearing of the section path, clockwise from
+                             north (degrees), as a coord on the points dim
+    """
+
+    print('')
+    print('Running get_section_uv()')
+
+    # if the gridname is not provided, we use the fname for the gridname
+    if grdname is None:
+        grdname = fname
+
+    # Define the start and end points of the transect
+    lon0,lat0 = section_start[0],section_start[1]
+    lon1,lat1 = section_end[0],section_end[1]
+
+    # extract the data for the defined subdomain which covers the section extents
+    subdomain = [lon0,lon1,lat0,lat1]
+    ds = get_uv(fname,
+                 grdname=grdname,
+                 time=time,
+                 level=level,
+                 subdomain=subdomain,
+                 Yorig=Yorig,
+                 var_u=var_u,
+                 var_v=var_v)
+
+    # if the grid resolution is not provided, we use the smallest grid size as the resolution.
+    if res is None:
+        dy_min=np.min(1/get_grd_var(grdname, 'pn').values[:])
+        dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
+        res = min(dy_min,dx_min)
+
+    # Make the transect on which the interpolation will take place
+    section_lons,section_lats,section_dist,section_bearings = get_section_coords(lon0,lat0,lon1,lat1,res)
+
+    # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('')
+    print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
+
+    # Interpolate the variable along the line
+    print('')
+    print('  interpolating along the section...')
+    ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
+    # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
+    # section_lons, section_lats, while theoretically they should be identical
+    # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
+    # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
+    # The error is however much less than the model grid size, so I am not too bothered by this
+
+    # Rotate east/north components to section-relative (across/along).
+    # Bearing theta is clockwise from north; tangent unit vector in (east,north)
+    # is (sin theta, cos theta); left-hand normal is (-cos theta, sin theta).
+    # Sign convention: positive across = 90 deg CCW from start->end heading.
+    print('')
+    print('  rotating east/north components to across/along-section ...')
+    cos_b = np.cos(section_bearings)
+    sin_b = np.sin(section_bearings)
+    u_ds = ds[var_u]
+    v_ds = ds[var_v]
+    ds['across_section'] = -u_ds * cos_b + v_ds * sin_b
+    ds['along_section']  =  u_ds * sin_b + v_ds * cos_b
+    apply_attrs(ds['across_section'], var_u, section=True)
+    apply_attrs(ds['along_section'],  var_v, section=True)
+
+    # add the section distance to the ds
+    ds["distance"] = xr.DataArray(
+        section_dist, dims=("points",),
+        coords={"points": ds.coords["points"]},
+        name="distance_along_section",
+        attrs={
+            "units": "meter",
+            "standard_name": "distance",
+        })
+
+    # add the local section bearing as a coord on the points dim
+    ds.coords["section_bearing"] = xr.DataArray(
+        np.degrees(section_bearings), dims=("points",),
+        attrs={
+            "units": "degree",
+            "standard_name": "platform_orientation",
+            "long_name": "local bearing of section path (clockwise from north)",
+        })
+
+    if nc_out is not None:
+        print('')
+        print(f'  writing the netcdf file: {nc_out}')
+        ds.to_netcdf(nc_out)
+
+    return ds
+    
 def compute_anomaly(fname_clim, fname_in, fname_out,
                     Yorig=2000,
                     varlist=["temp", "u", "v", "salt", "zeta"],
@@ -1519,16 +1720,11 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     
     print("Computing anomalies...")
     ds_anom = xr.Dataset(coords=ds_hf.coords)
-    croco_attrs = CROCO_Attrs()
     for var in varlist:
         print(f"{var}")
         anom = ds_hf[var] - ds_clim[var]
         anom_name = f"{var}_anom"
-        anom = change_attrs(croco_attrs, anom, anom_name)
-        try:
-            anom = change_attrs(croco_attrs, anom, anom_name)
-        except:
-            print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {anom_name}")
+        apply_attrs(anom, anom_name)
 
         ds_anom[anom_name] = anom
     ds_hf.close()
@@ -1553,8 +1749,119 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
 
+def croco_srf_2_ww3(fname, grdname=None, dir_out='.', Yorig=None):
+    """
+    Convert a CROCO surface output file to WW3-compatible netCDF files
+    for current and water level forcing.
+
+    Currents are regridded from u/v staggered grids to the rho grid and
+    rotated from grid-aligned to east/north components.
+    Water levels (zeta) are extracted directly from the rho grid.
+
+    Output files are formatted for ww3_prnc in ASIS mode (dimensions match
+    the model grid exactly, no spatial interpolation needed).
+
+    Parameters
+    ----------
+    fname : str
+        Path to a CROCO surface output file (e.g. croco_avg_surf_Y2016M01.nc).
+    grdname : str, optional
+        Path to the CROCO grid file. If None, grid info is read from fname.
+    dir_out : str
+        Output directory for the WW3-compatible files.
+    Yorig : int, optional
+        Reference year for CROCO time (seconds since Yorig-01-01).
+        Also used to set output time units: "days since {Yorig}-01-01 00:00:00".
+    """
+    import os
+
+    print('')
+    print(f'Running croco_srf_2_ww3() for {fname}')
+
+    # derive output file names from input filename
+    # robust way of getting the file extension, including CROCO child domains e.g. *.nc.2
+    basename = os.path.basename(fname)
+    match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
+    basename_no_extension = basename[:match.start()]
+    extension = match.group(0)
+    current_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_current' + extension))
+    level_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_level' + extension))
+
+    # extract u,v on rho grid, rotated to east/north components
+    ds_uv = get_uv(fname, grdname=grdname, Yorig=Yorig)
+
+    # extract water levels
+    ds_zeta = get_var(fname, 'zeta', grdname=grdname, Yorig=Yorig)
+
+    # convert datetime times to numerical values: days since Yorig-01-01
+    ref_date = datetime(Yorig, 1, 1) if Yorig is not None else datetime(2000, 1, 1)
+    time_units_str = f"days since {ref_date.strftime('%Y-%m-%d')} 00:00:00"
+
+    time_vals = ds_uv.time.values
+    time_days = (time_vals - np.datetime64(ref_date)) / np.timedelta64(1, 'D')
+
+    # round to nearest minute to avoid float precision issues
+    time_days = np.round(time_days * 1440.0) / 1440.0
+
+    # --- Write current file ---
+    print(f'  writing {current_out}')
+    ucur = ds_uv['u'].values.astype(np.float32)
+    vcur = ds_uv['v'].values.astype(np.float32)
+
+    # replace NaN with fill value
+    fill_value = np.float32(9999.0)
+    ucur = np.where(np.isnan(ucur), fill_value, ucur)
+    vcur = np.where(np.isnan(vcur), fill_value, vcur)
+
+    ds_cur_out = xr.Dataset(
+        {
+            'ucur': (['time', 'ny', 'nx'], ucur),
+            'vcur': (['time', 'ny', 'nx'], vcur),
+        },
+        coords={
+            'time': time_days,
+        }
+    )
+    ds_cur_out['time'].attrs['units'] = time_units_str
+    ds_cur_out['time'].attrs['calendar'] = 'standard'
+    ds_cur_out['ucur'].attrs['_FillValue'] = fill_value
+    ds_cur_out['ucur'].attrs['units'] = 'm/s'
+    ds_cur_out['ucur'].attrs['long_name'] = 'Eastward current velocity'
+    ds_cur_out['vcur'].attrs['_FillValue'] = fill_value
+    ds_cur_out['vcur'].attrs['units'] = 'm/s'
+    ds_cur_out['vcur'].attrs['long_name'] = 'Northward current velocity'
+
+    ds_cur_out.to_netcdf(current_out, unlimited_dims=['time'])
+    ds_cur_out.close()
+
+    # --- Write water level file ---
+    print(f'  writing {level_out}')
+    wlv = ds_zeta['zeta'].values.astype(np.float32)
+    wlv = np.where(np.isnan(wlv), fill_value, wlv)
+
+    ds_lev_out = xr.Dataset(
+        {
+            'wlv': (['time', 'ny', 'nx'], wlv),
+        },
+        coords={
+            'time': time_days,
+        }
+    )
+    ds_lev_out['time'].attrs['units'] = time_units_str
+    ds_lev_out['time'].attrs['calendar'] = 'standard'
+    ds_lev_out['wlv'].attrs['_FillValue'] = fill_value
+    ds_lev_out['wlv'].attrs['units'] = 'm'
+    ds_lev_out['wlv'].attrs['long_name'] = 'Sea surface height'
+
+    ds_lev_out.to_netcdf(level_out, unlimited_dims=['time'])
+    ds_lev_out.close()
+
+    ds_uv.close()
+    ds_zeta.close()
+
+    print(f'  done')
+
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
 #    Yorig=2000
 #    ds_temp = get_var(file, "temp", Yorig=Yorig)
-

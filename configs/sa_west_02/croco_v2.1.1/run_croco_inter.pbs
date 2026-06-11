@@ -312,8 +312,8 @@ while [ $NY != $NY_END ]; do
 	  $MV -f ${MODEL}_his.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_${TIME}.nc${ENDF}
 	  $MV -f ${MODEL}_rst.nc${ENDF} ${OUTPUTDIR}/${MODEL}_rst_${TIME}.nc${ENDF}
 	  $MV -f ${MODEL}_avg.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_${TIME}.nc${ENDF}
-	  $MV -f ${MODEL}_his_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_surf_${TIME}.nc${ENDF}
-	  $MV -f ${MODEL}_avg_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_surf_${TIME}.nc${ENDF}
+	  $MV -f ${MODEL}_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_surf_${TIME}.nc${ENDF}
+	  #$MV -f ${MODEL}_avg_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_surf_${TIME}.nc${ENDF}
           #$MV -f ${MODEL}_sta.nc${ENDF} ${OUTPUTDIR}/${MODEL}_sta_${TIME}.nc${ENDF}
       LEVEL=$((LEVEL + 1))
     done

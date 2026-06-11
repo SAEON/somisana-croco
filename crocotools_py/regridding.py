@@ -1,20 +1,50 @@
 import crocotools_py.postprocess as post
 import numpy as np
 import xarray as xr
-import os,sys
+import os,sys,shutil
 from datetime import datetime
 #import pandas as pd
 import matplotlib.path as mplPath
 from dask import delayed
 import dask.array as da
 from scipy.interpolate import griddata
+from scipy.spatial import Delaunay, cKDTree
 from glob import glob
 import subprocess
 import dask
 #import dask.array as da
 import re
 
-def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000,doi_link=None):
+# Known vector pairs in CROCO output (u-component, v-component)
+# When both components are in varList, get_uv() is used to extract and rotate them
+# When only one component is present, get_var() extracts it grid-aligned (no rotation)
+VECTOR_PAIRS = [
+    ('u', 'v'),
+    ('ubar', 'vbar'),
+    ('sustr', 'svstr'),
+    ('bustr', 'bvstr'),
+]
+
+def _partition_vars(varList):
+    """
+    Split varList into scalar variables and vector pairs.
+    Returns (scalars, pairs) where:
+      - scalars: list of variable names to extract with get_var()
+      - pairs: list of (var_u, var_v) tuples to extract with get_uv()
+    """
+    remaining = set(varList)
+    pairs = []
+    for var_u, var_v in VECTOR_PAIRS:
+        if var_u in remaining and var_v in remaining:
+            pairs.append((var_u, var_v))
+            remaining.discard(var_u)
+            remaining.discard(var_v)
+    # preserve original ordering for scalars
+    scalars = [v for v in varList if v in remaining]
+    return scalars, pairs
+
+def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
+                 varList=['temp','salt','u','v']):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -23,11 +53,15 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000,doi_link=None):
 
     Parameters
     ----------
-    fname_in  : path to input CROCO file(s). Can include wildcards *. (required = True) 
+    fname_in  : path to input CROCO file(s). Can include wildcards *. (required = True)
     dir_out   : path to output directory (required = True)
     grdname   : optional name of your croco grid file (only needed if the grid info is not in fname)
     Yorig     : Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01
     doi_link  : doi link in string (required = False)
+    varList   : list of variable names to extract (default=['temp','salt','u','v']).
+                If both components of a vector pair (e.g. u/v, ubar/vbar, sustr/svstr, bustr/bvstr)
+                are present, they are extracted together via get_uv() and rotated to east/north components.
+                If only one component is present, it is extracted via get_var() and remains grid-aligned.
     '''
     
     if type(fname_in) == str:
@@ -50,11 +84,13 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000,doi_link=None):
         print('Opening: ', file)
         print("Extracting the model output variables we need")
     
-        ds_temp = post.get_var(file, "temp", grdname=grdname, Yorig=Yorig)
-        ds_salt = post.get_var(file, "salt", grdname=grdname, Yorig=Yorig)
-        ds_uv   = post.get_uv(file, grdname=grdname, Yorig=Yorig)
-       
-        ds_all = xr.merge([ds_temp,ds_salt,ds_uv],compat='override')
+        scalars, pairs = _partition_vars(varList)
+        datasets = []
+        for var in scalars:
+            datasets.append(post.get_var(file, var, grdname=grdname, Yorig=Yorig))
+        for var_u, var_v in pairs:
+            datasets.append(post.get_uv(file, grdname=grdname, Yorig=Yorig, var_u=var_u, var_v=var_v))
+        ds_all = xr.merge(datasets, compat='override')
         
         ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier1 function"
         ds_all.attrs["source"] = file
@@ -63,23 +99,18 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000,doi_link=None):
         ds_all.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-        encoding = {
-                "zeta": {"dtype": "float32"},
-                "temp": {"dtype": "float32"},
-                "salt": {"dtype": "float32"},
-                "u": {"dtype": "float32"},
-                "v": {"dtype": "float32"},
-                "h": {"dtype": "float32"},
-                "mask": {"dtype": "float32"},
-                "lon_rho": {"dtype": "float32"},
-                "lat_rho": {"dtype": "float32"},
-                "time": {"units": f"seconds since {Yorig}-01-01 00:00:00",
-                         "calendar": "standard",
-                         "dtype": "i4"},
-                }
-        
-        if 'depth' in ds_all.variables: # allow for both cases where depth is or isn't in the dataset  (e.g. if a surface file is used)
+        # build encoding dynamically based on variables present in ds_all
+        encoding = {}
+        for var in ds_all.data_vars:
+            encoding[var] = {"dtype": "float32"}
+        for var in ['h', 'mask', 'lon_rho', 'lat_rho']:
+            if var in ds_all:
+                encoding[var] = {"dtype": "float32"}
+        if 'depth' in ds_all.variables:  # allow for both cases where depth is or isn't in the dataset (e.g. if a surface file is used)
             encoding['depth'] = {"dtype": "float32"}
+        encoding["time"] = {"units": f"seconds since {Yorig}-01-01 00:00:00",
+                            "calendar": "standard",
+                            "dtype": "i4"}
       
         # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
         basename = os.path.basename(file)
@@ -99,7 +130,9 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000,doi_link=None):
 
         print(f'Created: {fname_out}')
 
-def regrid_tier2(fname_in,dir_out, grdname=None, Yorig=2000, doi_link=None, depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000]):
+def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
+                 depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000],
+                 varList=['temp','salt','u','v']):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -115,6 +148,10 @@ def regrid_tier2(fname_in,dir_out, grdname=None, Yorig=2000, doi_link=None, dept
                 If not specified depth = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000].
                 A value of 0 denotes the surface and a value of -99999 denotes the bottom layer.
     doi_link  : doi link in string (required = False)
+    varList   : list of variable names to extract (default=['temp','salt','u','v']).
+                If both components of a vector pair (e.g. u/v, ubar/vbar, sustr/svstr, bustr/bvstr)
+                are present, they are extracted together via get_uv() and rotated to east/north components.
+                If only one component is present, it is extracted via get_var() and remains grid-aligned.
     '''
 
     if type(fname_in) == str:
@@ -130,18 +167,20 @@ def regrid_tier2(fname_in,dir_out, grdname=None, Yorig=2000, doi_link=None, dept
     else:
         print('Error: unkown input format. Input variable fname_in needs to be str or list.')
         sys.exit()
-   
+
     for file in fname_in:
         print('')
         print(f'Opening: {file}')
         print("Extracting the model output variables we need")
-    
-        ds_temp = post.get_var(file, "temp", grdname=grdname, Yorig=Yorig, level=depths)
-        ds_salt = post.get_var(file, "salt", grdname=grdname, Yorig=Yorig, level=depths)
-        ds_uv = post.get_uv(file, grdname=grdname, Yorig=Yorig, level=depths)
-        
-        ds_all = xr.merge([ds_temp,ds_salt,ds_uv],compat='override')
-        
+
+        scalars, pairs = _partition_vars(varList)
+        datasets = []
+        for var in scalars:
+            datasets.append(post.get_var(file, var, grdname=grdname, Yorig=Yorig, level=depths))
+        for var_u, var_v in pairs:
+            datasets.append(post.get_uv(file, grdname=grdname, Yorig=Yorig, level=depths, var_u=var_u, var_v=var_v))
+        ds_all = xr.merge(datasets, compat='override')
+
         ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier2 function"
         ds_all.attrs["source"] = file
         ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
@@ -150,62 +189,79 @@ def regrid_tier2(fname_in,dir_out, grdname=None, Yorig=2000, doi_link=None, dept
 
         if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-        encoding = {
-                "zeta": {"dtype": "float32"},
-                "temp": {"dtype": "float32"},
-                "salt": {"dtype": "float32"},
-                "u": {"dtype": "float32"},
-                "v": {"dtype": "float32"},
-                "depth": {"dtype": "float32"},
-                "h": {"dtype": "float32"},
-                "mask": {"dtype": "float32"},
-                "lon_rho": {"dtype": "float32"},
-                "lat_rho": {"dtype": "float32"},
-                "time": {"units": f"seconds since {Yorig}-01-01 00:00:00",
-                         "calendar": "standard",
-                         "dtype": "i4"},
-                }
+        # build encoding dynamically based on variables present in ds_all
+        encoding = {}
+        for var in ds_all.data_vars:
+            encoding[var] = {"dtype": "float32"}
+        for var in ['h', 'mask', 'lon_rho', 'lat_rho']:
+            if var in ds_all:
+                encoding[var] = {"dtype": "float32"}
+        if 'depth' in ds_all.variables:
+            encoding['depth'] = {"dtype": "float32"}
+        encoding["time"] = {"units": f"seconds since {Yorig}-01-01 00:00:00",
+                            "calendar": "standard",
+                            "dtype": "i4"}
 
         # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
         basename = os.path.basename(file)
         match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
         basename_no_extension = basename[:match.start()]
         extension = match.group(0)
-        
+
         fname_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_t2' + extension))
-        
+
         # If the file already exists, we remove it to avoid permission errors.
-        if os.path.exists(fname_out): os.remove(fname_out)        
+        if os.path.exists(fname_out): os.remove(fname_out)
         ds_all.to_netcdf(fname_out, encoding=encoding, mode="w")
-        
+
         subprocess.call(["chmod", "-R", "775", fname_out])
-        
+
         print(f'Created: {fname_out}')
 
-def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
+def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
+                 varList=['temp','salt','u','v'], output_format='netcdf',
+                 method='nearest'):
     '''
     tier 3 regridding of a CROCO output:
       -> takes the output of regrid-tier2 as input and
       -> regrids the horizontal grid to be regular with a specified grid spacing
-      -> output variables are the same as tier 1 and 2, 
+      -> output variables are the same as tier 1 and 2,
          only horizontal grid is now rectilinear with hz dimensions of longitude,latitude
          i.e. horizontal grid is no longer curvilinear
          the extents of the rectilinear grid are automatically determined using the curvilinear grid extents
-         
+
     Parameters
     ----------
     fname_in  : path to input tier 2 netcdf file (required = True)
     dir_out   : path to output directory (required = True)
     Yorig     : Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01
-    spacing   : constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output (type: str or float). 
+    spacing   : constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output (type: str or float).
                 If None, the default is 0.01.
     doi_link  : doi link in string (required = False)
+    varList   : list of variable names to interpolate (default=['temp','salt','u','v']).
+                Variables are read from the tier 2 input file and interpolated onto the regular grid.
+                3D variables (with a depth dimension) and 2D variables are handled automatically.
+    output_format : 'netcdf' (default) or 'zarr'.
+                When 'zarr', writes a compressed Zarr store (a directory) instead of a NetCDF file.
+                Zarr output uses Blosc/Zstd compression and chunking tuned for per-map access
+                (time=1, depth=1, full lat/lon plane per chunk) — well suited for web
+                visualisation pipelines that read one forecast time step at a time.
+                The output path is derived from the input by replacing '.nc' with '.zarr'
+                (e.g. 'croco_avg_t2.nc.2' -> 'croco_avg_t3.zarr.2').
+    method    : interpolation method passed to scipy.interpolate.griddata
+                (default='nearest'). Supported values: 'nearest', 'linear', 'cubic'.
 
-    CAREFUL! tier3 output is useful for website visualisation (it's intended use), 
-    but don't use it for reasearch/analysis as it's interpolated, so can be at a 
-    totally different resolution to the native CROCO grid 
+    CAREFUL! tier3 output is useful for website visualisation (it's intended use),
+    but don't use it for reasearch/analysis as it's interpolated, so can be at a
+    totally different resolution to the native CROCO grid
 
     '''
+
+    if output_format not in ('netcdf', 'zarr'):
+        raise ValueError(f"output_format must be 'netcdf' or 'zarr', got '{output_format}'")
+
+    if method not in ('nearest', 'linear', 'cubic'):
+        raise ValueError(f"method must be 'nearest', 'linear' or 'cubic', got '{method}'")
 
     if type(fname_in) == str:
         if fname_in.find('*') < 0:
@@ -227,10 +283,16 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
         print("Extracting the tier 2 re-gridded model output")
 
         ds = xr.open_dataset(file)
-        Nt, Nz = np.shape(ds.temp[:,:,0,0].values)
+        Nt = ds.time.size
+        has_depth = 'depth' in ds.dims
+        Nz = ds.depth.size if has_depth else 0
         lon_rho_1d = np.ravel(ds.lon_rho.values)
         lat_rho_1d = np.ravel(ds.lat_rho.values)
-        
+
+        # classify variables as 2D or 3D based on whether they have a depth dimension
+        vars_3d = [v for v in varList if v in ds and 'depth' in ds[v].dims]
+        vars_2d = [v for v in varList if v in ds and 'depth' not in ds[v].dims]
+
         print("Generating the regular horizontal output grid")
         # input for griddata function later
         lonlat_input = np.array([lon_rho_1d, lat_rho_1d]).T
@@ -264,54 +326,67 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
 
         # get a mask for the output grid which tells us which points are inside the CROCO model grid
         poly_boundary = mplPath.Path(np.array([lon_boundary, lat_boundary]).T)
-        mask_out = np.zeros_like(lon_out_grd)
-        for y in np.arange(Nlat):
-            for x in np.arange(Nlon):
-                if poly_boundary.contains_point((lon_out_grd[y, x], lat_out_grd[y, x])):
-                    mask_out[y, x] = 1
-                else:
-                    mask_out[y, x] = 0
-        
+        xi_flat = np.column_stack([np.asarray(lon_out_grd).ravel(),
+                                   np.asarray(lat_out_grd).ravel()])
+        mask_out = poly_boundary.contains_points(xi_flat).reshape(Nlat, Nlon).astype(float)
+
+        # Precompute the spatial interpolation structure ONCE. The source mesh
+        # (lonlat_input) and the output points (xi_flat) are identical for every
+        # (time, depth, variable) tile, so the expensive triangulation/KDTree
+        # build and the per-output-point simplex/neighbor lookup are hoisted
+        # out of the per-chunk hot loop. Each compute_*_chunk call collapses
+        # to a fancy-indexed gather + (for linear) weighted sum.
+        if method == 'linear':
+            print("Precomputing Delaunay triangulation and barycentric weights")
+            tri = Delaunay(lonlat_input)
+            simplex = tri.find_simplex(xi_flat)             # (Nout,), -1 outside hull
+            valid = simplex >= 0
+            safe_simplex = np.where(valid, simplex, 0)
+            vtx = tri.simplices[safe_simplex]               # (Nout, 3)
+            T = tri.transform[safe_simplex]                 # (Nout, 3, 2)
+            delta = xi_flat - T[:, 2, :]                    # (Nout, 2)
+            bary = np.einsum('nij,nj->ni', T[:, :2, :], delta)
+            weights = np.column_stack([bary, 1.0 - bary.sum(axis=1)])  # (Nout, 3)
+            weights[~valid] = 0.0
+            valid_2d = valid.reshape(Nlat, Nlon)
+
+            def _interp_field(values_flat):
+                gathered = values_flat[vtx]                  # (Nout, 3)
+                out = np.einsum('ni,ni->n', gathered, weights).reshape(Nlat, Nlon)
+                out = np.where(valid_2d, out, np.nan)
+                return out * mask_out / mask_out
+        elif method == 'nearest':
+            print("Precomputing nearest-neighbour index")
+            kd = cKDTree(lonlat_input)
+            _, nn_idx = kd.query(xi_flat, k=1)               # (Nout,)
+
+            def _interp_field(values_flat):
+                out = values_flat[nn_idx].reshape(Nlat, Nlon)
+                return out * mask_out / mask_out
+        else:
+            # cubic: scipy has no clean precomputed form, fall back to per-call griddata
+            def _interp_field(values_flat):
+                out = griddata(lonlat_input, values_flat,
+                               (lon_out_grd, lat_out_grd), method)
+                return out * mask_out / mask_out
+
         print("Interpolating the model output onto the regular horizontal output grid")
 
         @delayed
-        def compute_2d_chunk(t, variable, method="nearest"):
-            return (
-                griddata(
-                    lonlat_input,
-                    np.ravel(variable[t, ::]),
-                    (lon_out_grd, lat_out_grd),
-                    method,
-                )
-                * mask_out / mask_out
-            )
-    
-        @delayed
-        def compute_3d_chunk(t, variable, n, method="nearest"):
-            return (
-                griddata(
-                    lonlat_input,
-                    np.ravel(variable[t, n, ::]),
-                    (lon_out_grd, lat_out_grd),
-                    method,
-                )
-                * mask_out / mask_out
-            )
+        def compute_2d_chunk(t, variable):
+            return _interp_field(np.ravel(variable[t, ::]))
 
-        # Separate lists for each time step
+        @delayed
+        def compute_3d_chunk(t, variable, n):
+            return _interp_field(np.ravel(variable[t, n, ::]))
+
+        # zeta is always interpolated as a grid variable
         zeta_out = []
-        temp_out_time = []
-        salt_out_time = []
-        u_out_time = []
-        v_out_time = []
+        # dicts to accumulate dask arrays per variable
+        out_2d_time = {v: [] for v in vars_2d}
+        out_3d_time = {v: [] for v in vars_3d}
 
         for t in np.arange(Nt):
-            # Lists for each depth level
-            temp_out_depth = []
-            salt_out_depth = []
-            u_out_depth = []
-            v_out_depth = []
-
             zeta_out.append(
                 da.from_delayed(
                     compute_2d_chunk(t, ds.zeta.values),
@@ -320,103 +395,85 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
                 )
             )
 
-            for n in np.arange(Nz):
-                temp_out_depth.append(
+            for v in vars_2d:
+                out_2d_time[v].append(
                     da.from_delayed(
-                        compute_3d_chunk(t, ds.temp.values, n),
+                        compute_2d_chunk(t, ds[v].values),
                         shape=(Nlat, Nlon),
                         dtype=float,
                     )
                 )
-                salt_out_depth.append(
-                    da.from_delayed(
-                        compute_3d_chunk(t, ds.salt.values, n),
-                        shape=(Nlat, Nlon),
-                        dtype=float,
-                    )
-                )
-                u_out_depth.append(
-                    da.from_delayed(
-                        compute_3d_chunk(t, ds.u.values, n),
-                        shape=(Nlat, Nlon),
-                        dtype=float,
-                    )
-                )
-                v_out_depth.append(
-                    da.from_delayed(
-                        compute_3d_chunk(t, ds.v.values, n),
-                        shape=(Nlat, Nlon),
-                        dtype=float,
-                    )
-                )
-        
-            # Stack the depth dimension and append to the time list
-            temp_out_time.append(da.stack(temp_out_depth, axis=0))
-            salt_out_time.append(da.stack(salt_out_depth, axis=0))
-            u_out_time.append(da.stack(u_out_depth, axis=0))
-            v_out_time.append(da.stack(v_out_depth, axis=0))
-    
+
+            if vars_3d:
+                out_3d_depth = {v: [] for v in vars_3d}
+                for n in np.arange(Nz):
+                    for v in vars_3d:
+                        out_3d_depth[v].append(
+                            da.from_delayed(
+                                compute_3d_chunk(t, ds[v].values, n),
+                                shape=(Nlat, Nlon),
+                                dtype=float,
+                            )
+                        )
+                # Stack the depth dimension and append to the time list
+                for v in vars_3d:
+                    out_3d_time[v].append(da.stack(out_3d_depth[v], axis=0))
+
         # Stack the time dimension
         zeta_out = da.stack(zeta_out, axis=0)
-        temp_out = da.stack(temp_out_time, axis=0)
-        salt_out = da.stack(salt_out_time, axis=0)
-        u_out = da.stack(u_out_time, axis=0)
-        v_out = da.stack(v_out_time, axis=0)
-        
-        # Create new xarray dataset with selected variables
+        for v in vars_2d:
+            out_2d_time[v] = da.stack(out_2d_time[v], axis=0)
+        for v in vars_3d:
+            out_3d_time[v] = da.stack(out_3d_time[v], axis=0)
+
+        # Create new xarray dataset
         print("Generating dataset")
-        data_out = xr.Dataset(
-            data_vars={
-                "zeta": xr.Variable(
-                    ["time", "latitude", "longitude"],
-                    zeta_out,
-                    ds.zeta.attrs,
-                ),
-                "temp": xr.Variable(
-                    ["time", "depth", "latitude", "longitude"],
-                    temp_out,
-                    ds.temp.attrs,
-                ),
-                "salt": xr.Variable(
-                    ["time", "depth", "latitude", "longitude"],
-                    salt_out,
-                    ds.salt.attrs,
-                ),
-                "u": xr.Variable(
-                    ["time", "depth", "latitude", "longitude"],
-                    u_out,
-                    ds.u.attrs,
-                ),
-                "v": xr.Variable(
-                    ["time", "depth", "latitude", "longitude"],
-                    v_out,
-                    ds.v.attrs,
-                ),
-            },
-            coords={
-                "longitude": xr.Variable(
-                    ["longitude"],
-                    lon_out,
-                    ds.lon_rho.attrs,
-                ),
-                "latitude": xr.Variable(
-                    ["latitude"],
-                    lat_out,
-                    ds.lat_rho.attrs,
-                ),
-                "time": xr.Variable(
-                    ["time"],
-                    ds.time.values,
-                    ds.time.attrs,
-                ),
-                "depth": xr.Variable(
-                    ["depth"],
-                    ds.depth.values,
-                    ds.depth.attrs,
-                ),
-            },
-        )
-        
+        data_vars = {
+            "zeta": xr.Variable(
+                ["time", "latitude", "longitude"],
+                zeta_out,
+                ds.zeta.attrs,
+            ),
+        }
+        for v in vars_2d:
+            data_vars[v] = xr.Variable(
+                ["time", "latitude", "longitude"],
+                out_2d_time[v],
+                ds[v].attrs,
+            )
+        for v in vars_3d:
+            data_vars[v] = xr.Variable(
+                ["time", "depth", "latitude", "longitude"],
+                out_3d_time[v],
+                ds[v].attrs,
+            )
+
+        coords = {
+            "longitude": xr.Variable(
+                ["longitude"],
+                lon_out,
+                ds.lon_rho.attrs,
+            ),
+            "latitude": xr.Variable(
+                ["latitude"],
+                lat_out,
+                ds.lat_rho.attrs,
+            ),
+            "time": xr.Variable(
+                ["time"],
+                ds.time.values,
+                ds.time.attrs,
+            ),
+        }
+        if has_depth:
+            coords["depth"] = xr.Variable(
+                ["depth"],
+                ds.depth.values,
+                ds.depth.attrs,
+            )
+
+        data_out = xr.Dataset(data_vars=data_vars, coords=coords)
+
         data_out.attrs["title"] = "Regridded CROCO output created by the regrid_tier3 function"
         data_out.attrs["source"] = file
         data_out.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
@@ -424,24 +481,42 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
         data_out.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
         if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
 
-        # Explicitly set chunk sizes of some dimensions
-        chunksizes = {
-            "time": ds.time.size,
-            "depth": 1,
-        }
+        # Explicitly set chunk sizes of some dimensions.
+        # NetCDF default: time=full, depth=1 (good for point-timeseries analysis).
+        # Zarr default:   time=1,    depth=1 (good for reading one map at a time,
+        #                 e.g. web visualisation pipelines).
+        chunksizes = {}
+        if output_format == 'zarr':
+            chunksizes["time"] = 1
+        else:
+            chunksizes["time"] = ds.time.size
+        if has_depth:
+            chunksizes["depth"] = 1
 
         # For data_vars, set chunk sizes for each dimension
         # This is either the override specified in "chunksizes"
         # or the length of the dimension
         default_chunksizes = {dim: len(data_out[dim]) for dim in data_out.dims}
 
-        encoding = {
-            var: {
-                "dtype": "float32", 
-                "chunksizes": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims]
+        if output_format == 'zarr':
+            from numcodecs import Blosc
+            compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.SHUFFLE)
+            encoding = {
+                var: {
+                    "dtype": "float32",
+                    "chunks": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims],
+                    "compressor": compressor,
+                }
+                for var in data_out.data_vars
             }
-            for var in data_out.data_vars
-        }
+        else:
+            encoding = {
+                var: {
+                    "dtype": "float32",
+                    "chunksizes": [chunksizes.get(dim, default_chunksizes[dim]) for dim in data_out[var].dims]
+                }
+                for var in data_out.data_vars
+            }
 
         # Adjust for non-chunked variables
         encoding["time"] = {"units": f"seconds since {Yorig}-01-01 00:00:00",
@@ -449,30 +524,49 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01):
                             "dtype": "i4"}
         encoding['latitude'] = {"dtype": "float32"}
         encoding['longitude'] = {"dtype": "float32"}
-        encoding['depth'] = {"dtype": "float32"}
-        
+        if has_depth:
+            encoding['depth'] = {"dtype": "float32"}
+
         # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
         basename = os.path.basename(file)
         match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
         basename_no_extension = basename[:match.start()]
         extension = match.group(0)
         basename_no_extension = basename_no_extension.replace('_t2', '_t3')
-        
+        if output_format == 'zarr':
+            # e.g. '.nc' -> '.zarr', '.nc.2' -> '.zarr.2'
+            extension = extension.replace('.nc', '.zarr')
+
         fname_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + extension))
-        
-        # If the file already exists, we remove it to avoid permission errors.
-        if os.path.exists(fname_out): os.remove(fname_out)        
-        
-        print("Generating NetCDF data")
-        write_op = data_out.to_netcdf(
-                fname_out,
-                encoding=encoding,
-                mode="w",
-                compute=False,
-                )
-        
-        print("Writing NetCDF file")
-        dask.compute(write_op)
+
+        # If the output already exists, we remove it to avoid permission errors.
+        # Zarr is a directory; NetCDF is a single file.
+        if os.path.exists(fname_out):
+            if output_format == 'zarr':
+                shutil.rmtree(fname_out)
+            else:
+                os.remove(fname_out)
+
+        if output_format == 'zarr':
+            print("Generating Zarr store")
+            write_op = data_out.to_zarr(
+                    fname_out,
+                    encoding=encoding,
+                    mode="w",
+                    compute=False,
+                    )
+            print("Writing Zarr store")
+            dask.compute(write_op)
+        else:
+            print("Generating NetCDF data")
+            write_op = data_out.to_netcdf(
+                    fname_out,
+                    encoding=encoding,
+                    mode="w",
+                    compute=False,
+                    )
+            print("Writing NetCDF file")
+            dask.compute(write_op)
 
         subprocess.call(["chmod", "-R", "775", fname_out])
         print(f'Created: {fname_out}')
