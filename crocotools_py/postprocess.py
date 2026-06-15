@@ -434,13 +434,22 @@ def hlev(var,z,depth):
 def get_ds(fname,var_str='h'):
     '''
     flexible method to get the xarray dataset for either a
-    single or multiple CROCO files 
+    single or multiple CROCO files
+
+    fname can be:
+        - a single filename (string)
+        - a glob pattern (string containing '*', '?' or '[')
+        - an explicit list/tuple of filenames
     '''
-    if ('*' in fname) or ('?' in fname) or ('[' in fname):
+    # fname is "multi-file" if it's an explicit list/tuple of files, or a
+    # glob pattern string. open_mfdataset() accepts both forms directly.
+    is_list = isinstance(fname, (list, tuple))
+    is_glob = isinstance(fname, str) and (('*' in fname) or ('?' in fname) or ('[' in fname))
+    if is_list or is_glob:
         # this approach borrowed from OpenDrift's reader_ROMS_native.py
-        # our essential vars are the 'var_str' (obviously) plus some other 
+        # our essential vars are the 'var_str' (obviously) plus some other
         # static vars we need to keep:
-        static_vars=['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w', 
+        static_vars=['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w',
                         'hc', 'angle', 'h', 'f', 'pn', 'pm',
                         'Vtransform','theta_s','theta_b',
                         'lon_rho', 'lat_rho', 'mask_rho',
@@ -450,7 +459,7 @@ def get_ds(fname,var_str='h'):
             # No need for open_mfdataset, which can be slower.
             # This is here just in case you want to use get_var() and not
             # have to change fname just to read a static variable
-            fname=glob(fname)[0]
+            fname = fname[0] if is_list else glob(fname)[0]
             ds = xr.open_dataset(fname, decode_times=False)
         else:
             # let's use open_mfdataset, but drop non-essential vars
@@ -531,9 +540,11 @@ def get_grd_var(fname,var_str,
     if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
-        # for effeciency we shouldn't use open_mfdataset for this function 
+        # for effeciency we shouldn't use open_mfdataset for this function
         # only use the first file
-        if ('*' in fname) or ('?' in fname) or ('[' in fname):
+        if isinstance(fname, (list, tuple)):
+            fname=fname[0]
+        elif ('*' in fname) or ('?' in fname) or ('[' in fname):
             fname=glob(fname)[0]
         ds = get_ds(fname)
     
