@@ -22,7 +22,7 @@ class getdata():
 
         xr_list_ssh=[]
         for inpt in inputfile:
-            xr_list_ssh+=[xr.open_dataset(inpt)]
+            xr_list_ssh+=[xr.open_dataset(inpt, chunks={})]
         dataxr_ssh=xr.concat(xr_list_ssh,dim='ntides',data_vars='different')
         
         self.ncglo={'ssh_part1':eval(''.join(("dataxr_ssh."+self.var['H_'+part1_suf]))),\
@@ -34,10 +34,10 @@ class getdata():
             xr_list_u=[]
             xr_list_v=[]
             for inpt in currentu:
-                xr_list_u+=[xr.open_dataset(inpt)]
+                xr_list_u+=[xr.open_dataset(inpt, chunks={})]
             dataxr_u=xr.concat(xr_list_u,dim='ntides',data_vars='different')
             for inpt in currentv:
-                xr_list_v+=[xr.open_dataset(inpt)]
+                xr_list_v+=[xr.open_dataset(inpt, chunks={})]
             dataxr_v=xr.concat(xr_list_v,dim='ntides',data_vars='different')
      
             self.ncglo['u_part1']=eval(''.join(("dataxr_u."+self.var['U_'+part1_suf])))
@@ -157,14 +157,14 @@ class getdata():
        
         # Checking that var in format [ntides,lat,lon] 
         for key in self.ncglo:
-            if 'u' in self.ncglo[key]:
+            if 'u' in key:
                 nx=eval(''.join(("dataxr_u."+self.var['lonu']))).shape[0]
                 ny=eval(''.join(("dataxr_u."+self.var['latu']))).shape[-1]
                 if (self.ncglo[key][:].shape[1] != ny and self.ncglo[key][:].shape[2] != nx ) and (self.ncglo[key][:].shape[1] == nx and self.ncglo[key][:].shape[2] == ny):
                     print('%s in format [ntides,Lon,Lat], switching Lon/Lat axes' % key)
                     dim=self.ncglo[key].dims
                     self.ncglo[key]=self.ncglo[key].transpose(dim[0],dim[2],dim[1])
-            elif 'v' in self.ncglo[key]:
+            elif 'v' in key:
                 nx=eval(''.join(("dataxr_v."+self.var['lonv']))).shape[0]
                 ny=eval(''.join(("dataxr_v."+self.var['latv']))).shape[-1]
                 if (self.ncglo[key][:].shape[1] != ny and self.ncglo[key][:].shape[2] != nx ) and (self.ncglo[key][:].shape[1] == nx and self.ncglo[key][:].shape[2] == ny):
