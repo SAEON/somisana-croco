@@ -1,10 +1,13 @@
 #!/bin/bash
 
+# Configurable date 
+CYCLE_DATE="20260701_00"
+
 # Path to the python CLI script in my repo
 CLI_PATH="/home/philile/somisana-croco/cli.py"
 
 # Path to the latest forecast temperature data
-TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/20260529_00/MERCATOR-GFS/croco_avg.nc"
+TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/${CYCLE_DATE}/MERCATOR-GFS/croco_avg.nc"
 
 # Path to the pre-built 4D climatology file
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
@@ -20,7 +23,7 @@ YORIG=2000
 BATCH_SIZE=5
 
 # --- Execution ---
-echo "Starting Marine Heatwave and Marine coldspell detection for forecast data..."
+echo "Starting Marine Heatwave and Marine coldspell detection for ${CYCLE_DATE} forecast"
 
 python3 "$CLI_PATH" detect_mhw_forecast \
     --temp_file "$TEMP_FILE" \
