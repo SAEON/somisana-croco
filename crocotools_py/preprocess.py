@@ -1071,12 +1071,20 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
     file_paths = sorted(glob.glob(gfs_files))
     
     def open_grib_file(file_path,var_dict):
+        # Select the grib message by paramId when provided (paramId is stable across
+        # eccodes versions), otherwise by shortName. Newer eccodes releases renamed the
+        # surface radiation fluxes dswrf/uswrf/dlwrf/ulwrf -> sdswrf/suswrf/sdlwrf/sulwrf,
+        # but their paramIds (260087/260088/260097/260098) are unchanged, so matching on
+        # paramId makes the reformat robust to the eccodes version in the environment.
+        if 'paramId' in var_dict:
+            key = {'paramId': var_dict['paramId']}
+        else:
+            key = {'shortName': var_dict['shortName']}
+        key['stepType'] = var_dict['stepType']
         return xr.open_dataarray(
             file_path,
             engine='cfgrib',
-            filter_by_keys={'shortName': var_dict['shortName'],
-                            'stepType': var_dict['stepType'],
-                            })
+            filter_by_keys=key)
 
     # (you can see the vars in the files using e.g.
     # grib_ls -P shortName,typeOfLevel,level 2024080106_f001.grb)
@@ -1095,19 +1103,19 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
                 "stepType": "instant",
             },
             "Downward_Short-Wave_Rad_Flux_surface": {
-                "shortName": "dswrf",
+                "paramId": 260087,  # dswrf (older eccodes) / sdswrf (newer eccodes)
                 "stepType": "avg",
             },
             "Upward_Short-Wave_Rad_Flux_surface": {
-                "shortName": "uswrf",
+                "paramId": 260088,  # uswrf / suswrf
                 "stepType": "avg",
             },
             "Downward_Long-Wave_Rad_Flux": {
-                "shortName": "dlwrf",
+                "paramId": 260097,  # dlwrf / sdlwrf
                 "stepType": "avg",
             },
             "Upward_Long-Wave_Rad_Flux_surface": {
-                "shortName": "ulwrf",
+                "paramId": 260098,  # ulwrf / sulwrf
                 "stepType": "avg",
             },
             "U-component_of_wind": {
