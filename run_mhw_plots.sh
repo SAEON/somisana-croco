@@ -12,7 +12,7 @@ CAT_FILE="/mnt/ocims-somisana/somisana-sandbox/users/philile/sa-west/v1.0/foreca
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
 
 # Output directory for the images and GIFs
-OUT_DIR="/mnt/ocims-somisana/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
+OUT_DIR="/mnt/ocims-somisana/somisana-sandbox/users/philile/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
 
 BASE_DATE="${CYCLE_DATE:0:4}-${CYCLE_DATE:4:2}-${CYCLE_DATE:6:2}"
 
