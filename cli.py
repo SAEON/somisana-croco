@@ -343,7 +343,6 @@ def main():
     parser_detect_mhw.add_argument('--clim_file', required=True, type=str, help='Path to the pre-built dayofyear Climatology NetCDF.')
     parser_detect_mhw.add_argument('--thresh_file', required=True, type=str, help='Path to the pre-built dayofyear Thresholds NetCDF.')
     parser_detect_mhw.add_argument('--fname_out', required=True, type=str, help='Full path and filename for the output NetCDF file.')
-    parser_detect_mhw.add_argument('--fname_out', required=True, type=str, help='Full path and filename for the output NetCDF file.')
     parser_detect_mhw.add_argument('--temp_var', required=False, type=str, default='temp', help='Name of the temperature variable.')
     parser_detect_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000, help='Reference year for the CROCO time axis.')
     parser_detect_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5, help='Number of eta_rho rows processed at once.')
