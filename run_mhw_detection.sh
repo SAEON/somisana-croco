@@ -11,6 +11,7 @@ TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/${CYCLE_DATE
 
 # Path to the pre-built 4D climatology file
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
+THRESH_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcast/GLORYS-ERA5/climatology/day_of_year_thresholds.nc"
 
 # Output path for the detected categories
 OUTPUT_DIR="/mnt/ocims-somisana/somisana-sandbox/users/philile/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
@@ -28,6 +29,7 @@ echo "Starting Marine Heatwave and Marine coldspell detection for ${CYCLE_DATE} 
 python3 "$CLI_PATH" detect_mhw_forecast \
     --temp_file "$TEMP_FILE" \
     --clim_file "$CLIM_FILE" \
+    --thresh_file "$THRESH_FILE" \
     --fname_out "$OUTPUT_FILE" \
     --temp_var "temp" \
     --Yorig "$YORIG" \

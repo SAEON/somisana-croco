@@ -984,13 +984,22 @@ def animate_surface_fronts(cat_ds, lat, lon, out_path):
     
 
 # Master Wrapper Function ---
-def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, out_dir, start_date, end_date, Yorig=2000):
+def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, Yorig=2000):
     """
     Operational entry point to run time series, flag maps, and GIF animations.
     """
-    print("\n=== Rendering Operational MHW/MCS Visuals ===")
+    print("Rendering Operational MHW/MCS Visuals")
     out_dir = Path(out_dir)
-    ds_clim = xr.open_dataset(clim_file)
+    ds_clim_raw = xr.open_dataset(clim_file)
+    ds_thresh_raw = xr.open_dataset(thresh_file)
+    ds_clim = xr.merge([ds_clim_raw, ds_thresh_raw])
+    
+    if 'dayofyear' in ds_clim.dims:
+        ds_clim = ds_clim.rename_dims({'dayofyear': 'day_of_year'})
+    if 'dayofyear' in ds_clim.coords:
+        ds_clim = ds_clim.rename({'dayofyear': 'day_of_year'})
+    if 'temp' in ds_clim.data_vars and 'climatology' not in ds_clim.data_vars:
+        ds_clim = ds_clim.rename({'temp': 'climatology'})
     ds_cat  = xr.open_dataset(cat_file)
     ds_fcst = post.handle_time(post.get_ds(forecast_file, "temp"), Yorig=Yorig)
     

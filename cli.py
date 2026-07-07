@@ -341,6 +341,8 @@ def main():
             '+1..+4 = MHW, 0 = no event, -1..-4 = MCS.'))
     parser_detect_mhw.add_argument('--temp_file', required=True, type=str, help='Path to the CROCO forecast temperature file.')
     parser_detect_mhw.add_argument('--clim_file', required=True, type=str, help='Path to the pre-built dayofyear Climatology NetCDF.')
+    parser_detect_mhw.add_argument('--thresh_file', required=True, type=str, help='Path to the pre-built dayofyear Thresholds NetCDF.')
+    parser_detect_mhw.add_argument('--fname_out', required=True, type=str, help='Full path and filename for the output NetCDF file.')
     parser_detect_mhw.add_argument('--fname_out', required=True, type=str, help='Full path and filename for the output NetCDF file.')
     parser_detect_mhw.add_argument('--temp_var', required=False, type=str, default='temp', help='Name of the temperature variable.')
     parser_detect_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000, help='Reference year for the CROCO time axis.')
@@ -350,6 +352,8 @@ def main():
     parser_plot_mhw.add_argument('--forecast_file', required=True, type=str)
     parser_plot_mhw.add_argument('--cat_file', required=True, type=str)
     parser_plot_mhw.add_argument('--clim_file', required=True, type=str)
+    parser_plot_mhw.add_argument('--thresh_file', required=True, type=str)
+    parser_plot_mhw.add_argument('--out_dir', required=True, type=str)
     parser_plot_mhw.add_argument('--out_dir', required=True, type=str)
     parser_plot_mhw.add_argument('--start_date', required=True, type=str)
     parser_plot_mhw.add_argument('--end_date', required=True, type=str)
@@ -357,7 +361,7 @@ def main():
     
     def plot_mhw_forecast_handler(args):
         from crocotools_py.plotting import plot_operational_mhw_mcs
-        plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file, args.out_dir, args.start_date, args.end_date, args.Yorig)
+        plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file, args.thresh_file, args.out_dir, args.start_date, args.end_date, args.Yorig)
     parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
 
     def detect_mhw_forecast_handler(args):
@@ -375,7 +379,11 @@ def main():
         out_file.parent.mkdir(parents=True, exist_ok=True)
  
         print(f'Opening climatology: {args.clim_file}')
-        ds_clim = xr.open_dataset(args.clim_file)
+        ds_clim_raw = xr.open_dataset(args.clim_file)
+        print(f'Opening thresholds: {args.thresh_file}')
+        ds_thresh_raw = xr.open_dataset(args.thresh_file)
+        
+        ds_clim = xr.merge([ds_clim_raw, ds_thresh_raw])
         
         # --- Compatibility Layer for New Schema Configuration ---
         if 'dayofyear' in ds_clim.dims:
