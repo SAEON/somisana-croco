@@ -11,7 +11,7 @@ TEMP_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/${CYCLE_DATE
 
 # Path to the pre-built 4D climatology file
 CLIM_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc"
-THRESH_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcast/GLORYS-ERA5/climatology/day_of_year_thresholds.nc"
+THRESH_FILE="/mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_thresholds.nc"
 
 # Output path for the detected categories
 OUTPUT_DIR="/mnt/ocims-somisana/somisana-sandbox/users/philile/sa-west/v1.0/forecasts/latest/MERCATOR-GFS"
