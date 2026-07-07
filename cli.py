@@ -353,7 +353,6 @@ def main():
     parser_plot_mhw.add_argument('--clim_file', required=True, type=str)
     parser_plot_mhw.add_argument('--thresh_file', required=True, type=str)
     parser_plot_mhw.add_argument('--out_dir', required=True, type=str)
-    parser_plot_mhw.add_argument('--out_dir', required=True, type=str)
     parser_plot_mhw.add_argument('--start_date', required=True, type=str)
     parser_plot_mhw.add_argument('--end_date', required=True, type=str)
     parser_plot_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000)
