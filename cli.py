@@ -377,20 +377,37 @@ def main():
         out_file.parent.mkdir(parents=True, exist_ok=True)
  
         print(f'Opening climatology: {args.clim_file}')
-        ds_clim_raw = xr.open_dataset(args.clim_file)
+        ds_clim_raw = xr.open_dataset(args.clim_file, chunks={})
         print(f'Opening thresholds: {args.thresh_file}')
-        ds_thresh_raw = xr.open_dataset(args.thresh_file)
+        ds_thresh_raw = xr.open_dataset(args.thresh_file, chunks={})
         
-        ds_clim = xr.merge([ds_clim_raw, ds_thresh_raw])
+        ds_clim = xr.Dataset()
         
         # --- Compatibility Layer for New Schema Configuration ---
-        if 'dayofyear' in ds_clim.dims:
-            ds_clim = ds_clim.rename_dims({'dayofyear': 'day_of_year'})
-        if 'dayofyear' in ds_clim.coords:
-            ds_clim = ds_clim.rename({'dayofyear': 'day_of_year'})
-        if 'temp' in ds_clim.data_vars and 'climatology' not in ds_clim.data_vars:
-            ds_clim = ds_clim.rename({'temp': 'climatology'})
+        if 'dayofyear' in ds_clim_raw.dims:
+            ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+        if 'dayofyear' in ds_thresh_raw.dims:
+            ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
             
+            
+        if 'temp' in ds_clim_raw.data_vars:
+            ds_clim['climatology'] = ds_clim_raw['temp']
+        elif 'climatology' in ds_clim_raw.data_vars:
+            ds_clim['climatology'] = ds_clim_raw['climatology']
+
+        if 'zeta' in ds_clim_raw.data_vars:
+            ds_clim['zeta'] = ds_clim_raw['zeta']
+
+        if 'threshold_90' in ds_thresh_raw.data_vars:
+            ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
+        if 'threshold_10' in ds_thresh_raw.data_vars:
+            ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
+
+        # Map coordinates over cleanly
+        for v in ['lon_rho', 'lat_rho', 'day_of_year']:
+            if v in ds_clim_raw.coords:
+                ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
+
         num_levels = ds_clim.sizes['s_rho']
         n_eta      = ds_clim.sizes['eta_rho']
         n_xi       = ds_clim.sizes['xi_rho']

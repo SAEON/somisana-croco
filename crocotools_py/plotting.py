@@ -988,21 +988,41 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
     """
     Operational entry point to run time series, flag maps, and GIF animations.
     """
-    print("Rendering Operational MHW/MCS Visuals")
+    print("\n=== Rendering Operational MHW/MCS Visuals ===")
     out_dir = Path(out_dir)
-    ds_clim_raw = xr.open_dataset(clim_file)
-    ds_thresh_raw = xr.open_dataset(thresh_file)
-    ds_clim = xr.merge([ds_clim_raw, ds_thresh_raw])
     
-    if 'dayofyear' in ds_clim.dims:
-        ds_clim = ds_clim.rename_dims({'dayofyear': 'day_of_year'})
-    if 'dayofyear' in ds_clim.coords:
-        ds_clim = ds_clim.rename({'dayofyear': 'day_of_year'})
-    if 'temp' in ds_clim.data_vars and 'climatology' not in ds_clim.data_vars:
-        ds_clim = ds_clim.rename({'temp': 'climatology'})
+    print(f"Opening climatology dataset (lazy): {clim_file}")
+    ds_clim_raw = xr.open_dataset(clim_file, chunks={})
+    print(f"Opening thresholds dataset (lazy): {thresh_file}")
+    ds_thresh_raw = xr.open_dataset(thresh_file, chunks={})
+    
+    ds_clim = xr.Dataset()
+
+    if 'dayofyear' in ds_clim_raw.dims:
+        ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+    if 'dayofyear' in ds_thresh_raw.dims:
+        ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+
+    if 'temp' in ds_clim_raw.data_vars:
+        ds_clim['climatology'] = ds_clim_raw['temp']
+    elif 'climatology' in ds_clim_raw.data_vars:
+        ds_clim['climatology'] = ds_clim_raw['climatology']
+        
+    if 'zeta' in ds_clim_raw.data_vars:
+        ds_clim['zeta'] = ds_clim_raw['zeta']
+        
+    if 'threshold_90' in ds_thresh_raw.data_vars:
+        ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
+    if 'threshold_10' in ds_thresh_raw.data_vars:
+        ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
+        
+    for v in ['lon_rho', 'lat_rho', 'day_of_year']:
+        if v in ds_clim_raw.coords:
+            ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
+
     ds_cat  = xr.open_dataset(cat_file)
     ds_fcst = post.handle_time(post.get_ds(forecast_file, "temp"), Yorig=Yorig)
-    
+
     lat = ds_fcst.lat_rho.values if "lat_rho" in ds_fcst else ds_fcst.lat.values
     lon = ds_fcst.lon_rho.values if "lon_rho" in ds_fcst else ds_fcst.lon.values
     if lat.ndim > 2: lat, lon = lat[0], lon[0]
