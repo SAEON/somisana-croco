@@ -377,9 +377,11 @@ def main():
         out_file.parent.mkdir(parents=True, exist_ok=True)
  
         print(f'Opening climatology: {args.clim_file}')
-        ds_clim_raw = xr.open_dataset(args.clim_file, chunks={})
+        vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
+        ds_clim_raw = xr.open_dataset(args.clim_file, drop_variables=vars_to_drop)
+        
         print(f'Opening thresholds: {args.thresh_file}')
-        ds_thresh_raw = xr.open_dataset(args.thresh_file, chunks={})
+        ds_thresh_raw = xr.open_dataset(args.thresh_file)
         
         ds_clim = xr.Dataset()
         
@@ -388,8 +390,8 @@ def main():
             ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
         if 'dayofyear' in ds_thresh_raw.dims:
             ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-            
-            
+
+        # Selectively extract only the exact variables required by the tracking loops
         if 'temp' in ds_clim_raw.data_vars:
             ds_clim['climatology'] = ds_clim_raw['temp']
         elif 'climatology' in ds_clim_raw.data_vars:
