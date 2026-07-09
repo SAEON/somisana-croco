@@ -381,7 +381,7 @@ def main():
         ds_clim_raw = xr.open_dataset(args.clim_file, drop_variables=vars_to_drop)
         
         print(f'Opening thresholds: {args.thresh_file}')
-        ds_thresh_raw = xr.open_dataset(args.thresh_file)
+        ds_thresh_raw = xr.open_dataset(args.thresh_file, drop_variables=vars_to_drop)
         
         ds_clim = xr.Dataset()
         
