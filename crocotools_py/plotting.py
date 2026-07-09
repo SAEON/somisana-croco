@@ -490,27 +490,30 @@ def animate_surface_fronts(cat_ds, lat, lon, out_path):
 
 # --- Master Wrapper Function ---
 def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, Yorig=2000):
-    print("\n=== Rendering Operational MHW/MCS Visuals ===")
+    print("Rendering Operational MHW/MCS Visuals")
     out_dir = Path(out_dir)
     
     # Standard NumPy-backed loading with explicit dropping to completely prevent memory overload
     vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
     ds_clim_raw = xr.open_dataset(clim_file, drop_variables=vars_to_drop)
-    ds_thresh_raw = xr.open_dataset(thresh_file, drop_variables=vars_to_drop)
+    ds_thresh_raw = xr.open_dataset(thresh_file)
     
-    ds_clim = xr.Dataset()
+    ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
+    
     if 'dayofyear' in ds_clim_raw.dims:
         ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-    if 'dayofyear' in ds_thresh_raw.dims:
-        ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
 
     ds_clim['climatology'] = ds_clim_raw['temp'] if 'temp' in ds_clim_raw.data_vars else ds_clim_raw['climatology']
-    if 'zeta' in ds_clim_raw.data_vars: ds_clim['zeta'] = ds_clim_raw['zeta']
-    ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
-    ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
+    if 'zeta' in ds_clim_raw.data_vars: 
+        ds_clim['zeta'] = ds_clim_raw['zeta']
+        
+    # Explicitly assign raw data pointers to enforce coordinate compatibility
+    ds_clim['threshold_90'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
+    ds_clim['threshold_10'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
         
     for v in ['lon_rho', 'lat_rho', 'day_of_year']:
-        if v in ds_clim_raw.coords: ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
+        if v in ds_clim_raw.coords: 
+            ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
 
     ds_cat  = xr.open_dataset(cat_file)
     ds_fcst = post.handle_time(post.get_ds(forecast_file, "temp"), Yorig=Yorig)

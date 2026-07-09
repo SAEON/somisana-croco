@@ -381,35 +381,25 @@ def main():
         ds_clim_raw = xr.open_dataset(args.clim_file, drop_variables=vars_to_drop)
         
         print(f'Opening thresholds: {args.thresh_file}')
-        ds_thresh_raw = xr.open_dataset(args.thresh_file, drop_variables=vars_to_drop)
-        
-        ds_clim = xr.Dataset()
+        ds_thresh_raw = xr.open_dataset(args.thresh_file)
         
         # --- Compatibility Layer for New Schema Configuration ---
         if 'dayofyear' in ds_clim_raw.dims:
             ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
         if 'dayofyear' in ds_thresh_raw.dims:
             ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+        if 'temp' in ds_clim_raw.data_vars and 'climatology' not in ds_clim_raw.data_vars:
+            ds_clim_raw = ds_clim_raw.rename({'temp': 'climatology'})
 
         # Selectively extract only the exact variables required by the tracking loops
-        if 'temp' in ds_clim_raw.data_vars:
-            ds_clim['climatology'] = ds_clim_raw['temp']
-        elif 'climatology' in ds_clim_raw.data_vars:
-            ds_clim['climatology'] = ds_clim_raw['climatology']
-
+        ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
+        ds_clim['climatology'] = ds_clim_raw['climatology']
         if 'zeta' in ds_clim_raw.data_vars:
             ds_clim['zeta'] = ds_clim_raw['zeta']
 
-        if 'threshold_90' in ds_thresh_raw.data_vars:
-            ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
-        if 'threshold_10' in ds_thresh_raw.data_vars:
-            ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
-
-        # Map coordinates over cleanly
-        for v in ['lon_rho', 'lat_rho', 'day_of_year']:
-            if v in ds_clim_raw.coords:
-                ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
-
+        ds_clim['threshold_90'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
+        ds_clim['threshold_10'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
+        
         num_levels = ds_clim.sizes['s_rho']
         n_eta      = ds_clim.sizes['eta_rho']
         n_xi       = ds_clim.sizes['xi_rho']
