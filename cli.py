@@ -383,7 +383,7 @@ def main():
         print(f'Opening thresholds: {args.thresh_file}')
         ds_thresh_raw = xr.open_dataset(args.thresh_file)
         
-        # --- Compatibility Layer for New Schema Configuration ---
+        # Standardize core dimension and variable names
         if 'dayofyear' in ds_clim_raw.dims:
             ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
         if 'dayofyear' in ds_thresh_raw.dims:
@@ -391,20 +391,27 @@ def main():
         if 'temp' in ds_clim_raw.data_vars and 'climatology' not in ds_clim_raw.data_vars:
             ds_clim_raw = ds_clim_raw.rename({'temp': 'climatology'})
 
-        # Selectively extract only the exact variables required by the tracking loops
+        # CRITICAL: Enforce coordinate type matching (float vs int64) to prevent outer-join corruption
+        for c in ['s_rho', 'eta_rho', 'xi_rho']:
+            if c in ds_thresh_raw.coords and c in ds_clim_raw.coords:
+                ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values})
+
+        # Construct the clean unified lazy reference container
         ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
         ds_clim['climatology'] = ds_clim_raw['climatology']
         if 'zeta' in ds_clim_raw.data_vars:
             ds_clim['zeta'] = ds_clim_raw['zeta']
-
-        ds_clim['threshold_90'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
-        ds_clim['threshold_10'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
         
+        # Safely map thresholds now that the underlying coordinate axes match perfectly
+        ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
+        ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
+
         num_levels = ds_clim.sizes['s_rho']
         n_eta      = ds_clim.sizes['eta_rho']
         n_xi       = ds_clim.sizes['xi_rho']
         doy_values = ds_clim['day_of_year'].values
- 
+
+
         print(f'Loading temperature: {args.temp_file}')
         ds_temp = get_ds(args.temp_file, args.temp_var)
         ds_temp = handle_time(ds_temp, Yorig=args.Yorig)

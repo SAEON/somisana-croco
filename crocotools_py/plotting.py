@@ -502,18 +502,24 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
     
     if 'dayofyear' in ds_clim_raw.dims:
         ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+    if 'dayofyear' in ds_thresh_raw.dims:
+        ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
 
+    # Match coordinate tracking types to prevent empty time series plotting alignments
+    for c in ['s_rho', 'eta_rho', 'xi_rho']:
+        if c in ds_thresh_raw.coords and c in ds_clim_raw.coords:
+            ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values})
+
+    ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
     ds_clim['climatology'] = ds_clim_raw['temp'] if 'temp' in ds_clim_raw.data_vars else ds_clim_raw['climatology']
     if 'zeta' in ds_clim_raw.data_vars: 
         ds_clim['zeta'] = ds_clim_raw['zeta']
         
-    # Explicitly assign raw data pointers to enforce coordinate compatibility
-    ds_clim['threshold_90'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
-    ds_clim['threshold_10'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
+    ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
+    ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
         
     for v in ['lon_rho', 'lat_rho', 'day_of_year']:
-        if v in ds_clim_raw.coords: 
-            ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
+        if v in ds_clim_raw.coords: ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
 
     ds_cat  = xr.open_dataset(cat_file)
     ds_fcst = post.handle_time(post.get_ds(forecast_file, "temp"), Yorig=Yorig)
