@@ -325,7 +325,18 @@ jobs:
           echo "public_latest=$public_latest" >> $GITHUB_OUTPUT
           echo "safe=$safe" >> $GITHUB_OUTPUT
       - name: copy files to the archive directory if needed
+        # each copy/sync is wrapped in 'if ! rsync ...' so a single failure just logs a
+        # WARNING and the remaining copies are still attempted - the step never aborts
+        # mid-way and always exits 0, so no continue-on-error is needed
         run: |
+          # we need sudo permissions to copy to the archive directory
+          # we have set up the somisana user to be able to do this without the need for a password
+          #
+          # the archive sits on a network mount that doesn't reliably allow
+          # overwriting/unlinking a file, so every copy goes through rsync --inplace,
+          # which writes new bytes straight into the destination file rather than the
+          # default temp-file-then-rename (no unlink, no rename - the operations this
+          # mount struggles with). -I forces a refresh on all files. 
           if [ ! -d ${{ steps.archive_dir.outputs.public_latest }} ]; then
             sudo mkdir -p ${{ steps.archive_dir.outputs.public_latest }}
             sudo chmod -R 775 ${{ steps.archive_dir.outputs.public_latest }}
@@ -338,27 +349,35 @@ jobs:
             sudo mkdir -p ${{ steps.archive_dir.outputs.safe }}
             sudo chmod -R 775 ${{ steps.archive_dir.outputs.safe }}
           fi
-          # apparently we need sudo permissions to copy to the archive directory
-          # we have set up the somisana user to be able to do this without the need for a password
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t1.nc ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t2.nc ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_t3.nc ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/output/croco_avg.nc ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_surf.mp4 ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_bot.mp4 ${{ steps.archive_dir.outputs.public }}
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_100m.mp4 ${{ steps.archive_dir.outputs.public }}
-          # anomaly plots (only if the climatology file was provided for the computation of anomalies)
-          if [ ! "${{ inputs.CLIM_FILE }}" = '' ]; then
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_anom.nc ${{ steps.archive_dir.outputs.public }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 ${{ steps.archive_dir.outputs.public }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 ${{ steps.archive_dir.outputs.public }}
-            sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 ${{ steps.archive_dir.outputs.public }}
+          # copy this run's outputs into the public archive in one sync. The public
+          # dir is fresh each run so no --delete is needed. We exclude croco_avg_frcst.nc
+          # because that subset is only meant for the 'safe' mount (copied below), not
+          # the public-facing archive. 
+          if ! sudo rsync -rI --inplace --exclude='croco_avg_frcst.nc' \
+            ${{ env.RUN_DIR }}/postprocess/ \
+            ${{ steps.archive_dir.outputs.public }}/; then
+            echo "WARNING: failed to sync postprocess outputs to the public archive" >&2
           fi
-          # update the 'latest' directory
-          sudo rm -f ${{ steps.archive_dir.outputs.public_latest }}/*
-          sudo cp ${{ steps.archive_dir.outputs.public }}/* ${{ steps.archive_dir.outputs.public_latest }}
+          #
+          # croco_avg.nc lives in output/, not postprocess/, so it needs its own copy
+          if ! sudo rsync -I --inplace \
+            ${{ env.RUN_DIR }}/output/croco_avg.nc \
+            ${{ steps.archive_dir.outputs.public }}/; then
+            echo "WARNING: failed to copy croco_avg.nc to the public archive" >&2
+          fi
+          #
+          # update the 'latest' directory by syncing it from this run's archive dir.
+          if ! sudo rsync -rI --inplace --delete \
+            ${{ steps.archive_dir.outputs.public }}/ \
+            ${{ steps.archive_dir.outputs.public_latest }}/; then
+            echo "WARNING: failed to sync the 'latest' directory" >&2
+          fi
           # the 5 day forecast gets archived in the backed up somisana_safe mount
-          sudo cp ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc ${{ steps.archive_dir.outputs.safe }}                    
+          if ! sudo rsync -I --inplace \
+            ${{ env.RUN_DIR }}/postprocess/croco_avg_frcst.nc \
+            ${{ steps.archive_dir.outputs.safe }}/; then
+            echo "WARNING: failed to copy croco_avg_frcst.nc to the safe archive" >&2
+          fi
       - name: clean up
         run: |
           # the .nc files we previously copied files from elsewhere into the scratch directory are redundant

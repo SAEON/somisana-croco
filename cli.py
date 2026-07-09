@@ -11,10 +11,8 @@ import argparse
 import sys, os
 from datetime import datetime, timedelta
 import calendar
-from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry
-from crocotools_py.postprocess import (get_ts_multivar, compute_anomaly,
-                                       get_ds, handle_time,
-                                       create_mhw_output_netcdf, process_single_level)
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
+from crocotools_py.postprocess import get_ts_multivar, compute_anomaly, get_ds, handle_time, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3 
  
@@ -164,14 +162,22 @@ def main():
     # regrid_tier3
     # --------------
     parser_regrid_tier3 = subparsers.add_parser('regrid_tier3', 
-            help='tier 3 regridding of a CROCO output...')
-    parser_regrid_tier3.add_argument('--fname', required=True, type=str)
-    parser_regrid_tier3.add_argument('--dir_out', required=True)
-    parser_regrid_tier3.add_argument('--Yorig', type=parse_int, default=2000)
-    parser_regrid_tier3.add_argument('--doi_link', required=False, type=str)
-    parser_regrid_tier3.add_argument('--spacing', type=float, default=0.01)
+            help='tier 3 regridding of a CROCO output: takes the output of regrid-tier2 as input and regrids the horizontal grid to a regular grid with a specified grid spacing. Output variables are the same as tier 1 and 2, only horizontal grid is now rectilinear with hz dimensions of longitude,latitude i.e. horizontal grid is no longer curvilinear. The extents of the rectilinear grid are automatically determined using the curvilinear grid extents.')
+    parser_regrid_tier3.add_argument('--fname', required=True, type=str, help='input regridded tier2 filename - can include wildcards (*) to process multiple files in a single command')
+    parser_regrid_tier3.add_argument('--dir_out', required=True, help='tier 3 output directory')
+    parser_regrid_tier3.add_argument('--Yorig', type=parse_int, 
+                        default=2000, 
+                        help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
+    parser_regrid_tier3.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
+    parser_regrid_tier3.add_argument('--spacing', type=float,default=0.01,
+                         help='constant horizontal grid spacing (in degrees) to be used for the horizontal interpolation of the output')
+    parser_regrid_tier3.add_argument('--method', type=str, default='nearest',
+                         choices=['nearest', 'linear', 'cubic'],
+                         help="interpolation method passed to scipy.interpolate.griddata (default='nearest')")
+
     def regrid_tier3_handler(args):
-        regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link, spacing=args.spacing)
+        regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link,
+                     spacing=args.spacing, method=args.method)
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
     # ----------------
@@ -363,214 +369,94 @@ def main():
     parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
 
     def detect_mhw_forecast_handler(args):
-        import os
-        import gc
-        import numpy as np
-        import pandas as pd
-        import xarray as xr
-        from pathlib import Path
-        from netCDF4 import Dataset
- 
-        os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
- 
-        out_file = Path(args.fname_out)
-        out_file.parent.mkdir(parents=True, exist_ok=True)
- 
-        print(f'Opening climatology: {args.clim_file}')
-        vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
-        ds_clim_raw = xr.open_dataset(args.clim_file, drop_variables=vars_to_drop)
+        from crocotools_py.marineheatwaves import detect_mhw_forecast
         
-        print(f'Opening thresholds: {args.thresh_file}')
-        ds_thresh_raw = xr.open_dataset(args.thresh_file)
-        
-        # Standardize core dimension and variable names
-        if 'dayofyear' in ds_clim_raw.dims:
-            ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-        if 'dayofyear' in ds_thresh_raw.dims:
-            ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-        if 'temp' in ds_clim_raw.data_vars and 'climatology' not in ds_clim_raw.data_vars:
-            ds_clim_raw = ds_clim_raw.rename({'temp': 'climatology'})
-
-        # CRITICAL: Enforce coordinate type matching (float vs int64) to prevent outer-join corruption
-        for c in ['s_rho', 'eta_rho', 'xi_rho']:
-            if c in ds_thresh_raw.coords and c in ds_clim_raw.coords:
-                ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values})
-
-        # Construct the clean unified lazy reference container
-        ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
-        ds_clim['climatology'] = ds_clim_raw['climatology']
-        if 'zeta' in ds_clim_raw.data_vars:
-            ds_clim['zeta'] = ds_clim_raw['zeta']
-        
-        # Safely map thresholds now that the underlying coordinate axes match perfectly
-        ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
-        ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
-
-        num_levels = ds_clim.sizes['s_rho']
-        n_eta      = ds_clim.sizes['eta_rho']
-        n_xi       = ds_clim.sizes['xi_rho']
-        doy_values = ds_clim['day_of_year'].values
-
-
-        print(f'Loading temperature: {args.temp_file}')
-        ds_temp = get_ds(args.temp_file, args.temp_var)
-        ds_temp = handle_time(ds_temp, Yorig=args.Yorig)
- 
-        # Build daily time axis from raw time bounds
-        raw_times    = ds_temp.time.values
-        first_day    = pd.Timestamp(raw_times[0]).normalize()
-        last_day     = pd.Timestamp(raw_times[-1]).normalize()
-        target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
-        T_daily      = len(target_dates)
-        t_dates      = np.array([d.toordinal() for d in target_dates], dtype=int)
-        ds_dummy_daily = xr.Dataset(coords={'time': target_dates})
-        daily_doy_map  = np.clip(target_dates.dayofyear.values - 1, 0, 365)
- 
-        if out_file.exists():
-            out_file.unlink()
- 
-        nc_out = Dataset(str(out_file), mode='w', format='NETCDF4')
-                         
-        nc_out.createDimension('xi_rho', n_xi)
-        nc_out.createDimension('eta_rho', n_eta)
-        nc_out.createDimension('s_rho', num_levels)  # Protected dimension size mapping
-        nc_out.createDimension('time', T_daily)
-        
-        lon_var = nc_out.createVariable('lon_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
-        lat_var = nc_out.createVariable('lat_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
-        h_var   = nc_out.createVariable('h', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
-        mask_v  = nc_out.createVariable('mask_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
-        
-        lon_var[:] = ds_temp['lon_rho'].values if 'lon_rho' in ds_temp else ds_clim['lon_rho'].values
-        lat_var[:] = ds_temp['lat_rho'].values if 'lat_rho' in ds_temp else ds_clim['lat_rho'].values
-        h_var[:]   = ds_temp['h'].values
-        mask_v[:]  = ds_temp['mask_rho'].values
-
-        time_var = nc_out.createVariable('time', 'f8', ('time',))
-        time_var.units = f'days since {first_day.strftime("%Y-%m-%d")}'
-        time_var[:] = (target_dates - first_day).total_seconds() / 86400.0
-
-        nc_out.createVariable('s_rho', 'f4', ('s_rho',))[:] = np.arange(num_levels)
-        for attr in ['hc', 'Vtransform', 'theta_s', 'theta_b']:
-            if attr in ds_temp:
-                nc_out.setncattr(attr, float(ds_temp[attr].values))
-            elif attr in ds_temp.attrs:
-                nc_out.setncattr(attr, float(ds_temp.attrs[attr]))
-        
-        # Define event category variable
-        cat_var = nc_out.createVariable('category', 'i1', ('time', 's_rho', 'eta_rho', 'xi_rho'), 
-                                         zlib=True, fill_value=-127, chunksizes=(T_daily, 1, n_eta, n_xi))
-        cat_var.long_name = 'MHW_MCS Combined Event Categories'
-        cat_var.description = 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral'
-
-        # Define daily anomaly variables
-        temp_anom_var = nc_out.createVariable('temp_anom', 'f4', ('time', 's_rho', 'eta_rho', 'xi_rho'), 
-                                               zlib=True, fill_value=np.nan, chunksizes=(T_daily, 1, n_eta, n_xi))
-        temp_anom_var.long_name = "Sea Water Temperature Daily Anomaly"
-        temp_anom_var.units = "degC"
-        temp_anom_var.coordinates = "lat_rho lon_rho"
-        
-        # Define baseline free-surface height variable
-        zeta_var = nc_out.createVariable('zeta', 'f4', ('time', 'eta_rho', 'xi_rho'), zlib=True, fill_value=np.nan)
-        zeta_var.long_name = "daily averaged free-surface"
-        zeta_var.units = "meter"
-        zeta_var.coordinates = "lat_rho lon_rho"
-
-        # Restored: Daily Sea Surface Elevation Anomaly Variable
-        zeta_anom_var = nc_out.createVariable('zeta_anom', 'f4', ('time', 'eta_rho', 'xi_rho'), zlib=True, fill_value=np.nan)
-        zeta_anom_var.long_name = "Sea Surface Elevation Daily Anomaly"
-        zeta_anom_var.units = "m"
-        zeta_anom_var.coordinates = "lat_rho lon_rho"
-
-        # Define daily Surface Thermal Front Magnitude Variable
-        sst_front_var = nc_out.createVariable('sst_front', 'f4', ('time', 'eta_rho', 'xi_rho'), 
-                                               zlib=True, fill_value=np.nan)
-        sst_front_var.long_name = "Sea Surface Temperature Horizontal Front Magnitude"
-        sst_front_var.units = "degC / km"
-        sst_front_var.coordinates = "lat_rho lon_rho"
-
-        # Compute Daily Zeta and daily Zeta Anomalies from your updated climatology schema
-        print("Computing Daily Zeta and Zeta Anomalies...")
-        if 'zeta' in ds_temp:
-            ds_zeta_daily = (ds_temp['zeta']
-                             .resample(time='1D').mean()
-                             .reindex(time=target_dates, method='nearest')
-                             .interpolate_na(dim='time', limit=None)
-                             .compute())
-            zeta_var[:] = ds_zeta_daily.values
-            
-            if 'zeta' in ds_clim:
-                clim_zeta = ds_clim['zeta'].values  # Shape matches (366, eta_rho, xi_rho)
-                zeta_anom_var[:] = ds_zeta_daily.values - clim_zeta[daily_doy_map, :, :]
-
-        # Stream MHW categories, temperature anomalies, and frontal boundaries level-by-level
-        print("Processing vertical planes...")
-        try:
-            for k in range(num_levels - 1, -1, -1):
-                # Run Heatwave classification
-                process_single_level(k, num_levels, ds_temp, ds_clim,
-                                     args.temp_var, doy_values,
-                                     False, t_dates, args.batch_size, nc_out)
-                mhw_cats = cat_var[:, k, :, :][:]
-
-                # Reset and run Cold Spell classification
-                cat_var[:, k, :, :] = np.zeros_like(mhw_cats)
-                process_single_level(k, num_levels, ds_temp, ds_clim,
-                                     args.temp_var, doy_values,
-                                     True, t_dates, args.batch_size, nc_out)
-                mcs_cats = cat_var[:, k, :, :][:]
-
-                # Combine tracking arrays
-                combined = mhw_cats.copy()
-                combined[combined == 0] = mcs_cats[combined == 0]
-                
-                # Apply land mask bounds cleanly to land integer vectors
-                mask_rho_2d = ds_temp['mask_rho'].values
-                if mask_rho_2d.ndim > 2: mask_rho_2d = mask_rho_2d[0]
-                combined[:, mask_rho_2d == 0] = -127
-                cat_var[:, k, :, :] = combined
-
-                # Compute Daily Temperature Anomaly for this level
-                print(f"      -> Calculating daily temperature anomalies for level {k}...")
-                ds_level_daily = (ds_temp[args.temp_var].isel(s_rho=k)
-                                  .resample(time='1D').mean()
-                                  .reindex(time=target_dates, method='nearest')
-                                  .interpolate_na(dim='time', limit=None)
-                                  .compute())
-                clim_temp_level = ds_clim['climatology'].isel(s_rho=k).values
-                
-                temp_anom_var[:, k, :, :] = ds_level_daily.values - clim_temp_level[daily_doy_map, :, :]
-                
-                # Compute daily SST Front Magnitude (Surface Layer Only)
-                if k == num_levels - 1:
-                    print("      -> Calculating daily surface thermal fronts (SST fronts)...")
-                    pm = ds_temp['pm'].values if 'pm' in ds_temp else np.ones((n_eta, n_xi))
-                    pn = ds_temp['pn'].values if 'pn' in ds_temp else np.ones((n_eta, n_xi))
-                    if pm.ndim > 2: pm, pn = pm[0], pm[0]
-                    
-                    sst_front_data = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
-                    sst_vals = ds_level_daily.values
-                    
-                    for t_idx in range(T_daily):
-                        d_eta, d_xi = np.gradient(sst_vals[t_idx])
-                        grad_km = np.hypot(d_xi * pm, d_eta * pn) * 1000.0
-                        sst_front_data[t_idx] = grad_km
-                        
-                    sst_front_data = np.where(mask_rho_2d[np.newaxis, :, :] == 1, sst_front_data, np.nan)
-                    sst_front_var[:] = sst_front_data
-
-                nc_out.sync()
-                gc.collect()
-        finally:
-            nc_out.sync()
-            nc_out.close()
-
-        ds_clim.close()
-        size_mb = out_file.stat().st_size / (1024 ** 2)
-        print(f'Done: {out_file} ({size_mb:.1f} MB)')
+        detect_mhw_forecast(temp_file=args.temp_file, clim_file=args.clim_file, thresh_file=args.thresh_file,
+            fname_out=args.fname_out, temp_var=args.temp_var, Yorig=args.Yorig, batch_size=args.batch_size)
  
     parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
  
+    # ----------------
+    # make_clm_inter
+    # ----------------
+    parser_make_clm_inter = subparsers.add_parser('make_clm_inter',
+            help='Make monthly ocean climatology files for CROCO interannual runs')
+    parser_make_clm_inter.add_argument('--input_dir', required=True, type=str, 
+            help='Path to directory containing the monthly OGCM files')
+    parser_make_clm_inter.add_argument('--output_dir', required=True, type=str,
+            help='Path to where the forcing files will be saved. This directory also needs a crocotools_param.py file')
+    parser_make_clm_inter.add_argument('--month_start', required=True, type=str, 
+            help='first month in the interannual run in format "YYYY-MM"')
+    parser_make_clm_inter.add_argument('--month_end', required=True, type=str,
+            help='last month in the interannual run in format "YYYY-MM"')
+    parser_make_clm_inter.add_argument('--Yorig', required=True, type=int,
+            help='the Yorig value used in setting up the CROCO model')
+    def make_clm_inter_handler(args):
+        sys.path.append(args.output_dir)
+        import crocotools_param as params
+
+        month_now = datetime.strptime(args.month_start+'-01','%Y-%m-%d')
+        month_end = datetime.strptime(args.month_end+'-01','%Y-%m-%d')
+
+        while month_now <= month_end:
+
+            print('working on '+month_now.strftime('%Y-%m'))
+
+            # define a list of 3 input files - last month, this month and next month
+            # This is to ensure that we always have clm data for the start and end of the CROCO run for this month
+            month_prev = month_now - timedelta(days=10) # an arbitrary date in the previous month
+            month_next = month_now + timedelta(days=32) # 32 days ensures we get to the next month
+            fname_month_prev = os.path.join(args.input_dir, month_prev.strftime(params.input_file_fmt))
+            fname_month_now = os.path.join(args.input_dir, month_now.strftime(params.input_file_fmt))
+            fname_month_next = os.path.join(args.input_dir, month_next.strftime(params.input_file_fmt))
+            if not os.path.exists(fname_month_prev):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_prev)
+            if not os.path.exists(fname_month_now):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_now)
+            if not os.path.exists(fname_month_next):
+                raise ValueError("Processing of "+month_now.strftime('%Y-%m')+" requires "+fname_month_next)
+            input_file=[fname_month_prev,
+                        fname_month_now,
+                        fname_month_next]
+
+            # define ini_date and end_date using a 1 day buffer either side of the month
+            ini_date = month_now - timedelta(days=1)
+            day_end = calendar.monthrange(month_now.year,month_now.month)[1]
+            end_date = datetime(month_now.year,month_now.month,day_end) + timedelta(days=2)
+
+            # make the clm file for this month
+            fname_out = params.clim_prefix + month_now.strftime('_Y%YM%m.nc')
+            make_clm(input_file,args.output_dir,ini_date,end_date,args.Yorig,fname_out)
+
+            month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
+        
+    parser_make_clm_inter.set_defaults(func=make_clm_inter_handler)
+ 
+    # ----------------
+    # croco_srf_2_ww3
+    # ----------------
+    parser_croco_srf_2_ww3 = subparsers.add_parser('croco_srf_2_ww3',
+            help='Convert CROCO surface output to WW3-compatible current and water level netCDF files for use with ww3_prnc in ASIS mode')
+    parser_croco_srf_2_ww3.add_argument('--fname', required=True, type=str,
+            help='input CROCO surface filename - can include wildcards (*) to process multiple files in a single command')
+    parser_croco_srf_2_ww3.add_argument('--grdname', required=False, type=str, default=None,
+            help='optional CROCO grid file (if grid vars are not in your output files)')
+    parser_croco_srf_2_ww3.add_argument('--dir_out', required=True, type=str,
+            help='output directory for WW3-compatible current and water level files')
+    parser_croco_srf_2_ww3.add_argument('--Yorig', type=parse_int, default=None,
+            help='Origin year for CROCO time. Output time units will be "days since Yorig-01-01 00:00:00"')
+    def croco_srf_2_ww3_handler(args):
+        from glob import glob as globfn
+        fname_in = args.fname
+        if type(fname_in) == str:
+            if fname_in.find('*') > 0:
+                fname_in = sorted(globfn(fname_in))
+            else:
+                fname_in = [fname_in]
+        for f in fname_in:
+            croco_srf_2_ww3(f, grdname=args.grdname, dir_out=args.dir_out, Yorig=args.Yorig)
+    parser_croco_srf_2_ww3.set_defaults(func=croco_srf_2_ww3_handler)
+
     args = parser.parse_args()
     if hasattr(args, 'func'):
         args.func(args)

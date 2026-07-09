@@ -8,7 +8,7 @@
 export SOURCE=/home/gfearon/croco-v2.1.1/OCEAN/
 
 # dir with compile options
-export EXENAME=C05
+export EXENAME=C10
 
 # MPI partitioning
 export MPI_NUM_X=4
@@ -22,11 +22,11 @@ export ATMOS_BULK=ERA5
 export FORCING_FILES=0
 export ATMOS_FRC=NA
 #
-export CLIMATOLOGY_FILES=0
-export BOUNDARY_FILES=1
+export CLIMATOLOGY_FILES=1
+export BOUNDARY_FILES=0
 export OGCM=GLORYS
 #
-export TIDE_FILES=0
+export TIDE_FILES=1
 export TIDE_FRC=TPXO10
 
 # runtime input

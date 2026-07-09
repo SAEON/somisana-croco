@@ -21,26 +21,44 @@ jobs:
         # anything not archived will be lost!
         id: cleanup_runner
         run: |
-          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -ctime +5 -exec rm -rf {} \;
+          sudo find /home/somisana/ops/${{ inputs.BRANCH_REF }}/* -maxdepth 0 -type d -mtime +5 -exec rm -rf {} +
   cleanup-archive:
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
       - name: Clean /mnt/ocims-somisana
         # clean certain file types in the public facing archive
         # we only want to keep the forecast portion of the archived forecast runs
-        # (the various tiered outputs can be regenerated if needed) 
+        # (the various tiered outputs can be regenerated if needed)
+        # timeout added because /mnt/ocims-somisana is a network mount that can hang
         id: cleanup_archive
+        timeout-minutes: 30
         run: |
-          # have to run as sudo as the archive is owned by root
-          # Suggest testing the command first without the 'exec rm -fr {} +' part at the end - then check that it found the correct files you want to delete
-          sudo find /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts/* -mtime +6 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts/* -mtime +6 -exec rm -rf {} +
-          sudo find /mnt/ocims-somisana/public-facing/sa-forcing/* -mtime +6 -exec rm -rf {} +
+          for base in \
+            /mnt/ocims-somisana/public-facing/sa-west/v1.0/forecasts \
+            /mnt/ocims-somisana/public-facing/sa-southeast/v1.0/forecasts \
+            /mnt/ocims-somisana/public-facing/sa-forcing; do
+            sudo find "$base" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +6 \
+              -exec bash -c '
+                d="$1"
+                # timeout kills a hung/slow CIFS delete after 90s instead of letting it block.
+                # if the delete did not work, warn but still exit 0 so the outer find
+                # keeps going - one bad dir should not fail the whole step
+                # (only the 30-min step timeout does that).
+                if ! timeout -k 10 90 rm -rf "$d"; then
+                  echo "WARN: could not remove $d this run (left for next run / sysadmin)"
+                fi
+                exit 0
+              ' _ {} \;
+          done
       - name: Clean /mnt/saeon-somisana
         # this is cleaning up the Mercator files we download on the SAEON hosted server and share via this mount
+        # timeout added because /mnt/saeon-somisana is a network mount that can hang
+        # if: always() ensures this step runs even if the previous step failed or timed out
         id: cleanup_saeon_mount
+        if: always()
+        timeout-minutes: 10
         run: |
-          sudo find /mnt/saeon-somisana/data/shared/ -prune -o -type f \( -name "MERCATOR*nc" \) -ctime +5 -exec rm -fr {} +
+          sudo find /mnt/saeon-somisana/data/shared/ -type f \( -name "*MERCATOR*nc" \) -mtime +5 -exec rm -fr {} +
   
   prune-images:
     runs-on: ${{ inputs.RUNNER_NAME }}

@@ -1,6 +1,15 @@
 name: build and push docker image
 
 on:
+  workflow_dispatch:
+    inputs:
+      IMAGE_ID:
+        description: 'Which image to build (cli or run)'
+        required: true
+        type: choice
+        options:
+          - cli
+          - run
   workflow_call:
     inputs:
       # which image are we building? IMAGE_ID can either be `cli` or `run`
@@ -49,21 +58,21 @@ jobs:
         with:
           ref: ${{ env.BRANCH_REF }}
       - name: Log in to the Container registry
-        uses: docker/login-action@master
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@master
+        uses: docker/metadata-action@v3
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             latest
             ${{ env.SHA }}
       - name: Build and push
-        uses: docker/build-push-action@master
+        uses: docker/build-push-action@v3
         with:
           context: .
           file: Dockerfile.${{ inputs.IMAGE_ID }}

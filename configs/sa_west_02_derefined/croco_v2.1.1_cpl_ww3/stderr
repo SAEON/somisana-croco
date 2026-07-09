@@ -1,0 +1,15 @@
+NetCDF 4.9.2 (intel2021.3) loaded successfully
+Installation: /home/apps/chpc/earth/netcdf-4.9.2-intel2021.3
+Compiler: Intel OneAPI 2021.3
+
+To verify installation:
+  nc-config --all
+/bin/mkdir: cannot create directory ‘/home/gfearon/lustre/somisana-croco/configs/sa_west_02_derefined/croco_v2.1.1_cpl_ww3/RUN_01/scratch’: File exists
+/bin/mkdir: cannot create directory ‘/home/gfearon/lustre/somisana-croco/configs/sa_west_02_derefined/croco_v2.1.1_cpl_ww3/RUN_01/output’: File exists
+rm: cannot remove ‘wind*’: No such file or directory
+Invalid character . in PBS_JOBID
+/bin/mv: cannot stat ‘croco_his_surf.nc’: No such file or directory
+/bin/mv: cannot stat ‘croco_avg_surf.nc’: No such file or directory
+Invalid character . in PBS_JOBID
+/bin/mv: cannot stat ‘croco_his_surf.nc’: No such file or directory
+/bin/mv: cannot stat ‘croco_avg_surf.nc’: No such file or directory

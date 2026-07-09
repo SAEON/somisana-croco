@@ -3,7 +3,7 @@ import xarray as xr
 import dask
 from datetime import timedelta, datetime, date
 from glob import glob
-from crocotools_py.define_attrs import CROCO_Attrs_RotatedVectors, CROCO_Attrs
+from crocotools_py.define_attrs import apply_attrs
 import re
 import time
 import pandas as pd
@@ -11,13 +11,9 @@ import scipy.ndimage as ndimage
 import gc
 from netCDF4 import Dataset
 
-def change_attrs(attrs,da,var_str):
-    meta = getattr(attrs, var_str)
-    da.attrs['long_name'] = meta.long_name
-    da.attrs['units'] = meta.units
-    da.attrs['standard_name'] = meta.standard_name
-    
-    return da
+def change_attrs(da, var_str, rotated=False):
+    """Backwards-compatible wrapper around apply_attrs."""
+    return apply_attrs(da, var_str, rotated=rotated)
 
 def u2rho(u):
     """
@@ -441,13 +437,22 @@ def hlev(var,z,depth):
 def get_ds(fname,var_str='h'):
     '''
     flexible method to get the xarray dataset for either a
-    single or multiple CROCO files 
+    single or multiple CROCO files
+
+    fname can be:
+        - a single filename (string)
+        - a glob pattern (string containing '*', '?' or '[')
+        - an explicit list/tuple of filenames
     '''
-    if ('*' in fname) or ('?' in fname) or ('[' in fname):
+    # fname is "multi-file" if it's an explicit list/tuple of files, or a
+    # glob pattern string. open_mfdataset() accepts both forms directly.
+    is_list = isinstance(fname, (list, tuple))
+    is_glob = isinstance(fname, str) and (('*' in fname) or ('?' in fname) or ('[' in fname))
+    if is_list or is_glob:
         # this approach borrowed from OpenDrift's reader_ROMS_native.py
-        # our essential vars are the 'var_str' (obviously) plus some other 
+        # our essential vars are the 'var_str' (obviously) plus some other
         # static vars we need to keep:
-        static_vars=['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w', 
+        static_vars=['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w',
                         'hc', 'angle', 'h', 'f', 'pn', 'pm',
                         'Vtransform','theta_s','theta_b',
                         'lon_rho', 'lat_rho', 'mask_rho',
@@ -457,7 +462,7 @@ def get_ds(fname,var_str='h'):
             # No need for open_mfdataset, which can be slower.
             # This is here just in case you want to use get_var() and not
             # have to change fname just to read a static variable
-            fname=glob(fname)[0]
+            fname = fname[0] if is_list else glob(fname)[0]
             ds = xr.open_dataset(fname, decode_times=False)
         else:
             # let's use open_mfdataset, but drop non-essential vars
@@ -538,9 +543,11 @@ def get_grd_var(fname,var_str,
     if isinstance(fname, xr.Dataset) or isinstance(fname, xr.DataArray):
         ds = fname.copy()
     else:
-        # for effeciency we shouldn't use open_mfdataset for this function 
+        # for effeciency we shouldn't use open_mfdataset for this function
         # only use the first file
-        if ('*' in fname) or ('?' in fname) or ('[' in fname):
+        if isinstance(fname, (list, tuple)):
+            fname=fname[0]
+        elif ('*' in fname) or ('?' in fname) or ('[' in fname):
             fname=glob(fname)[0]
         ds = get_ds(fname)
     
@@ -764,7 +771,7 @@ def get_var(fname,var_str,
     
     # get dataarrays of the data we want
     da = ds[var_str]
-    if 's_rho' in da.coords:
+    if 's_rho' in da.coords or 's_w' in da.coords:
         var_is_2d=False
     else:
         var_is_2d=True
@@ -826,7 +833,7 @@ def get_var(fname,var_str,
     h = h.squeeze() * mask_nan
 
     # include the depths of the sigma levels in the output
-    if 's_rho' in da.coords: # this will include 1 sigma layer - is this an issue?       
+    if 's_rho' in da.coords or 's_w' in da.coords:
         print('    computing depths of sigma levels...')
         depths = get_depths(ds).squeeze() * mask_nan
         print('    making the output dataset...')
@@ -842,18 +849,8 @@ def get_var(fname,var_str,
     ds_out = ds_out.squeeze()
     
     # change the attributes to make the dataset cf compliant
-    attrs = CROCO_Attrs()
-    ds_out['eta_rho'] = change_attrs(attrs,ds_out.eta_rho,'eta_rho')
-    ds_out['xi_rho']  = change_attrs(attrs,ds_out.xi_rho,'xi_rho')
-    ds_out['lon_rho'] = change_attrs(attrs,ds_out.lon_rho,'lon_rho')
-    ds_out['lat_rho']  = change_attrs(attrs,ds_out.lat_rho,'lat_rho')
-    ds_out['h'] = change_attrs(attrs,ds_out.h,'h')
-    ds_out['mask'] = change_attrs(attrs,ds_out.mask,'mask')
-    ds_out['zeta'] = change_attrs(attrs,ds_out.zeta,'zeta')
-    try:
-        ds_out[var_str] = change_attrs(attrs, ds_out[var_str], var_str)
-    except:
-        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_str}")
+    for var in ds_out:
+        apply_attrs(ds_out[var], var)
     
     if nc_out is not None:
         print('')
@@ -940,13 +937,8 @@ def get_uv(fname,
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
 
-    attrs = CROCO_Attrs_RotatedVectors()
-    
-    try:
-        u_out = change_attrs(attrs,u_out,var_u)
-        v_out = change_attrs(attrs,v_out,var_v)
-    except:
-        print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {var_u},{var_v}")
+    apply_attrs(u_out, var_u, rotated=True)
+    apply_attrs(v_out, var_v, rotated=True)
 
     # create a dataset containing both u and v
     ds_out=u # just using u as the basis for the output dataset
@@ -1024,6 +1016,58 @@ def get_boundary(grdname):
                      lat_rho[-1::-1, -1], lat_rho[0, -2::-1]))
     return lon, lat
 
+# def find_nearest_point(grdname, Longi, Latit, Bottom=None):
+#     """
+#     Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
+            
+#     Parameters:
+#     - fname :filename of the model, or the grid file
+#     - Longi :longitude
+#     - Latit :latitude
+#     - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
+#       lat and lon in water that is as deep as reference. If == None then
+#       this looks for only the closest horizontal point.
+
+#     Returns:
+#     - j :the nearest eta index
+#     - i :the nearest xi index
+    
+#     j,i can be used in xarrays built-in xr.isel() function to extract data at this grid point
+    
+#     (Note j,i aren't the eta_rho,xi_rho values! 
+#      The j,i indices are one less than the eta_rho,xi_rho values
+#      because eta_rho,xi_rho are 1 based)
+
+    
+#     """
+    
+#     lon_rho = get_grd_var(grdname, 'lon_rho').values
+#     lat_rho = get_grd_var(grdname, 'lat_rho').values
+#     h = get_grd_var(grdname, 'h').values
+
+#     # Calculate the distance between (Longi, Latit) and all grid points
+#     distance = ((lon_rho - Longi) ** 2 +
+#                 (lat_rho - Latit) ** 2) ** 0.5
+    
+#     if Bottom is None:
+#         mask=h/h
+
+#     else:
+#         mask=h
+#         mask[mask<Bottom]=10000
+#         mask[mask<10000]=1
+    
+#     distance_mask=distance*mask
+
+#     # Find the indices of the minimum distance
+#     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
+#     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
+#     min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
+
+#     j, i = min_index
+
+#     return j, i
+
 def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     """
     Find the nearest indices of the model rho grid to a specified lon, lat coordinate:
@@ -1052,25 +1096,30 @@ def find_nearest_point(grdname, Longi, Latit, Bottom=None):
     lon_rho = get_grd_var(grdname, 'lon_rho').values
     lat_rho = get_grd_var(grdname, 'lat_rho').values
     h = get_grd_var(grdname, 'h').values
+    
+    try:
+        mask_rho = get_grd_var(grdname, 'mask_rho').values
+    except Exception:
+        mask_rho = h / h
 
     # Calculate the distance between (Longi, Latit) and all grid points
     distance = ((lon_rho - Longi) ** 2 +
                 (lat_rho - Latit) ** 2) ** 0.5
     
+    # Build valid-point mask
     if Bottom is None:
-        mask=h/h
-
+        valid_mask = (mask_rho == 1)
     else:
-        mask=h
-        mask[mask<Bottom]=10000
-        mask[mask<10000]=1
+        valid_mask = (mask_rho == 1) & (h >= Bottom)
+
+    # Apply mask: invalid points get infinity so they cannot win
+    distance_mask = np.where(valid_mask, distance, np.inf)
     
-    distance_mask=distance*mask
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 
     # arrays: https://numpy.org/doc/stable/reference/generated/numpy.unravel_index.html
-    min_index = np.unravel_index(distance_mask.argmin(), distance_mask.shape)
+    min_index = np.unravel_index(np.argmin(distance_mask), distance_mask.shape)
 
     j, i = min_index
 
@@ -1330,7 +1379,13 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
         R: Earth radius in meters.
 
     Returns:
-        lons, lats, distances: Arrays of longitudes, latitudes, and cumulative distances.
+        lons, lats, distances, bearings: Arrays of longitudes (deg), latitudes (deg),
+        cumulative distances (m), and per-point local bearings of the path
+        (radians, clockwise from north). The bearing at point i is the heading from
+        point i to point i+1; the final point reuses the previous segment's bearing.
+
+    Raises:
+        ValueError: if section_start and section_end are too close to define a section.
     """
     # Convert inputs to radians
     lat0, lon0, lat1, lon1 = map(np.radians, [lat0, lon0, lat1, lon1])
@@ -1342,6 +1397,14 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
     sigma_total = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))  # Central angle
     dist_total = R * sigma_total  # Convert to meters
 
+    # Reject degenerate sections (single-point "sections" are profiles, not sections)
+    if dist_total < dgc / 10:
+        raise ValueError(
+            "section_start and section_end are too close to define a section "
+            f"(separation {dist_total:.1f} m < {dgc/10:.1f} m). "
+            "Use a profile extraction (e.g. get_ts) instead."
+        )
+
     # Determine the number of segments
     npsec = int(dist_total // dgc) + 1  # Number of points
 
@@ -1352,7 +1415,7 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
 
     # Generate points along the great-circle path
     lons, lats, distances = [lon0], [lat0], [0]
-    
+
     for i in range(1, npsec):
         sigma = i * dgc / R  # Angular distance along the sphere
 
@@ -1365,10 +1428,23 @@ def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
         lons.append(lon_new)
         distances.append(i * dgc)  # Keep cumulative distance
 
-    # Convert back to degrees
-    lons, lats = np.degrees(lons), np.degrees(lats)
+    lons_rad = np.array(lons)
+    lats_rad = np.array(lats)
 
-    return np.array(lons), np.array(lats), np.array(distances)
+    # Per-point local bearing: bearing at point i = heading from P[i] to P[i+1].
+    # Final point reuses the bearing of the previous segment.
+    lat_a, lat_b = lats_rad[:-1], lats_rad[1:]
+    lon_a, lon_b = lons_rad[:-1], lons_rad[1:]
+    dlon = lon_b - lon_a
+    Xb = np.cos(lat_b) * np.sin(dlon)
+    Yb = np.cos(lat_a) * np.sin(lat_b) - np.sin(lat_a) * np.cos(lat_b) * np.cos(dlon)
+    seg_bearings = np.arctan2(Xb, Yb)
+    bearings = np.concatenate([seg_bearings, seg_bearings[-1:]])
+
+    # Convert back to degrees
+    lons_deg, lats_deg = np.degrees(lons_rad), np.degrees(lats_rad)
+
+    return lons_deg, lats_deg, np.array(distances), bearings
 
 def get_section(fname,
                 var_str,
@@ -1424,14 +1500,14 @@ def get_section(fname,
         dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
         res = min(dy_min,dx_min)
     
-    # Make the transect on which the interpolation will take place    
-    section_lons,section_lats,section_dist = get_section_coords(lon0,lat0,lon1,lat1,res)
-    
+    # Make the transect on which the interpolation will take place
+    section_lons,section_lats,section_dist,section_bearings = get_section_coords(lon0,lat0,lon1,lat1,res)
+
     # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
     print('')
     print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
     eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
-    
+
     # Interpolate the variable along the line
     print('')
     print('  interpolating along the section...')
@@ -1441,7 +1517,7 @@ def get_section(fname,
     # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
     # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
     # The error is however much less than the model grid size, so I am not too bothered by this
-    
+
     # add the section distance to the ds
     ds["distance"] = xr.DataArray(
         section_dist, dims=("points",),
@@ -1451,14 +1527,150 @@ def get_section(fname,
             "units": "meter",
             "standard_name": "distance",
         })
-    
+
+    # add the local section bearing as a coord on the points dim
+    ds.coords["section_bearing"] = xr.DataArray(
+        np.degrees(section_bearings), dims=("points",),
+        attrs={
+            "units": "degree",
+            "standard_name": "platform_orientation",
+            "long_name": "local bearing of section path (clockwise from north)",
+        })
+
     if nc_out is not None:
         print('')
         print(f'  writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
-    
+
     return ds
 
+def get_section_uv(fname,
+                   section_start,
+                   section_end,
+                   grdname=None,
+                   time=slice(None),
+                   level=slice(None),
+                   Yorig=None,
+                   res=None,
+                   var_u='u',
+                   var_v='v',
+                   nc_out=None,
+                   ):
+
+    """
+    Extract a vertical section of velocity components from a CROCO output
+    file(s), in both east/north and section-rotated (across/along) form.
+    The transect can be in any direction. Multiple files can be loaded in.
+
+    Inputs:
+    see get_var() for a description of some of the inputs. In addition to the get_var inputs there is:
+    section_start = Start point of transect (list; eg. section_start = [lon0, lat0])
+    section_end = End points of transect (list; eg. section_end = [lon1, lat1])
+    res = Horizontal resolution of the section in meters (eg. res = 300). Default is None in which case
+         it takes the smallest grid size as the resolution.
+    var_u, var_v = Names of the x- and y-component variables to extract. Default
+         is the baroclinic velocity ('u', 'v'); other valid pairs include
+         ('ubar', 'vbar'), ('sustr', 'svstr'), ('bustr', 'bvstr').
+
+    Returns:
+    - ds, an xarray dataset containing along the section:
+        var_u, var_v       : east/north components (rotated from grid)
+        across_section     : component normal to the section, positive 90° CCW
+                             from the start->end heading (left-hand convention)
+        along_section      : component tangential to the section, positive in
+                             the start->end direction
+        distance           : cumulative distance along the section (m)
+        section_bearing    : local bearing of the section path, clockwise from
+                             north (degrees), as a coord on the points dim
+    """
+
+    print('')
+    print('Running get_section_uv()')
+
+    # if the gridname is not provided, we use the fname for the gridname
+    if grdname is None:
+        grdname = fname
+
+    # Define the start and end points of the transect
+    lon0,lat0 = section_start[0],section_start[1]
+    lon1,lat1 = section_end[0],section_end[1]
+
+    # extract the data for the defined subdomain which covers the section extents
+    subdomain = [lon0,lon1,lat0,lat1]
+    ds = get_uv(fname,
+                 grdname=grdname,
+                 time=time,
+                 level=level,
+                 subdomain=subdomain,
+                 Yorig=Yorig,
+                 var_u=var_u,
+                 var_v=var_v)
+
+    # if the grid resolution is not provided, we use the smallest grid size as the resolution.
+    if res is None:
+        dy_min=np.min(1/get_grd_var(grdname, 'pn').values[:])
+        dx_min=np.min(1/get_grd_var(grdname, 'pm').values[:])
+        res = min(dy_min,dx_min)
+
+    # Make the transect on which the interpolation will take place
+    section_lons,section_lats,section_dist,section_bearings = get_section_coords(lon0,lat0,lon1,lat1,res)
+
+    # Compute fractional eta_rho/xi_rho indices for all lon/lat pairs in the section
+    print('')
+    print('  mapping section lon,lat pairs to fractional eta_rho,xi_rho indices...')
+    eta_fracs, xi_fracs = find_fractional_eta_xi(grdname,section_lons, section_lats)
+
+    # Interpolate the variable along the line
+    print('')
+    print('  interpolating along the section...')
+    ds = ds.interp(eta_rho=("points", eta_fracs), xi_rho=("points", xi_fracs))
+    # I'm aware that there is a slight mismatch between the ds.lon_rho, ds.lat_rho and
+    # section_lons, section_lats, while theoretically they should be identical
+    # this is due to how the fractional eta, xi are interpolated in find_fractional_eta_xi
+    # (I tried many different approaches to minimise the error... it is a bit of a head scratcher and maybe could be improved?)
+    # The error is however much less than the model grid size, so I am not too bothered by this
+
+    # Rotate east/north components to section-relative (across/along).
+    # Bearing theta is clockwise from north; tangent unit vector in (east,north)
+    # is (sin theta, cos theta); left-hand normal is (-cos theta, sin theta).
+    # Sign convention: positive across = 90 deg CCW from start->end heading.
+    print('')
+    print('  rotating east/north components to across/along-section ...')
+    cos_b = np.cos(section_bearings)
+    sin_b = np.sin(section_bearings)
+    u_ds = ds[var_u]
+    v_ds = ds[var_v]
+    ds['across_section'] = -u_ds * cos_b + v_ds * sin_b
+    ds['along_section']  =  u_ds * sin_b + v_ds * cos_b
+    apply_attrs(ds['across_section'], var_u, section=True)
+    apply_attrs(ds['along_section'],  var_v, section=True)
+
+    # add the section distance to the ds
+    ds["distance"] = xr.DataArray(
+        section_dist, dims=("points",),
+        coords={"points": ds.coords["points"]},
+        name="distance_along_section",
+        attrs={
+            "units": "meter",
+            "standard_name": "distance",
+        })
+
+    # add the local section bearing as a coord on the points dim
+    ds.coords["section_bearing"] = xr.DataArray(
+        np.degrees(section_bearings), dims=("points",),
+        attrs={
+            "units": "degree",
+            "standard_name": "platform_orientation",
+            "long_name": "local bearing of section path (clockwise from north)",
+        })
+
+    if nc_out is not None:
+        print('')
+        print(f'  writing the netcdf file: {nc_out}')
+        ds.to_netcdf(nc_out)
+
+    return ds
+    
 def compute_anomaly(fname_clim, fname_in, fname_out,
                     Yorig=2000,
                     varlist=["temp", "u", "v", "salt", "zeta"],
@@ -1522,16 +1734,11 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     
     print("Computing anomalies...")
     ds_anom = xr.Dataset(coords=ds_hf.coords)
-    croco_attrs = CROCO_Attrs()
     for var in varlist:
         print(f"{var}")
         anom = ds_hf[var] - ds_clim[var]
         anom_name = f"{var}_anom"
-        anom = change_attrs(croco_attrs, anom, anom_name)
-        try:
-            anom = change_attrs(croco_attrs, anom, anom_name)
-        except:
-            print(f"WARNING: changing of attributes for cf-compliance not yet implemented for {anom_name}")
+        apply_attrs(anom, anom_name)
 
         ds_anom[anom_name] = anom
     ds_hf.close()
@@ -1556,447 +1763,117 @@ def compute_anomaly(fname_clim, fname_in, fname_out,
     end_time = time.time()
     print(f"Total time elapsed: {end_time - start_time:.2f} seconds")
 
-# =============================================================================
-# Marine Heatwave / Marine Cold Spell detection
-# Integrated from crocotools_py.marineheatwaves
-# =============================================================================
-
-def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t_dates=None):
+def croco_srf_2_ww3(fname, grdname=None, dir_out='.', Yorig=None):
     """
-    Detect MHW/MCS events using pre-computed climatology.
+    Convert a CROCO surface output file to WW3-compatible netCDF files
+    for current and water level forcing.
+
+    Currents are regridded from u/v staggered grids to the rho grid and
+    rotated from grid-aligned to east/north components.
+    Water levels (zeta) are extracted directly from the rho grid.
+
+    Output files are formatted for ww3_prnc in ASIS mode (dimensions match
+    the model grid exactly, no spatial interpolation needed).
 
     Parameters
     ----------
-    temp_data   : array (time,)  — daily temperature time series
-    clim_seas   : array (time,)  — seasonal climatology aligned to temp_data
-    clim_thresh : array (time,)  — threshold (90th pct for MHW, 10th pct for MCS),
-                                   also aligned to temp_data
-    is_cold     : bool           — True for cold spells, False for heat waves
-    t_dates     : array, optional — time vector in ordinal format
-
-    Returns
-    -------
-    mhw        : dict   — event properties (same keys as Hobday detect output)
-    categories : int8 array (time,)
-                 0=none, 1=Moderate, 2=Strong, 3=Severe, 4=Extreme
-                 (always positive; sign convention applied by the caller)
+    fname : str
+        Path to a CROCO surface output file (e.g. croco_avg_surf_Y2016M01.nc).
+    grdname : str, optional
+        Path to the CROCO grid file. If None, grid info is read from fname.
+    dir_out : str
+        Output directory for the WW3-compatible files.
+    Yorig : int, optional
+        Reference year for CROCO time (seconds since Yorig-01-01).
+        Also used to set output time units: "days since {Yorig}-01-01 00:00:00".
     """
-    n_time     = len(temp_data)
-    categories = np.zeros(n_time, dtype='int8')
+    import os
 
-    mhw = {
-        'time_start': [], 'time_end': [], 'time_peak': [],
-        'date_start': [], 'date_end': [], 'date_peak': [],
-        'index_start': [], 'index_end': [], 'index_peak': [],
-        'duration': [], 'duration_moderate': [], 'duration_strong': [],
-        'duration_severe': [], 'duration_extreme': [],
-        'intensity_max': [], 'intensity_mean': [], 'intensity_var': [],
-        'intensity_cumulative': [],
-        'intensity_max_relThresh': [], 'intensity_mean_relThresh': [],
-        'intensity_var_relThresh': [], 'intensity_cumulative_relThresh': [],
-        'intensity_max_abs': [], 'intensity_mean_abs': [],
-        'intensity_var_abs': [], 'intensity_cumulative_abs': [],
-        'category': [],
-        'rate_onset': [], 'rate_decline': [],
-        'n_events': 0,
-    }
+    print('')
+    print(f'Running croco_srf_2_ww3() for {fname}')
 
-    if np.all(np.isnan(temp_data)) or np.all(temp_data == 0):
-        return mhw, categories
+    # derive output file names from input filename
+    # robust way of getting the file extension, including CROCO child domains e.g. *.nc.2
+    basename = os.path.basename(fname)
+    match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
+    basename_no_extension = basename[:match.start()]
+    extension = match.group(0)
+    current_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_current' + extension))
+    level_out = os.path.abspath(os.path.join(dir_out, basename_no_extension + '_level' + extension))
 
-    # Replace NaN with climatology so exceedance detection is clean
-    temp_clean = temp_data.copy()
-    temp_clean[np.isnan(temp_clean)] = clim_seas[np.isnan(temp_clean)]
+    # extract u,v on rho grid, rotated to east/north components
+    ds_uv = get_uv(fname, grdname=grdname, Yorig=Yorig)
 
-    # Exceedance: MHW = temp above threshold_90 (clim_thresh when is_cold=False)
-    #             MCS = temp below threshold_10 (clim_thresh when is_cold=True)
-    # No sign flipping -- threshold_10 is already the correct lower bound.
-    # Exceedance: MHW = temp above threshold_90 (clim_thresh when is_cold=False)
-    #             MCS = temp below threshold_10 (clim_thresh when is_cold=True)
-    if is_cold:
-        exceed_bool = (temp_clean < clim_thresh).astype(float)
-    else:
-        exceed_bool = (temp_clean > clim_thresh).astype(float)
-    exceed_bool[np.isnan(temp_clean) | np.isnan(clim_thresh)] = 0.0
+    # extract water levels
+    ds_zeta = get_var(fname, 'zeta', grdname=grdname, Yorig=Yorig)
 
-    # --- NEW: Bridge gaps of 1 or 2 days (Hobday criteria) ---
-    exceed_mask = exceed_bool.astype(bool)
-    true_indices = np.where(exceed_mask)[0]
-    if len(true_indices) > 0:
-        for i in range(len(true_indices) - 1):
-            gap = true_indices[i+1] - true_indices[i] - 1
-            if 1 <= gap <= 2:
-                exceed_mask[true_indices[i]+1 : true_indices[i+1]] = True
-    # ---------------------------------------------------------
+    # convert datetime times to numerical values: days since Yorig-01-01
+    ref_date = datetime(Yorig, 1, 1) if Yorig is not None else datetime(2000, 1, 1)
+    time_units_str = f"days since {ref_date.strftime('%Y-%m-%d')} 00:00:00"
 
-    events, n_events = ndimage.label(exceed_mask) 
+    time_vals = ds_uv.time.values
+    time_days = (time_vals - np.datetime64(ref_date)) / np.timedelta64(1, 'D')
 
-    # For intensity calculations, flip so "anomaly above threshold" is always positive
-    if is_cold:
-        clim_seas_use   = -1.0 * clim_seas
-        clim_thresh_use = -1.0 * clim_thresh
-        temp_work       = -1.0 * temp_clean
-    else:
-        clim_seas_use   = clim_seas
-        clim_thresh_use = clim_thresh
-        temp_work       = temp_clean
+    # round to nearest minute to avoid float precision issues
+    time_days = np.round(time_days * 1440.0) / 1440.0
 
-    cat_names = ['Moderate', 'Strong', 'Severe', 'Extreme']
-    min_duration = 5
+    # --- Write current file ---
+    print(f'  writing {current_out}')
+    ucur = ds_uv['u'].values.astype(np.float32)
+    vcur = ds_uv['v'].values.astype(np.float32)
 
-    for ev in range(1, n_events + 1):
-        event_idx  = np.where(events == ev)[0]
-        event_dur  = len(event_idx)
-        if event_dur < min_duration:
-            continue
+    # replace NaN with fill value
+    fill_value = np.float32(9999.0)
+    ucur = np.where(np.isnan(ucur), fill_value, ucur)
+    vcur = np.where(np.isnan(vcur), fill_value, vcur)
 
-        tt_start = event_idx[0]
-        tt_end   = event_idx[-1]
-
-        temp_mhw   = temp_work[tt_start:tt_end + 1]
-        thresh_mhw = clim_thresh_use[tt_start:tt_end + 1]
-        seas_mhw   = clim_seas_use[tt_start:tt_end + 1]
-
-        mhw_relSeas       = temp_mhw - seas_mhw
-        mhw_relThresh     = temp_mhw - thresh_mhw
-        mhw_relThreshNorm = (temp_mhw - thresh_mhw) / (thresh_mhw - seas_mhw)
-        mhw_abs           = temp_mhw
-
-        tt_peak = int(np.argmax(mhw_relSeas))
-
-        mhw['index_start'].append(int(tt_start))
-        mhw['index_end'].append(int(tt_end))
-        mhw['index_peak'].append(int(tt_start + tt_peak))
-
-        if t_dates is not None:
-            mhw['time_start'].append(int(t_dates[tt_start]))
-            mhw['time_end'].append(int(t_dates[tt_end]))
-            mhw['time_peak'].append(int(t_dates[tt_start + tt_peak]))
-            mhw['date_start'].append(date.fromordinal(int(t_dates[tt_start])))
-            mhw['date_end'].append(date.fromordinal(int(t_dates[tt_end])))
-            mhw['date_peak'].append(date.fromordinal(int(t_dates[tt_start + tt_peak])))
-        else:
-            for key in ('time_start', 'time_end', 'time_peak'):
-                mhw[key].append(None)
-            for key in ('date_start', 'date_end', 'date_peak'):
-                mhw[key].append(None)
-
-        mhw['duration'].append(event_dur)
-
-        mhw['intensity_max'].append(float(mhw_relSeas[tt_peak]))
-        mhw['intensity_mean'].append(float(mhw_relSeas.mean()))
-        mhw['intensity_var'].append(float(np.sqrt(mhw_relSeas.var())))
-        mhw['intensity_cumulative'].append(float(mhw_relSeas.sum()))
-
-        mhw['intensity_max_relThresh'].append(float(mhw_relThresh[tt_peak]))
-        mhw['intensity_mean_relThresh'].append(float(mhw_relThresh.mean()))
-        mhw['intensity_var_relThresh'].append(float(np.sqrt(mhw_relThresh.var())))
-        mhw['intensity_cumulative_relThresh'].append(float(mhw_relThresh.sum()))
-
-        mhw['intensity_max_abs'].append(float(mhw_abs[tt_peak]))
-        mhw['intensity_mean_abs'].append(float(mhw_abs.mean()))
-        mhw['intensity_var_abs'].append(float(np.sqrt(mhw_abs.var())))
-        mhw['intensity_cumulative_abs'].append(float(mhw_abs.sum()))
-
-        tt_peakCat    = int(np.argmax(mhw_relThreshNorm))
-        cats          = np.clip(np.floor(1.0 + mhw_relThreshNorm), 1, 5)
-        peak_cat_val  = int(np.clip(cats[tt_peakCat], 1, 4))
-        mhw['category'].append(cat_names[peak_cat_val - 1])
-
-        mhw['duration_moderate'].append(int(np.sum(cats == 1)))
-        mhw['duration_strong'].append(int(np.sum(cats == 2)))
-        mhw['duration_severe'].append(int(np.sum(cats == 3)))
-        mhw['duration_extreme'].append(int(np.sum(cats >= 4)))
-
-        if event_dur > 1:
-            mhw['rate_onset'].append(float(mhw_relSeas[tt_peak] / (tt_peak + 1)))
-            mhw['rate_decline'].append(float(mhw_relSeas[tt_peak] / (event_dur - tt_peak)))
-        else:
-            mhw['rate_onset'].append(0.0)
-            mhw['rate_decline'].append(0.0)
-
-        categories[tt_start:tt_end + 1] = cats.astype('int8')
-
-    mhw['n_events'] = len(mhw['duration'])
-    return mhw, categories
-
-
-def align_climatology_to_temp(temp_time, doy_values, clim_data):
-    """
-    Map a 366-element day-of-year climatology onto a temperature time series.
-
-    Parameters
-    ----------
-    temp_time  : array of datetime64  — time axis of the temperature data
-    doy_values : array (366,)         — day-of-year labels (1–366)
-    clim_data  : array (366,)         — climatology values for each DOY
-
-    Returns
-    -------
-    aligned_clim : float32 array (len(temp_time),)
-    """
-    clim_dict   = {int(d): clim_data[i] for i, d in enumerate(doy_values)}
-    n_time      = len(temp_time)
-    aligned     = np.empty(n_time, dtype='float32')
-
-    for i, t in enumerate(temp_time):
-        doy = int(pd.Timestamp(t).dayofyear)
-        if doy in clim_dict:
-            aligned[i] = clim_dict[doy]
-        elif doy == 60 and 60 not in clim_dict:
-            # Feb-29 in a non-leap year climatology: use Feb-28
-            aligned[i] = clim_dict.get(59, np.nan)
-        else:
-            aligned[i] = np.nan
-
-    return aligned
-
-
-def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates):
-    """
-    Detect MHW/MCS events for a (time, eta, xi) slab.
-
-    Parameters
-    ----------
-    temp_slice        : float array (time, eta, xi)
-    clim_seas_slice   : float array (time, eta, xi) — seas clim aligned to temp
-    clim_thresh_slice : float array (time, eta, xi) — thresh aligned to temp
-    is_cold           : bool
-    t_dates           : ordinal int array (time,)
-
-    Returns
-    -------
-    categories : int8 array (time, eta, xi)
-    mhw_dicts  : list of dicts, one per pixel (None for all-NaN pixels)
-    """
-    n_time, n_eta, n_xi = temp_slice.shape
-    categories = np.zeros((n_time, n_eta, n_xi), dtype='int8')
-    mhw_dicts  = []
-
-    for i in range(n_eta):
-        for j in range(n_xi):
-            temp_ts        = temp_slice[:, i, j]
-            clim_seas_ts   = clim_seas_slice[:, i, j]
-            clim_thresh_ts = clim_thresh_slice[:, i, j]
-
-            if np.all(np.isnan(temp_ts)):
-                mhw_dicts.append(None)
-                continue
-
-            mhw_ev, cats           = detect_events_with_climatology(
-                temp_ts, clim_seas_ts, clim_thresh_ts, is_cold, t_dates
-            )
-            categories[:, i, j]   = cats
-            mhw_dicts.append(mhw_ev)
-
-    return categories, mhw_dicts
-
-
-def create_mhw_output_netcdf(output_file, n_time_daily, n_levels, n_eta, n_xi,
-                              ds_temp_daily, ds_temp, ds_clim, mode_name):
-    """
-    Create and initialise the output NetCDF file for MHW/MCS categories.
-
-    Parameters
-    ----------
-    output_file   : str or Path
-    n_time_daily  : int          — number of daily time steps
-    n_levels      : int          — number of s_rho levels
-    n_eta, n_xi   : int          — grid dimensions
-    ds_temp_daily : xr.Dataset   — daily-averaged temperature (for time coord)
-    ds_temp       : xr.Dataset   — original temperature file (for lat/lon)
-    ds_clim       : xr.Dataset   — climatology file (fallback lat/lon source)
-    mode_name     : str          — "MHW" or "MCS"
-
-    Returns
-    -------
-    nc_out : netCDF4.Dataset  — open, ready for writing
-    """
-    nc_out = Dataset(output_file, mode='w', format='NETCDF4')
-
-    nc_out.createDimension('time',    n_time_daily)
-    nc_out.createDimension('s_rho',   n_levels)
-    nc_out.createDimension('eta_rho', n_eta)
-    nc_out.createDimension('xi_rho',  n_xi)
-
-    time_var       = nc_out.createVariable('time', 'f8', ('time',))
-    time_var.units    = 'days since 2000-01-01'
-    time_var.calendar = 'standard'
-    time_var[:]    = (
-        (pd.to_datetime(ds_temp_daily.time.values) - pd.Timestamp('2000-01-01'))
-        .total_seconds() / 86400
+    ds_cur_out = xr.Dataset(
+        {
+            'ucur': (['time', 'ny', 'nx'], ucur),
+            'vcur': (['time', 'ny', 'nx'], vcur),
+        },
+        coords={
+            'time': time_days,
+        }
     )
+    ds_cur_out['time'].attrs['units'] = time_units_str
+    ds_cur_out['time'].attrs['calendar'] = 'standard'
+    ds_cur_out['ucur'].attrs['_FillValue'] = fill_value
+    ds_cur_out['ucur'].attrs['units'] = 'm/s'
+    ds_cur_out['ucur'].attrs['long_name'] = 'Eastward current velocity'
+    ds_cur_out['vcur'].attrs['_FillValue'] = fill_value
+    ds_cur_out['vcur'].attrs['units'] = 'm/s'
+    ds_cur_out['vcur'].attrs['long_name'] = 'Northward current velocity'
 
-    s_var    = nc_out.createVariable('s_rho', 'i4', ('s_rho',))
-    s_var[:] = np.arange(n_levels, dtype='int32')
+    ds_cur_out.to_netcdf(current_out, unlimited_dims=['time'])
+    ds_cur_out.close()
 
-    for src in (ds_temp, ds_clim):
-        if 'lat_rho' in src and 'lon_rho' in src:
-            lv       = nc_out.createVariable('lat_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
-            lv[:]    = src['lat_rho'].values
-            lov      = nc_out.createVariable('lon_rho', 'f4', ('eta_rho', 'xi_rho'), zlib=True)
-            lov[:]   = src['lon_rho'].values
-            break
+    # --- Write water level file ---
+    print(f'  writing {level_out}')
+    wlv = ds_zeta['zeta'].values.astype(np.float32)
+    wlv = np.where(np.isnan(wlv), fill_value, wlv)
 
-    cat_var = nc_out.createVariable(
-        'category', 'i1',
-        ('time', 's_rho', 'eta_rho', 'xi_rho'),
-        zlib=True, complevel=4, fill_value=np.int8(0),
-        chunksizes=(n_time_daily, 1, n_eta, n_xi),
+    ds_lev_out = xr.Dataset(
+        {
+            'wlv': (['time', 'ny', 'nx'], wlv),
+        },
+        coords={
+            'time': time_days,
+        }
     )
-    cat_var.long_name     = f'{mode_name} event category'
-    cat_var.flag_values   = np.array([-4, -3, -2, -1, 0, 1, 2, 3, 4], dtype='int8')
-    cat_var.flag_meanings = (
-        'extreme_MCS severe_MCS strong_MCS moderate_MCS'
-        'no_event'
-        'moderate_MHW strong_MHW severe_MHW extreme_MHW'
-    )
-    cat_var.description   = (
-        'Positive = MHW (above 90th-pct threshold); '
-        'Negative = MCS (below 10th-pct threshold). '
-        'Magnitude: 1=Moderate, 2=Strong, 3=Severe, 4=Extreme.'
-    )
+    ds_lev_out['time'].attrs['units'] = time_units_str
+    ds_lev_out['time'].attrs['calendar'] = 'standard'
+    ds_lev_out['wlv'].attrs['_FillValue'] = fill_value
+    ds_lev_out['wlv'].attrs['units'] = 'm'
+    ds_lev_out['wlv'].attrs['long_name'] = 'Sea surface height'
 
-    nc_out.title       = f'{mode_name} event detection'
-    nc_out.description = 'Marine heat waves and Marine cold spells categories computed using pre-computed climatology (1993-2019)'
-    nc_out.created     = "Created on" + pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    ds_lev_out.to_netcdf(level_out, unlimited_dims=['time'])
+    ds_lev_out.close()
 
-    return nc_out
+    ds_uv.close()
+    ds_zeta.close()
 
-
-def process_single_level(level, n_levels, ds_temp_raw, ds_clim, temp_var_name,
-                          doy_values, is_cold, t_dates, batch_size, nc_out):
-    """
-    Detect MHW/MCS events for one s_rho level and write categories to nc_out.
-
-    Parameters
-    ----------
-    level          : int              — s_rho index to process
-    n_levels       : int              — total number of levels (for progress display)
-    ds_temp_raw    : xr.Dataset       — raw lazy temperature dataset (not pre-resampled).
-                                        Resampling to daily is done per-batch inside
-                                        this function to avoid loading the full 4D array.
-    ds_clim        : xr.Dataset       — climatology (day_of_year, s_rho, eta_rho, xi_rho)
-                                        must contain 'climatology' and 'threshold_90'
-                                        (or 'threshold_10' for MCS — selected via is_cold)
-    temp_var_name  : str
-    doy_values     : int array        — day-of-year axis of ds_clim (1–366)
-    is_cold        : bool             — True: use threshold_10, write negative categories
-    t_dates        : ordinal int array (n_daily_days,) — pre-built from the full daily
-                                        time axis; see get_daily_time_index()
-    batch_size     : int              — eta_rho rows per chunk (keep <=5 for large grids)
-    nc_out         : netCDF4.Dataset  — output file (must already have 'category' var)
-
-    Notes
-    -----
-    - Each spatial batch is pulled into memory with .compute(), resampled to
-      daily means, gap-filled, and then freed before the next batch is loaded.
-      Peak RAM per batch = 2 x (batch_size x n_xi x n_daily_days x 4 bytes).
-    - Climatology alignment and event detection are then performed per pixel.
-    - Writes int8 categories: +1...+4 MHW, -1...-4 MCS, 0 no event.
-    - Syncs output file every 5 levels.
-    """
-    n_eta     = ds_temp_raw.sizes['eta_rho']
-    n_xi      = ds_temp_raw.sizes['xi_rho']
-    cat_var   = nc_out.variables['category']
-
-    thresh_key = 'threshold_10' if is_cold else 'threshold_90'
-
-    clim_seas_level   = ds_clim['climatology'].isel(s_rho=level).values  # (366, eta, xi)
-    clim_thresh_level = ds_clim[thresh_key].isel(s_rho=level).values     # (366, eta, xi)
-
-    print(f"\n   Level {level}/{n_levels - 1}:")
-
-    for i in range(0, n_eta, batch_size):
-        end_i = min(i + batch_size, n_eta)
-
-        # Pull one small slab into memory and resample to daily
-        ds_slice = ds_temp_raw.isel(s_rho=level, eta_rho=slice(i, end_i))
-        if temp_var_name in ds_slice:
-            ds_slice = ds_slice[[temp_var_name]]   # keep only the temperature var
-
-        ds_mem = ds_slice.compute()                # (sub-monthly steps, slab_Y, X)
-
-        if np.all(ds_mem[temp_var_name].values == 0) or            np.all(np.isnan(ds_mem[temp_var_name].values)):
-            del ds_mem
-            continue
-
-        ds_mem   = ds_mem.where(ds_mem != 0.0)
-        ds_daily = ds_mem.resample(time='1D').mean()
-        target_dates = pd.date_range(
-            start=pd.Timestamp.fromordinal(int(t_dates[0])),
-            end=pd.Timestamp.fromordinal(int(t_dates[-1])),
-            freq='1D')
-        ds_daily = ds_daily.reindex(time=target_dates, method='nearest')
-        ds_daily = ds_daily.interpolate_na(dim='time', limit=None)
-
-        temp_slice  = ds_daily[temp_var_name].values.astype('float32')  # (T, slab_Y, X)
-        n_time      = temp_slice.shape[0]
-
-        del ds_mem, ds_daily
-
-        clim_seas_slice   = np.empty((n_time, end_i - i, n_xi), dtype='float32')
-        clim_thresh_slice = np.empty((n_time, end_i - i, n_xi), dtype='float32')
-
-        # Build per-batch datetime index from ordinal t_dates
-        batch_times = pd.DatetimeIndex(
-            [pd.Timestamp.fromordinal(int(d)) for d in t_dates[:n_time]]
-        )
-        # --- REPLACE WITH THIS ---
-        # 1. Create a mapping of dates to DOY indices (0-365)
-        doy_map = np.array([pd.Timestamp(d).dayofyear - 1 for d in batch_times])
-
-        # 2. Vectorized broadcasting: This replaces thousands of loop iterations 
-        #    with a single NumPy advanced indexing operation.
-        clim_seas_slice = clim_seas_level[doy_map, i:end_i, :]
-        clim_thresh_slice = clim_thresh_level[doy_map, i:end_i, :]
-
-        categories, _ = process_level_batch(
-            temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates[:n_time]
-        )
-
-        if is_cold:
-            categories = -np.abs(categories).astype('int8')
-
-        cat_var[:n_time, level, i:end_i, :] = categories
-        print(f"      Rows {i:3d}-{end_i:3d} complete", end='\r')
-
-        del temp_slice, clim_seas_slice, clim_thresh_slice, categories
-        gc.collect()
-
-    print(f"      Level {level} complete" + " " * 20)
-
-    if level % 5 == 0:
-        nc_out.sync()
-
-    gc.collect()
-
-
-def resample_to_daily(ds_temp, temp_var_name):
-    """
-    Resample a small, already-computed (NumPy-backed) temperature slab to
-    daily means and gap-fill short gaps (<=7 days).
-
-    This function is intended to be called on individual spatial batches that
-    have already been pulled into memory with .compute(), NOT on the full lazy
-    multi-year dataset.  Calling it on a large Dask-backed dataset will either
-    trigger a MemoryError or raise a ValueError about multi-chunk core dims.
-    For the full dataset use get_daily_time_index() to build the time axis and
-    process slabs inside process_single_level() instead.
-
-    Parameters
-    ----------
-    ds_temp       : xr.Dataset  -- small, in-memory temperature slab
-    temp_var_name : str
-
-    Returns
-    -------
-    ds_temp_daily : xr.Dataset  -- daily-mean, gap-filled slab
-    """
-    ds_temp_daily = ds_temp[[temp_var_name]].resample(time='1D').mean()
-    ds_temp_daily = ds_temp_daily.interpolate_na(dim='time', limit=7)
-    return ds_temp_daily
-
+    print(f'  done')
 
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
