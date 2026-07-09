@@ -353,6 +353,13 @@ def main():
     parser_detect_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000, help='Reference year for the CROCO time axis.')
     parser_detect_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5, help='Number of eta_rho rows processed at once.')
 
+    def detect_mhw_forecast_handler(args):
+        from crocotools_py.marineheatwaves import detect_mhw_forecast
+        
+        detect_mhw_forecast(temp_file=args.temp_file, clim_file=args.clim_file, thresh_file=args.thresh_file,
+            fname_out=args.fname_out, temp_var=args.temp_var, Yorig=args.Yorig, batch_size=args.batch_size)
+    parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
+
     parser_plot_mhw = subparsers.add_parser('plot_mhw_forecast', help='Generate operational MetOcean plots.')
     parser_plot_mhw.add_argument('--forecast_file', required=True, type=str)
     parser_plot_mhw.add_argument('--cat_file', required=True, type=str)
@@ -367,14 +374,6 @@ def main():
         from crocotools_py.plotting import plot_operational_mhw_mcs
         plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file, args.thresh_file, args.out_dir, args.start_date, args.end_date, args.Yorig)
     parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
-
-    def detect_mhw_forecast_handler(args):
-        from crocotools_py.marineheatwaves import detect_mhw_forecast
-        
-        detect_mhw_forecast(temp_file=args.temp_file, clim_file=args.clim_file, thresh_file=args.thresh_file,
-            fname_out=args.fname_out, temp_var=args.temp_var, Yorig=args.Yorig, batch_size=args.batch_size)
- 
-    parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
  
     # ----------------
     # make_clm_inter
