@@ -243,6 +243,7 @@ def process_single_level(level, n_levels, ds_temp_daily, ds_clim, temp_var_name,
 def load_and_harmonize_baselines(clim_file, thresh_file):
     """
     Centralized memory-safe reader for baseline climatology and thresholds.
+    Enforces identical dimension tracking names and strict float32 types.
     """
     print(f'Opening climatology (dropping heavy variables): {clim_file}')
     vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
@@ -251,20 +252,27 @@ def load_and_harmonize_baselines(clim_file, thresh_file):
     print(f'Opening thresholds: {thresh_file}')
     ds_thresh_raw = xr.open_dataset(thresh_file, drop_variables=vars_to_drop)
 
-    if 'dayofyear' in ds_clim_raw.dims:
-        ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-    if 'dayofyear' in ds_thresh_raw.dims:
-        ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+    # Standardize time tracking dimension names across both baselines
+    for ds in [ds_clim_raw, ds_thresh_raw]:
+        if 'dayofyear' in ds.dims:
+            ds = ds.rename_dims({'dayofyear': 'day_of_year'})
+        if 'dayofyear' in ds.coords:
+            ds = ds.rename({'dayofyear': 'day_of_year'})
+
     if 'temp' in ds_clim_raw.data_vars and 'climatology' not in ds_clim_raw.data_vars:
         ds_clim_raw = ds_clim_raw.rename({'temp': 'climatology'})
 
-    for c in ['s_rho', 'eta_rho', 'xi_rho']:
+    # CRITICAL: Force every spatial and temporal coordinate tracking axis to match float32 types
+    for c in ['day_of_year', 's_rho', 'eta_rho', 'xi_rho']:
         if c in ds_thresh_raw.coords and c in ds_clim_raw.coords:
-            ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values})
+            ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values.astype('float32')})
+            ds_clim_raw = ds_clim_raw.assign_coords({c: ds_clim_raw[c].values.astype('float32')})
 
+    # Assemble unified reference dataset
     ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
     ds_clim['climatology'] = ds_clim_raw['climatology']
-    if 'zeta' in ds_clim_raw.data_vars: ds_clim['zeta'] = ds_clim_raw['zeta']
+    if 'zeta' in ds_clim_raw.data_vars: 
+        ds_clim['zeta'] = ds_clim_raw['zeta']
     
     ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
     ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
