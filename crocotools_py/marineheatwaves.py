@@ -252,17 +252,16 @@ def load_and_harmonize_baselines(clim_file, thresh_file):
     print(f'Opening thresholds: {thresh_file}')
     ds_thresh_raw = xr.open_dataset(thresh_file, drop_variables=vars_to_drop)
 
-    # Standardize time tracking dimension names across both baselines
-    for ds in [ds_clim_raw, ds_thresh_raw]:
-        if 'dayofyear' in ds.dims:
-            ds = ds.rename_dims({'dayofyear': 'day_of_year'})
-        if 'dayofyear' in ds.coords:
-            ds = ds.rename({'dayofyear': 'day_of_year'})
+    # Standardize time tracking dimension names explicitly on each object
+    if 'dayofyear' in ds_clim_raw.dims:
+        ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
+    if 'dayofyear' in ds_thresh_raw.dims:
+        ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
 
     if 'temp' in ds_clim_raw.data_vars and 'climatology' not in ds_clim_raw.data_vars:
         ds_clim_raw = ds_clim_raw.rename({'temp': 'climatology'})
 
-    # CRITICAL: Force every spatial and temporal coordinate tracking axis to match float32 types
+    # Force every spatial and temporal coordinate tracking axis to match float32 types
     for c in ['day_of_year', 's_rho', 'eta_rho', 'xi_rho']:
         if c in ds_thresh_raw.coords and c in ds_clim_raw.coords:
             ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values.astype('float32')})
@@ -281,6 +280,7 @@ def load_and_harmonize_baselines(clim_file, thresh_file):
         if v in ds_clim_raw.coords and v not in ds_clim.coords:
             ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
     return ds_clim
+
 
 def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='temp', Yorig=2000, batch_size=5):
     """
