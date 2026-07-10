@@ -242,43 +242,35 @@ def process_single_level(level, n_levels, ds_temp_daily, ds_clim, temp_var_name,
 
 def load_and_harmonize_baselines(clim_file, thresh_file):
     """
-    Centralized memory-safe reader for baseline climatology and thresholds.
-    Enforces identical dimension tracking names and strict float32 types.
+    Directly extracts raw array tracking metrics to bypass 
+    coordinate range and type mismatches.
     """
     print(f'Opening climatology (dropping heavy variables): {clim_file}')
     vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
     ds_clim_raw = xr.open_dataset(clim_file, drop_variables=vars_to_drop)
     
     print(f'Opening thresholds: {thresh_file}')
-    ds_thresh_raw = xr.open_dataset(thresh_file, drop_variables=vars_to_drop)
+    ds_thresh_raw = xr.open_dataset(thresh_file)
 
-    # Standardize time tracking dimension names explicitly on each object
+    # Re-map standard baseline array dimension tags
     if 'dayofyear' in ds_clim_raw.dims:
         ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-    if 'dayofyear' in ds_thresh_raw.dims:
-        ds_thresh_raw = ds_thresh_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
 
-    if 'temp' in ds_clim_raw.data_vars and 'climatology' not in ds_clim_raw.data_vars:
-        ds_clim_raw = ds_clim_raw.rename({'temp': 'climatology'})
-
-    # Force every spatial and temporal coordinate tracking axis to match float32 types
-    for c in ['day_of_year', 's_rho', 'eta_rho', 'xi_rho']:
-        if c in ds_thresh_raw.coords and c in ds_clim_raw.coords:
-            ds_thresh_raw = ds_thresh_raw.assign_coords({c: ds_clim_raw[c].values.astype('float32')})
-            ds_clim_raw = ds_clim_raw.assign_coords({c: ds_clim_raw[c].values.astype('float32')})
-
-    # Assemble unified reference dataset
+    # Initialize a clean target dataset using the clean grid axes from the climatology file
     ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
-    ds_clim['climatology'] = ds_clim_raw['climatology']
+    ds_clim['climatology'] = ds_clim_raw['temp'] if 'temp' in ds_clim_raw.data_vars else ds_clim_raw['climatology']
+    
     if 'zeta' in ds_clim_raw.data_vars: 
         ds_clim['zeta'] = ds_clim_raw['zeta']
-    
-    ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
-    ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
-    
+        
+    # Enforce pure data array extraction to bypass coordinate evaluation entirely
+    ds_clim['threshold_90'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
+    ds_clim['threshold_10'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
+        
     for v in ['lon_rho', 'lat_rho', 'day_of_year']:
         if v in ds_clim_raw.coords and v not in ds_clim.coords:
             ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
+            
     return ds_clim
 
 
