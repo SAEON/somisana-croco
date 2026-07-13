@@ -658,20 +658,24 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
             lev_site = depth_info["lev"]
             ts = ds_fcst_single["temp"].isel(s_rho=lev_site).resample(time="1D").mean().load()
             all_dates, all_temps = pd.to_datetime(ts.time.values), ts.isel(eta_rho=pj, xi_rho=pi).values
-            doy_all = all_dates.dayofyear.values
+            doy_all = doy_index(all_dates)
             obs_m, fct_m = all_dates < today, all_dates >= today
+            
+            clim_profile   = ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
+            thresh90_profile = ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
+            thresh10_profile = ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
             
             sites[site_name] = dict(
                 pj=int(pj), pi=int(pi), lon=float(lon[pj, pi]), lat=float(lat[pj, pi]),
                 obs_dates=pd.DatetimeIndex(all_dates[obs_m]), obs_temp=all_temps[obs_m],
-                obs_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[obs_m].dayofyear.values).values,
-                obs_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[obs_m].dayofyear.values).values,
-                obs_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[obs_m].dayofyear.values).values,
+                obs_seas=clim_profile[doy_all][obs_m],
+                obs_h_thr=thresh90_profile[doy_all][obs_m],
+                obs_c_thr=thresh10_profile[doy_all][obs_m],
                 fct_dates=pd.DatetimeIndex(all_dates[fct_m]), fct_temp=all_temps[fct_m],
-                fct_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[fct_m].dayofyear.values).values,
-                fct_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[fct_m].dayofyear.values).values,
-                fct_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[fct_m].dayofyear.values).values,)
-
+                fct_seas=clim_profile[doy_all][fct_m],
+                fct_h_thr=thresh90_profile[doy_all][fct_m],
+                fct_c_thr=thresh10_profile[doy_all][fct_m],)
+            
         print("Time Series")
         plot_timeseries_multisite(sites, today, out_dir / depth_name, depth_name)
 
