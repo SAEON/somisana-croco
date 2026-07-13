@@ -20,10 +20,7 @@ import cartopy.feature as cfeature
 # Internal Dependencies
 import crocotools_py.postprocess as post
 
-# =============================================================================
 # Core Heatwave Algorithms
-# =============================================================================
-
 def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t_dates=None):
     """
     Detect MHW/MCS events using pre-computed climatology.
@@ -31,8 +28,7 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     n_time     = len(temp_data)
     categories = np.zeros(n_time, dtype='int8')
 
-    mhw = {
-        'time_start': [], 'time_end': [], 'time_peak': [],
+    mhw = {'time_start': [], 'time_end': [], 'time_peak': [],
         'date_start': [], 'date_end': [], 'date_peak': [],
         'index_start': [], 'index_end': [], 'index_peak': [],
         'duration': [], 'duration_moderate': [], 'duration_strong': [],
@@ -45,8 +41,7 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         'intensity_var_abs': [], 'intensity_cumulative_abs': [],
         'category': [],
         'rate_onset': [], 'rate_decline': [],
-        'n_events': 0,
-    }
+        'n_events': 0,}
 
     if np.all(np.isnan(temp_data)) or np.all(temp_data == 0):
         return mhw, categories
@@ -242,8 +237,7 @@ def process_single_level(level, n_levels, ds_temp_daily, ds_clim, temp_var_name,
 
 def load_and_harmonize_baselines(clim_file, thresh_file):
     """
-    Directly extracts raw array tracking metrics to bypass 
-    coordinate range and type mismatches.
+    Centralized memory-safe reader for baseline datasets using native dayofyear variables.
     """
     print(f'Opening climatology (dropping heavy variables): {clim_file}')
     vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
@@ -252,27 +246,21 @@ def load_and_harmonize_baselines(clim_file, thresh_file):
     print(f'Opening thresholds: {thresh_file}')
     ds_thresh_raw = xr.open_dataset(thresh_file)
 
-    # Re-map standard baseline array dimension tags
-    if 'dayofyear' in ds_clim_raw.dims:
-        ds_clim_raw = ds_clim_raw.rename_dims({'dayofyear': 'day_of_year'}).rename({'dayofyear': 'day_of_year'})
-
-    # Initialize a clean target dataset using the clean grid axes from the climatology file
+    # Use native coordinate names directly
     ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
     ds_clim['climatology'] = ds_clim_raw['temp'] if 'temp' in ds_clim_raw.data_vars else ds_clim_raw['climatology']
     
     if 'zeta' in ds_clim_raw.data_vars: 
         ds_clim['zeta'] = ds_clim_raw['zeta']
         
-    # Enforce pure data array extraction to bypass coordinate evaluation entirely
-    ds_clim['threshold_90'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
-    ds_clim['threshold_10'] = (('day_of_year', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
+    ds_clim['threshold_90'] = (('dayofyear', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
+    ds_clim['threshold_10'] = (('dayofyear', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
         
-    for v in ['lon_rho', 'lat_rho', 'day_of_year']:
+    for v in ['lon_rho', 'lat_rho', 'dayofyear']:
         if v in ds_clim_raw.coords and v not in ds_clim.coords:
             ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
             
     return ds_clim
-
 
 def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='temp', Yorig=2000, batch_size=5):
     """
@@ -287,7 +275,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     num_levels = ds_clim.sizes['s_rho']
     n_eta      = ds_clim.sizes['eta_rho']
     n_xi       = ds_clim.sizes['xi_rho']
-    doy_values = ds_clim['day_of_year'].values
+    doy_values = ds_clim['dayofyear'].values
 
     print(f'Loading temperature: {temp_file}')
     ds_temp = post.get_ds(temp_file, temp_var)
@@ -299,7 +287,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
     T_daily      = len(target_dates)
     t_dates      = np.array([d.toordinal() for d in target_dates], dtype=int)
-    daily_doy_map = np.clip(target_dates.dayofyear.values - 1, 0, 365)
+    daily_doy_map = target_dates.dayofyear.values
 
     out_category  = np.zeros((T_daily, num_levels, n_eta, n_xi), dtype='int8')
     out_temp_anom = np.zeros((T_daily, num_levels, n_eta, n_xi), dtype='float32')
@@ -307,21 +295,21 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     out_zeta_anom = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
     out_sst_front = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
 
-    print("Computing Daily Zeta and Zeta Anomalies...")
+    print("Computing Daily Zeta and Zeta Anomalies")
     if 'zeta' in ds_temp:
         ds_zeta_daily = (ds_temp['zeta'].resample(time='1D').mean()
                          .reindex(time=target_dates, method='nearest')
                          .interpolate_na(dim='time', limit=None).compute())
         out_zeta[:] = ds_zeta_daily.values
         if 'zeta' in ds_clim:
-            out_zeta_anom[:] = ds_zeta_daily.values - ds_clim['zeta'].values[daily_doy_map, :, :]
+            out_zeta_anom[:] = ds_zeta_daily.values - ds_clim['zeta'].sel(dayofyear=daily_doy_map).values
 
-    print("Resampling forecast temperature to daily means...")
+    print("Resampling forecast temperature to daily means")
     ds_temp_daily = (ds_temp[[temp_var]].resample(time='1D').mean()
                      .reindex(time=target_dates, method='nearest')
                      .interpolate_na(dim='time', limit=None).compute())
 
-    print("Processing vertical planes...")
+    print("Processing vertical planes")
     for k in range(num_levels - 1, -1, -1):
         mhw_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
         process_single_level(k, num_levels, ds_temp_daily, ds_clim, temp_var, doy_values, False, t_dates, batch_size, mhw_layer)
@@ -337,12 +325,13 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
         combined[:, mask_rho_2d == 0] = -127
         out_category[:, k, :, :] = combined
 
-        print(f"      -> Calculating daily temperature anomalies for level {k}...")
+        print(f"Calculating daily temperature anomalies for level {k}")
         sst_vals = ds_temp_daily[temp_var].isel(s_rho=k).values
-        out_temp_anom[:, k, :, :] = sst_vals - ds_clim['climatology'].isel(s_rho=k).values[daily_doy_map, :, :]
+        clim_slice = ds_clim['climatology'].isel(s_rho=k).sel(dayofyear=daily_doy_map).values
+        out_temp_anom[:, k, :, :] = sst_vals - clim_slice
         
         if k == num_levels - 1:
-            print("      -> Calculating daily surface thermal fronts (SST fronts)...")
+            print("Calculating daily surface thermal fronts (SST fronts)")
             pm = ds_temp['pm'].values if 'pm' in ds_temp else np.ones((n_eta, n_xi))
             pn = ds_temp['pn'].values if 'pn' in ds_temp else np.ones((n_eta, n_xi))
             if pm.ndim > 2: pm, pn = pm[0], pm[0]
@@ -353,7 +342,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
             out_sst_front = np.where(mask_rho_2d[np.newaxis, :, :] == 1, out_sst_front, np.nan)
         gc.collect()
 
-    print("Assembling unified output dataset using Xarray...")
+    print("Assembling unified output dataset using Xarray")
     ds_out = xr.Dataset(
         data_vars={
             'category': (['time', 's_rho', 'eta_rho', 'xi_rho'], out_category),
@@ -370,9 +359,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
             'time': target_dates,
             's_rho': np.arange(num_levels),
             'eta_rho': np.arange(n_eta),
-            'xi_rho': np.arange(n_xi),
-        }
-    )
+            'xi_rho': np.arange(n_xi),})
     
     # Standardize Global Attributes
     ds_out['category'].attrs['long_name'] = 'MHW_MCS Combined Event Categories'
@@ -395,8 +382,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
         'temp_anom': {'zlib': True, 'complevel': 2, '_FillValue': np.nan, 'chunksizes': (T_daily, 1, n_eta, n_xi)},
         'zeta': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},
         'zeta_anom': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},
-        'sst_front': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},
-    }
+        'sst_front': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},}
     
     print(f"Exporting to disk: {fname_out}")
     if out_file.exists(): out_file.unlink()
@@ -404,10 +390,8 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     ds_clim.close(); ds_temp.close()
     print(f'Done: {fname_out} ({out_file.stat().st_size / (1024 ** 2):.1f} MB)')
 
-# =============================================================================
-# Operational Plotting & Animation Routines
-# =============================================================================
 
+# Operational Plotting & Animation Routines
 def nearest(lon2d, lat2d, lon0, lat0):
     d2 = (lon2d - lon0)**2 + (lat2d - lat0)**2
     return np.unravel_index(np.argmin(d2), d2.shape)
@@ -507,6 +491,7 @@ MCS_FLAG_COLOURS = {0: "#4CAF7D", 1: FILL_C_MOD, 2: FILL_C_STR, 3: FILL_C_SEV, 4
 CMAP_9 = mplc.ListedColormap([FILL_C_EXT, FILL_C_SEV, FILL_C_STR, FILL_C_MOD,"#ffffff", FILL_MOD, FILL_STR, FILL_SEV, FILL_EXT])
 CMAP_9.set_bad("white")
 BNORM_9 = mplc.BoundaryNorm([-4.5, -3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5], CMAP_9.N)
+
 def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, depth_name="Surface"):
     out_path = Path(out_path); out_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -673,34 +658,33 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
             lev_site = depth_info["lev"]
             ts = ds_fcst_single["temp"].isel(s_rho=lev_site).resample(time="1D").mean().load()
             all_dates, all_temps = pd.to_datetime(ts.time.values), ts.isel(eta_rho=pj, xi_rho=pi).values
-            doy_all = doy_index(all_dates)
+            doy_all = all_dates.dayofyear.values
             obs_m, fct_m = all_dates < today, all_dates >= today
             
             sites[site_name] = dict(
                 pj=int(pj), pi=int(pi), lon=float(lon[pj, pi]), lat=float(lat[pj, pi]),
                 obs_dates=pd.DatetimeIndex(all_dates[obs_m]), obs_temp=all_temps[obs_m],
-                obs_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][obs_m],
-                obs_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][obs_m],
-                obs_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][obs_m],
+                obs_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[obs_m].dayofyear.values).values,
+                obs_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[obs_m].dayofyear.values).values,
+                obs_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[obs_m].dayofyear.values).values,
                 fct_dates=pd.DatetimeIndex(all_dates[fct_m]), fct_temp=all_temps[fct_m],
-                fct_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
-                fct_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
-                fct_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values[doy_all][fct_m],
-            )
+                fct_seas=ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[fct_m].dayofyear.values).values,
+                fct_h_thr=ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[fct_m].dayofyear.values).values,
+                fct_c_thr=ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).sel(dayofyear=all_dates[fct_m].dayofyear.values).values,)
 
-        print("  -> Time Series...")
+        print("Time Series")
         plot_timeseries_multisite(sites, today, out_dir / depth_name, depth_name)
 
-        print("  -> Flag Maps...")
+        print("Flag Maps")
         plot_flag_map(compute_site_flag_data(sites, ds_cat, depth_info["lev"]), today, start_date, end_date, out_dir / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
 
-        print("  -> Spatial Category Animation...")
+        print("Spatial Category Animation")
         animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], False, None, out_dir / f"Categories_Animation_{depth_name}.mp4")
 
         if depth_name == "Surface":
-            print("  -> Temperature Anomaly Animation...")
+            print("Temperature Anomaly Animation")
             animate_surface_anomalies(ds_cat, lat, lon, out_dir / "Temperature_Anomaly_Animation_Surface.mp4")
-            print("  -> Thermal Front Animation...")
+            print("Thermal Front Animation")
             animate_surface_fronts(ds_cat, lat, lon, out_dir / "Thermal_Front_Animation_Surface.mp4")
 
     ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
