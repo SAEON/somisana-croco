@@ -247,9 +247,3 @@ def plot_blk(croco_grd, croco_blk_file, var='wspd', figsize=(6,6), tstep=0, Yori
             uv_plt.set_UVC(u_i[::skip_uv, ::skip_uv], v_i[::skip_uv, ::skip_uv])
         anim = FuncAnimation(fig, plot_tstep, frames=range(tstep, tstep_end or len(ds_blk.bulk_time), skip_time)) 
         anim.save(gif_out or croco_blk_file.split('.nc')[0]+'_'+var+'.gif', writer='imagemagick')
-
-def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, Yorig=2000):
-    from crocotools_py.marineheatwaves import plot_operational_mhw_mcs as run_plots
-    
-    run_plots(forecast_file=forecast_file, cat_file=cat_file, clim_file=clim_file, thresh_file=thresh_file,
-        out_dir=out_dir, start_date=start_date, end_date=end_date, Yorig=Yorig)
