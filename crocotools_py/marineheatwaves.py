@@ -586,7 +586,7 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
 
     title = ax.set_title(f"MHW & MCS Categories ({depth_name})\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_spatial_frame, frames=len(times), fargs=(cat, times, mesh, title, depth_name), blit=False)
-    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120); plt.close(fig)
+    ani.save(out_path, writer='ffmpeg', fps=1, dpi=120); plt.close(fig)
     
 def _update_anomaly_frame(frame, anom_data, time_data, mesh_obj, title_obj):
     mesh_obj.set_array(anom_data[frame].ravel())
@@ -605,7 +605,7 @@ def animate_surface_anomalies(cat_ds, lat, lon, out_path):
     cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04); cbar.set_label("Temperature Anomaly (°C)")
     title = ax.set_title(f"Sea Water Temperature Daily Anomaly (Surface)\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_anomaly_frame, frames=len(times), fargs=(anom, times, mesh, title), blit=False)
-    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120); plt.close(fig)
+    ani.save(out_path, writer='ffmpeg', fps=1, dpi=120); plt.close(fig)
 
 def _update_frontal_frame(frame, front_data, time_data, mesh_obj, title_obj):
     mesh_obj.set_array(front_data[frame].ravel())
@@ -624,7 +624,7 @@ def animate_surface_fronts(cat_ds, lat, lon, out_path):
     cbar = plt.colorbar(mesh, ax=ax, fraction=0.03, pad=0.04); cbar.set_label("SST Gradient Magnitude (°C / km)")
     title = ax.set_title(f"Horizontal Thermal Front Magnitude (Surface)\nDate: {str(times[0])[:10]}")
     ani = FuncAnimation(fig, _update_frontal_frame, frames=len(times), fargs=(front, times, mesh, title), blit=False)
-    ani.save(out_path, writer='ffmpeg', fps=5, dpi=120); plt.close(fig)
+    ani.save(out_path, writer='ffmpeg', fps=1, dpi=120); plt.close(fig)
 
 def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, Yorig=2000):
     print("Rendering Operational MHW/MCS Visuals")
