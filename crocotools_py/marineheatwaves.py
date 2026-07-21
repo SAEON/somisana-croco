@@ -516,8 +516,8 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
 
         ax_g.add_patch(plt.Circle((0, 0), r_in, fc=MHW_FLAG_COLOURS[0], ec="white", lw=1.0, zorder=2))
         ax_g.text(0, 0, "None", ha="center", va="center", fontsize=8, fontweight="bold", color="white", zorder=4)
-        ax_g.text(0,  r_out + 0.10, "MHW", ha="center", va="bottom", fontsize=7.5, fontweight="bold", color=MHW_FLAG_COLOURS[2])
-        ax_g.text(0, -(r_out + 0.10), "MCS", ha="center", va="top", fontsize=7.5, fontweight="bold", color=MCS_FLAG_COLOURS[3])
+        ax_g.text(0,  r_out + 0.10, "MHW", ha="center", va="bottom", fontsize=8, fontweight="bold", color=MHW_FLAG_COLOURS[2])
+        ax_g.text(0, -(r_out + 0.10), "MCS", ha="center", va="top", fontsize=8, fontweight="bold", color=MCS_FLAG_COLOURS[3])
         ax_g.set_title("Max Intensity\n(Discrete Flags)", fontsize=7, fontweight="bold", pad=3, color="#1a3a5c")
 
     coast_order = ["Kleinsee", "Hondeklipbaai", "Doringbaai", "Elandsbaai", "Laaiplek", "Paternoster", "Saldanha", "Yzerfontein", "Bloubergstrand", "Oudekraal", "Cape Point", "Simonstown", "Strand", "Hangklip", "Kleinmond", "Hermanus", "Gansbaai"]
@@ -575,7 +575,7 @@ def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_va
     if mask.ndim > 2: mask = mask[0]
     cat = np.where(mask[np.newaxis, :, :] == 1, cat, np.nan)
 
-    fig = plt.figure(figsize=(9, 8)); ax = plt.axes(projection=ccrs.PlateCarree())
+    fig = plt.figure(figsize=(10, 13)); ax = plt.axes(projection=ccrs.PlateCarree())
     mesh = ax.pcolormesh(lon, lat, cat[0], transform=ccrs.PlateCarree(), cmap=CMAP_9, norm=BNORM_9, shading="auto")
     ax.add_feature(cfeature.COASTLINE, linewidth=0.6); ax.add_feature(cfeature.LAND, facecolor="white", edgecolor='black', zorder=2); ax.add_feature(cfeature.BORDERS, linewidth=0.3, linestyle=":")
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2); gl.top_labels = gl.right_labels = False
@@ -597,7 +597,7 @@ def animate_surface_anomalies(cat_ds, lat, lon, out_path):
     out_path = Path(out_path); times = pd.to_datetime(cat_ds.time.values)
     anom = cat_ds["temp_anom"].isel(s_rho=-1).values.astype(float)
 
-    fig = plt.figure(figsize=(9, 8)); ax = plt.axes(projection=ccrs.PlateCarree())
+    fig = plt.figure(figsize=(10, 13)); ax = plt.axes(projection=ccrs.PlateCarree())
     mesh = ax.pcolormesh(lon, lat, anom[0], transform=ccrs.PlateCarree(), cmap='RdBu_r', vmin=-3.0, vmax=3.0, shading="auto")
     ax.add_feature(cfeature.COASTLINE, linewidth=0.6); ax.add_feature(cfeature.LAND, facecolor="lightgray", edgecolor='black', zorder=2)
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2); gl.top_labels = gl.right_labels = False
@@ -616,7 +616,7 @@ def animate_surface_fronts(cat_ds, lat, lon, out_path):
     out_path = Path(out_path); times = pd.to_datetime(cat_ds.time.values)
     front = cat_ds["sst_front"].values.astype(float)
 
-    fig = plt.figure(figsize=(9, 8)); ax = plt.axes(projection=ccrs.PlateCarree())
+    fig = plt.figure(figsize=(10, 13)); ax = plt.axes(projection=ccrs.PlateCarree())
     mesh = ax.pcolormesh(lon, lat, front[0], transform=ccrs.PlateCarree(), cmap='inferno', vmin=0.05, vmax=0.50, shading="auto")
     ax.add_feature(cfeature.COASTLINE, linewidth=0.6); ax.add_feature(cfeature.LAND, facecolor="lightgray", edgecolor='black', zorder=2)
     gl = ax.gridlines(draw_labels=True, linewidth=0.4, color="#aaaaaa", alpha=0.8, linestyle="--", zorder=2); gl.top_labels = gl.right_labels = False
@@ -643,10 +643,8 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
     nlev = len(ds_fcst.s_rho) if "s_rho" in ds_fcst else ds_fcst.dims.get("s_rho", 32)
     today = pd.Timestamp(ds_fcst.time.values[4]).normalize()
 
-    depth_levels = {
-        "Surface": {"type": "fixed", "lev": nlev - 1},
-        "Bottom":  {"type": "fixed", "lev": 0},
-    }
+    depth_levels = {"Surface": {"type": "fixed", "lev": nlev - 1},
+        "Bottom":  {"type": "fixed", "lev": 0},}
 
     ds_fcst_single = post.handle_time(xr.open_dataset(forecast_file, decode_times=False), Yorig=Yorig)
 
