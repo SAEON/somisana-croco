@@ -368,11 +368,12 @@ def main():
     parser_plot_mhw.add_argument('--out_dir', required=True, type=str)
     parser_plot_mhw.add_argument('--start_date', required=True, type=str)
     parser_plot_mhw.add_argument('--end_date', required=True, type=str)
+    parser_plot_mhw.add_argument('--today', required=True, type=str)
     parser_plot_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000)
     
     def plot_mhw_forecast_handler(args):
         from crocotools_py.plotting import plot_operational_mhw_mcs
-        plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file, args.thresh_file, args.out_dir, args.start_date, args.end_date, args.Yorig)
+        plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file, args.thresh_file, args.out_dir, args.start_date, args.end_date, args.today, args.Yorig)
     parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
  
     # ----------------

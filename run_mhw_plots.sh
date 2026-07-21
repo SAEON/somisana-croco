@@ -36,5 +36,6 @@ python3 "$CLI_PATH" plot_mhw_forecast \
     --out_dir "$OUT_DIR" \
     --start_date "$START_DATE" \
     --end_date "$END_DATE" \
+    --today "$BASE_DATE" \
     --Yorig "$YORIG"
 

@@ -445,6 +445,12 @@ def plot_timeseries_multisite(sites, today, output_dir, depth_name):
         ax.yaxis.grid(True, color="#cccccc", linewidth=0.7, zorder=0)
         ax.set_facecolor("white"); fig.patch.set_facecolor("white")
 
+        # Heatwave / coldspell shading — filled wherever SST crosses the threshold
+        ax.fill_between(all_dates, all_temp, all_h_thr, where=(all_temp > all_h_thr),
+                         interpolate=True, color="#f0ad4e", alpha=0.85, zorder=1)
+        ax.fill_between(all_dates, all_temp, all_c_thr, where=(all_temp < all_c_thr),
+                         interpolate=True, color="#5bc0de", alpha=0.85, zorder=1)
+
         ax.plot(all_dates, all_seas, ":", color="gray", label="Climatology", lw=1.5, zorder=2)
         ax.plot(all_dates, all_h_thr, "--", color="#d9534f", label="MHW threshold", lw=1.2, zorder=2)
         ax.plot(all_dates, all_c_thr, "--", color="#337ab7", label="MCS threshold", lw=1.2, zorder=2)
@@ -454,18 +460,24 @@ def plot_timeseries_multisite(sites, today, output_dir, depth_name):
         if len(fct_dates) > 0:
             ax.plot(fct_dates, fct_temp, color="black", lw=2.5, label="SST forecast", zorder=5)
 
-        ax.axvline(today, color="black", lw=1.2, zorder=6)
-        ax.text(today + pd.Timedelta(hours=4), ax.get_ylim()[0] + 0.95*(ax.get_ylim()[1]-ax.get_ylim()[0]), "Today", va="top", ha="left", fontsize=9, fontweight="bold")
+        ax.axvline(today, color="black", lw=1.0, zorder=6)
+        ax.text(today + pd.Timedelta(hours=4), ax.get_ylim()[1], "Today", va="bottom", ha="left", fontsize=10)
 
         ax.set_title(f"{site_name}  ({abs(data['lat']):.3f}°S, {data['lon']:.3f}°E)", fontsize=14, fontweight="bold", pad=10, color="#1a3a5c")
         ax.set_ylabel("Temperature [°C]", fontsize=11, fontweight="bold", color="#1a3a5c")
         ax.set_xlim(all_dates[0], all_dates[-1])
-        
+
         ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
         for spine in ("top", "right"): ax.spines[spine].set_visible(False)
         ax.spines['left'].set_color('#1a3a5c'); ax.spines['bottom'].set_color('#1a3a5c')
 
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, fontsize=9, frameon=False)
+        # Explicit legend order to match: row1 = observed/MHW/climatology, row2 = forecast/MCS
+        handles, labels = ax.get_legend_handles_labels()
+        order = ["SST observed", "MHW threshold", "Climatology", "SST forecast", "MCS threshold"]
+        ordered = [(h, l) for l in order for h, l2 in zip(handles, labels) if l2 == l]
+        ax.legend([h for h, l in ordered], [l for h, l in ordered],
+                   loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3, fontsize=9, frameon=False)
+
         plt.savefig(out_dir / f"{site_name.replace(' ', '_')}_{depth_name}_{today.strftime('%Y%m%d')}.png", dpi=150, bbox_inches="tight")
         plt.close()
 
@@ -516,8 +528,8 @@ def plot_flag_map(site_data, today, start_date, end_date, out_path, lat, lon, de
 
         ax_g.add_patch(plt.Circle((0, 0), r_in, fc=MHW_FLAG_COLOURS[0], ec="white", lw=1.0, zorder=2))
         ax_g.text(0, 0, "None", ha="center", va="center", fontsize=8, fontweight="bold", color="white", zorder=4)
-        ax_g.text(0,  r_out + 0.10, "MHW", ha="center", va="bottom", fontsize=8, fontweight="bold", color=MHW_FLAG_COLOURS[2])
-        ax_g.text(0, -(r_out + 0.10), "MCS", ha="center", va="top", fontsize=8, fontweight="bold", color=MCS_FLAG_COLOURS[3])
+        ax_g.text(0,  r_out + 0.10, "MHW", ha="center", va="bottom", fontsize=9, fontweight="bold", color=MHW_FLAG_COLOURS[2])
+        ax_g.text(0, -(r_out + 0.10), "MCS", ha="center", va="top", fontsize=9, fontweight="bold", color=MCS_FLAG_COLOURS[3])
         ax_g.set_title("Max Intensity\n(Discrete Flags)", fontsize=7, fontweight="bold", pad=3, color="#1a3a5c")
 
     coast_order = ["Kleinsee", "Hondeklipbaai", "Doringbaai", "Elandsbaai", "Laaiplek", "Paternoster", "Saldanha", "Yzerfontein", "Bloubergstrand", "Oudekraal", "Cape Point", "Simonstown", "Strand", "Hangklip", "Kleinmond", "Hermanus", "Gansbaai"]
@@ -626,7 +638,7 @@ def animate_surface_fronts(cat_ds, lat, lon, out_path):
     ani = FuncAnimation(fig, _update_frontal_frame, frames=len(times), fargs=(front, times, mesh, title), blit=False)
     ani.save(out_path, writer='ffmpeg', fps=1, dpi=120); plt.close(fig)
 
-def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, Yorig=2000):
+def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, today, Yorig=2000):
     print("Rendering Operational MHW/MCS Visuals")
     out_dir = Path(out_dir)
     
@@ -641,7 +653,7 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
     h = ds_fcst.h.values if "h" in ds_fcst else np.zeros_like(lat)
     if h.ndim > 2: h = h[0]
     nlev = len(ds_fcst.s_rho) if "s_rho" in ds_fcst else ds_fcst.dims.get("s_rho", 32)
-    today = pd.Timestamp(ds_fcst.time.values[4]).normalize()
+    today = pd.Timestamp(today).normalize()
 
     depth_levels = {"Surface": {"type": "fixed", "lev": nlev - 1},
         "Bottom":  {"type": "fixed", "lev": 0},}
