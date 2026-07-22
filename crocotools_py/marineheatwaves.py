@@ -669,7 +669,7 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
             ts = ds_fcst_single["temp"].isel(s_rho=lev_site).resample(time="1D").mean().load()
             all_dates, all_temps = pd.to_datetime(ts.time.values), ts.isel(eta_rho=pj, xi_rho=pi).values
             doy_all = doy_index(all_dates)
-            obs_m, fct_m = all_dates < today, all_dates >= today
+            obs_m, fct_m = all_dates <= today, all_dates >= today
             
             clim_profile   = ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
             thresh90_profile = ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
