@@ -253,8 +253,8 @@ def load_and_harmonize_baselines(clim_file, thresh_file):
     if 'zeta' in ds_clim_raw.data_vars: 
         ds_clim['zeta'] = ds_clim_raw['zeta']
         
-    ds_clim['threshold_90'] = (('dayofyear', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_90'].variable.data)
-    ds_clim['threshold_10'] = (('dayofyear', 's_rho', 'eta_rho', 'xi_rho'), ds_thresh_raw['threshold_10'].variable.data)
+    ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
+    ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
         
     for v in ['lon_rho', 'lat_rho', 'dayofyear']:
         if v in ds_clim_raw.coords and v not in ds_clim.coords:
