@@ -154,8 +154,9 @@ def main():
     parser_regrid_tier2.add_argument('--Yorig', type=parse_int, default=2000)
     parser_regrid_tier2.add_argument('--doi_link', required=False, type=str)
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list, default=[0,-5,-10,-20,-50,-100,-200,-500,-1000])
+    parser_regrid_tier2.add_argument('--varList', required=False, type=parse_list_str, default=['temp','salt','u','v'])
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link, depths = args.depths)
+        regrid_tier2(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link, depths = args.depths, varList = args.varList)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------

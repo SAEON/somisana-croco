@@ -25,6 +25,12 @@ VECTOR_PAIRS = [
     ('bustr', 'bvstr'),
 ]
 
+# Discrete/categorical variables that must use nearest-neighbor vertical
+# interpolation instead of linear - linear interpolation of a category flag
+# (e.g. MHW/MCS category) produces meaningless fractional values and can
+# blend fill values into valid data near mask boundaries.
+CATEGORICAL_VARS = {'category'}
+
 def _partition_vars(varList):
     """
     Split varList into scalar variables and vector pairs.
@@ -44,7 +50,7 @@ def _partition_vars(varList):
     return scalars, pairs
 
 def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
-                 varList=['temp','salt','u','v']):
+                 varList=['temp','salt','u','v',]):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -176,7 +182,8 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         scalars, pairs = _partition_vars(varList)
         datasets = []
         for var in scalars:
-            datasets.append(post.get_var(file, var, grdname=grdname, Yorig=Yorig, level=depths))
+            interp_method = 'nearest' if var in CATEGORICAL_VARS else 'linear'
+            datasets.append(post.get_var(file, var, grdname=grdname, Yorig=Yorig, level=depths, interp_method=interp_method))
         for var_u, var_v in pairs:
             datasets.append(post.get_uv(file, grdname=grdname, Yorig=Yorig, level=depths, var_u=var_u, var_v=var_v))
         ds_all = xr.merge(datasets, compat='override')

@@ -373,9 +373,17 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     ds_out['zeta_anom'].attrs['long_name'] = 'Sea Surface Elevation Daily Anomaly'
     ds_out['zeta_anom'].attrs['units'] = 'm'
     
-    for attr in ['hc', 'Vtransform', 'theta_s', 'theta_b']:
+    for attr in ['hc', 'theta_s', 'theta_b']:
         if attr in ds_temp: ds_out.attrs[attr] = float(ds_temp[attr].values)
         elif attr in ds_temp.attrs: ds_out.attrs[attr] = float(ds_temp.attrs[attr])
+        
+    if 'Vtransform' in ds_temp:
+        vtransform_val = int(ds_temp['Vtransform'].values)
+    elif 'Vtransform' in ds_temp.attrs: 
+        vtransform_val = int(ds_temp.attrs['Vtransform'])
+    else: 
+        vtransform_val = 2  # CROCO default
+    ds_out['Vtransform'] = vtransform_val
 
     encoding = {
         'category': {'zlib': True, 'complevel': 2, '_FillValue': -127, 'chunksizes': (T_daily, 1, n_eta, n_xi)},

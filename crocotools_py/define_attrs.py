@@ -36,6 +36,8 @@ ATTRS = {
     'salt':      VarAttrs('Sea Water Salinity', '1', 'sea_water_salinity'),
     'salt_anom': VarAttrs('Sea Water Salinity Anomaly', '1', 'sea_water_salinity_anomaly'),
     'w':         VarAttrs('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component'),
+    'category':  VarAttrs('MHW_MCS Combined Event Category (Positive=Heatwave, Negative=Cold Spell, 0=Neutral)', '1', 'status_flag'),
+    'sst_front': VarAttrs('Sea Surface Temperature Horizontal Front Magnitude', 'degC km-1', 'sea_surface_temperature_gradient_magnitude'),
 }
 
 # Vector variables: (grid-aligned attrs, eastnorth-rotated attrs, section-rotated attrs)

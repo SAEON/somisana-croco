@@ -321,7 +321,7 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
     return z  # shape (T, N, M, L)
 
-def hlev_xarray(var, z, depth):
+def hlev_xarray(var, z, depth, method='linear'):
     """
     This function interpolates a 4D xarray DataArray on horizontal levels of constant depth(s).
 
@@ -365,11 +365,14 @@ def hlev_xarray(var, z, depth):
     z_down = z.isel(s_rho=levs - 1)
     v_up = var.isel(s_rho=levs)
     v_down = var.isel(s_rho=levs - 1)
-
-    # Linear interpolation along the depth dimension
-    vnew = mask * (
-        ((v_up - v_down) * depth + v_down * z_up - v_up * z_down) / (z_up - z_down)
-    )
+    
+    if method == 'nearest':
+        use_up = (np.abs(z_up - depth) <= np.abs(z_down - depth))
+        vnew = mask * xr.where(use_up, v_up, v_down)
+    elif method == 'linear':
+        vnew = mask * (((v_up - v_down) * depth + v_down * z_up - v_up * z_down) / (z_up - z_down))
+    else:
+        raise ValueError(f"Unknown method '{method}' - expected 'linear' or 'nearest'")
 
     # Assign the depth coordinate and reorder dimensions
     vnew = vnew.assign_coords(depth=depth)
@@ -694,7 +697,8 @@ def get_var(fname,var_str,
             xi_u=slice(None),
             subdomain=None,
             Yorig=None,
-            nc_out=None):
+            nc_out=None,
+            interp_method='linear'):
     '''
         extract a variable from a CROCO file
         fname = CROCO output file name (or file pattern to be used with open_mfdataset())
@@ -725,6 +729,10 @@ def get_var(fname,var_str,
               If None, then no subsetting will get done
         Yorig = reference origin year used in croco runs - used for creating real times if not provided in the units of the time dimension
         nc_out = option to write a netcdf file from the output dataset
+        interp_method = 'linear' (default) or 'nearest'. Only relevant when doing vertical
+               interpolation to z-levels (i.e. level is a list/scalar of negative numbers).
+               Use 'nearest' for discrete/categorical variables (e.g. MHW/MCS category flags)
+               where linear interpolation would produce meaningless fractional values.
         
         Retruns an xarray dataset object of the requested data
     '''
