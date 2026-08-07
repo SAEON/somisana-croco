@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configurable date 
-CYCLE_DATE="20260729_00"
+CYCLE_DATE="20260805_00"
 
 # Path to the python CLI script in my repo
 CLI_PATH="/home/philile/somisana-croco/cli.py"
