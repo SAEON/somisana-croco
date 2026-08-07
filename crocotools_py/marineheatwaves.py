@@ -335,6 +335,14 @@ def _compute_stratification_arrays(ds_temp, ds_temp_daily, ds_zeta_daily, target
             ds_for_depths.attrs[attr] = float(ds_temp[attr].values)
         elif attr in ds_temp.attrs:
             ds_for_depths.attrs[attr] = float(ds_temp.attrs[attr])
+    if 'Vtransform' in ds_temp:
+        vtransform_val = int(ds_temp['Vtransform'].values)
+    elif 'Vtransform' in ds_temp.attrs: 
+        vtransform_val = int(ds_temp.attrs['Vtransform'])
+    else: 
+        vtransform_val = 2  # CROCO default
+    ds_for_depths['Vtransform'] = vtransform_val
+            
     z_daily = post.get_depths(ds_for_depths)
  
     out_density_bottom = np.full((T_daily, n_eta, n_xi), np.nan, dtype='float32')
