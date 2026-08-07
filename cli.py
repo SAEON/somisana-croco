@@ -353,12 +353,16 @@ def main():
     parser_detect_mhw.add_argument('--temp_var', required=False, type=str, default='temp', help='Name of the temperature variable.')
     parser_detect_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000, help='Reference year for the CROCO time axis.')
     parser_detect_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5, help='Number of eta_rho rows processed at once.')
+    parser_detect_mhw.add_argument('--salt_var', required=False, type=str, default='salt', help='Name of the salinity variable (used for stratification).')
+    parser_detect_mhw.add_argument('--target_depth', required=False, type=float, default=5.0, help='Depth (m, positive down) to compare against bottom density for stratification.')
+    parser_detect_mhw.add_argument('--compute_stratification', required=False, type=parse_bool, default='True', help='If True, also compute bottom/target-depth density and stratification.')
 
     def detect_mhw_forecast_handler(args):
         from crocotools_py.marineheatwaves import detect_mhw_forecast
         
         detect_mhw_forecast(temp_file=args.temp_file, clim_file=args.clim_file, thresh_file=args.thresh_file,
-            fname_out=args.fname_out, temp_var=args.temp_var, Yorig=args.Yorig, batch_size=args.batch_size)
+            fname_out=args.fname_out, temp_var=args.temp_var, Yorig=args.Yorig, batch_size=args.batch_size,
+            salt_var=args.salt_var, target_depth=args.target_depth, compute_stratification=args.compute_stratification)
     parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
 
     parser_plot_mhw = subparsers.add_parser('plot_mhw_forecast', help='Generate operational MetOcean plots.')

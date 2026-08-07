@@ -50,7 +50,7 @@ def _partition_vars(varList):
     return scalars, pairs
 
 def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
-                 varList=['temp','salt','u','v',]):
+                 varList=['temp','salt','u','v']):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
