@@ -1,15 +1,12 @@
 import numpy as np
 import xarray as xr
 import dask
-from datetime import timedelta, datetime, date
+from datetime import timedelta, datetime
 from glob import glob
 from crocotools_py.define_attrs import apply_attrs
 import re
 import time
 import pandas as pd
-import scipy.ndimage as ndimage
-import gc
-from netCDF4 import Dataset
 
 def change_attrs(da, var_str, rotated=False):
     """Backwards-compatible wrapper around apply_attrs."""
@@ -329,6 +326,10 @@ def hlev_xarray(var, z, depth, method='linear'):
         var     Variable to process (xarray DataArray: time, s_rho, eta_rho, xi_rho).
         z       Depths (m) of RHO- or W-points (xarray DataArray: time, s_rho, eta_rho, xi_rho).
         depth   Slice depth(s) (scalar or list of scalars; meters, negative).
+        method  'linear' (default) or 'nearest'. Use 'nearest' for discrete/categorical
+                variables (e.g. MHW/MCS category flags), where linear interpolation
+                between bracketing sigma levels would produce meaningless fractional
+                values.
 
     OUTPUT:
         vnew    Horizontal slice(s) (xarray DataArray: time, depth, eta_rho, xi_rho. if depth is a list, otherwise time, eta_rho, xi_rho).
@@ -415,7 +416,7 @@ def hlev(var,z,depth):
     mask=0.*levs + 1.
     mask[np.where(levs==0)]=np.nan
     
-    #ate the bracketing levels
+    # Locate the bracketing levels
     # Converts the 3D indices into linear indices for easier slicing of z and var (avoids having to loop over each index point).
     [i2,j2]=np.meshgrid(i1,j1)
     pos_up  = L*M*levs + L*j2 + i2
@@ -826,7 +827,7 @@ def get_var(fname,var_str,
             # given the above checks in the code, here we should be dealing with a 3D variable 
             # and we want a hz slice at a constant depth level
             z=get_depths(ds) # have to use ds, not da, as we need zeta and h for this
-            da_out=hlev_xarray(da, z, level)
+            da_out=hlev_xarray(da, z, level, method=interp_method)
             # use the same attributes as the original da
             da_out.attrs = da.attrs
             # update da to be the data for the specified level
