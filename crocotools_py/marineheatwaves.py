@@ -20,14 +20,13 @@ import cartopy.feature as cfeature
 import crocotools_py.postprocess as post
 
 # Core Heatwave Algorithms
-def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t_dates=None):
+def empty_event_dict():
     """
-    Detect MHW/MCS events using pre-computed climatology.
+    An empty per-event statistics dict, as returned by
+    detect_events_with_climatology(). Kept as its own function so the same
+    definition is used whether or not statistics are being collected.
     """
-    n_time     = len(temp_data)
-    categories = np.zeros(n_time, dtype='int8')
-
-    mhw = {'time_start': [], 'time_end': [], 'time_peak': [],
+    return {'time_start': [], 'time_end': [], 'time_peak': [],
         'date_start': [], 'date_end': [], 'date_peak': [],
         'index_start': [], 'index_end': [], 'index_peak': [],
         'duration': [], 'duration_moderate': [], 'duration_strong': [],
@@ -41,6 +40,48 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         'category': [],
         'rate_onset': [], 'rate_decline': [],
         'n_events': 0,}
+
+
+def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t_dates=None,
+                                    stats=True):
+    """
+    Detect MHW/MCS events using pre-computed climatology.
+
+    Returns (mhw, categories) where 'categories' is the per-timestep signed
+    category time-series and 'mhw' is a dict of per-event statistics
+    (durations, intensities, onset/decline rates etc - see
+    empty_event_dict()).
+
+    Categories follow Hobday et al. (2016): with dT = threshold - climatology,
+    a day is category floor((T - climatology)/dT), i.e. 1 = Moderate (T is
+    between 1x and 2x dT above the climatology), 2 = Strong, 3 = Severe and
+    4 = Extreme. Category 4 is an open-ended top bucket (>= 4x dT) - there is
+    no category 5 in the scheme.
+
+    Caveat when applying this through the water column: the category is a
+    multiple of dT, so it assumes dT is physically meaningful. That is safe for
+    SST, which always has a substantial seasonal cycle, but in deep water with
+    almost no seasonal signal dT collapses towards zero (values below 0.001
+    degC occur on the sa-west grid) and a trivial temperature wobble normalises
+    up into a high category. On a sa-west forecast this affects of order 0.1%
+    of ocean cell-levels, essentially all of them in the lower water column, so
+    it is left in rather than special-cased - but categories at depth in
+    low-variability cells should be read with that in mind.
+
+    stats : if True (the default) the per-event statistics are computed, as
+            they always have been - this is what you want for hindcast
+            analysis. If False, only 'categories' is computed and the first
+            return value is None. Building those statistics is the bulk of
+            the cost of this function, and the operational forecast pipeline
+            writes only the categories, so it passes stats=False. The
+            'categories' output is identical either way - the statistics are
+            computed in an 'if stats:' block *after* the category assignment,
+            so both settings run the same category code path.
+    """
+    n_time     = len(temp_data)
+    categories = np.zeros(n_time, dtype='int8')
+
+    mhw = empty_event_dict() if stats else None
 
     if np.all(np.isnan(temp_data)) or np.all(temp_data == 0):
         return mhw, categories
@@ -89,9 +130,26 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         thresh_mhw = clim_thresh_use[tt_start:tt_end + 1]
         seas_mhw   = clim_seas_use[tt_start:tt_end + 1]
 
+        # The category time-series is the only thing the operational pipeline
+        # needs, so it is computed (and assigned) before the statistics block
+        # below - that way stats=True and stats=False run identical code to
+        # get here and are guaranteed to produce the same categories.
+        #
+        # floor(1 + (T - thresh)/(thresh - clim)) == floor((T - clim)/dT), the
+        # Hobday category. It is capped at 4 because Extreme is an open-ended
+        # top bucket (>= 4x dT) - which is how duration_extreme counts it
+        # below (cats >= 4) and how peak_cat_val names it. Capping at 5 instead
+        # let a category with no name, no colour in the plotting colormap and
+        # no place in the file's own metadata reach the output.
+        mhw_relThreshNorm = (temp_mhw - thresh_mhw) / (thresh_mhw - seas_mhw)
+        cats              = np.clip(np.floor(1.0 + mhw_relThreshNorm), 1, 4)
+        categories[tt_start:tt_end + 1] = cats.astype('int8')
+
+        if not stats:
+            continue
+
         mhw_relSeas       = temp_mhw - seas_mhw
         mhw_relThresh     = temp_mhw - thresh_mhw
-        mhw_relThreshNorm = (temp_mhw - thresh_mhw) / (thresh_mhw - seas_mhw)
         mhw_abs           = temp_mhw
 
         tt_peak = int(np.argmax(mhw_relSeas))
@@ -128,7 +186,6 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         mhw['intensity_cumulative_abs'].append(float(mhw_abs.sum()))
 
         tt_peakCat    = int(np.argmax(mhw_relThreshNorm))
-        cats          = np.clip(np.floor(1.0 + mhw_relThreshNorm), 1, 5)
         peak_cat_val  = int(np.clip(cats[tt_peakCat], 1, 4))
         mhw['category'].append(cat_names[peak_cat_val - 1])
 
@@ -144,38 +201,17 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
             mhw['rate_onset'].append(0.0)
             mhw['rate_decline'].append(0.0)
 
-        categories[tt_start:tt_end + 1] = cats.astype('int8')
-
-    mhw['n_events'] = len(mhw['duration'])
+    if stats:
+        mhw['n_events'] = len(mhw['duration'])
     return mhw, categories
-
-def align_climatology_to_temp(temp_time, doy_values, clim_data):
-    """
-    Map a 366-element day-of-year climatology onto a temperature time series.
-    """
-    clim_dict   = {int(d): clim_data[i] for i, d in enumerate(doy_values)}
-    n_time      = len(temp_time)
-    aligned     = np.empty(n_time, dtype='float32')
-
-    for i, t in enumerate(temp_time):
-        doy = int(pd.Timestamp(t).dayofyear)
-        if doy in clim_dict:
-            aligned[i] = clim_dict[doy]
-        elif doy == 60 and 60 not in clim_dict:
-            aligned[i] = clim_dict.get(59, np.nan)
-        else:
-            aligned[i] = np.nan
-    return aligned
-
 
 def build_doy_alignment_index(temp_time, doy_values):
     """
     Precompute, once, the mapping from each timestep in temp_time to its
     position along the day-of-year axis of a climatology array (length
-    len(doy_values)). This replaces the per-grid-cell Python dict lookup in
-    align_climatology_to_temp with a single vectorized gather, computed
-    once and reused across every level/grid-cell/batch that shares the
-    same time axis (the mapping doesn't depend on the grid cell at all).
+    len(doy_values)). Used by load_daily_baselines() to pull out only the
+    days we need in a single gather - the mapping is the same for every
+    level and every grid cell, so it only ever needs computing once.
 
     Returns
     -------
@@ -203,29 +239,53 @@ def build_doy_alignment_index(temp_time, doy_values):
     return idx, valid
 
 
-def align_climatology_batch(clim_array, idx, valid):
+def load_daily_baselines(ds_clim, temp_time):
     """
-    Vectorized equivalent of calling align_climatology_to_temp once per
-    grid cell. clim_array has day-of-year as its first axis (e.g. shape
-    (366, rows, n_xi) for one row-batch); idx/valid come from
-    build_doy_alignment_index and are reused across every level, batch,
-    and MHW/MCS pass sharing the same time axis.
+    Read the climatology and the two percentile thresholds ONCE, for only the
+    days we actually need, across all vertical levels.
 
-    Returns an array of shape (len(idx),) + clim_array.shape[1:].
+    The day-of-year climatology files are chunked with s_rho spanning a full
+    chunk (e.g. 30 dayofyear x 30 s_rho x 5 eta_rho x 130 xi_rho, deflate 4),
+    so pulling out a single level with .isel(s_rho=k) has to inflate the whole
+    ~10 GB file - about 20-30 s per read, and that is decompression cost, not
+    disk, so the OS page cache doesn't help. Doing that once per level per
+    MHW/MCS pass was costing over an hour per run. A forecast only spans a
+    handful of days, so we gather those days up front instead and keep the
+    (n_time, s_rho, eta_rho, xi_rho) arrays in memory (~190 MB for a 9 day
+    forecast on the sa-west grid).
+
+    Selection is positional (isel on a precomputed index) rather than
+    label-based (sel) so we keep the Feb-29 fallback in
+    build_doy_alignment_index for climatologies that don't carry day 366.
+
+    Returns (climatology, threshold_90, threshold_10), each with shape
+    (len(temp_time), s_rho, eta_rho, xi_rho), NaN on days with no climatology.
     """
-    aligned = clim_array[idx, ...].astype('float32')
-    if not valid.all():
-        aligned[~valid, ...] = np.nan
-    return aligned
+    idx, valid = build_doy_alignment_index(temp_time, ds_clim['dayofyear'].values)
+
+    out = []
+    for var in ('climatology', 'threshold_90', 'threshold_10'):
+        arr = ds_clim[var].isel(dayofyear=idx).values.astype('float32')
+        if not valid.all():
+            arr[~valid, ...] = np.nan
+        out.append(arr)
+    return tuple(out)
 
 
-def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates):
+def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates,
+                         stats=True):
     """
     Detect MHW/MCS events for a (time, eta, xi) slab.
+
+    stats : passed through to detect_events_with_climatology(). With the
+            default of True the per-grid-cell statistics dicts are collected
+            and returned as before. With stats=False they are not computed at
+            all and the second return value is None - the 'categories' output
+            is unaffected either way.
     """
     n_time, n_eta, n_xi = temp_slice.shape
     categories = np.zeros((n_time, n_eta, n_xi), dtype='int8')
-    mhw_dicts  = []
+    mhw_dicts  = [] if stats else None
 
     for i in range(n_eta):
         for j in range(n_xi):
@@ -234,43 +294,45 @@ def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold,
             clim_thresh_ts = clim_thresh_slice[:, i, j]
 
             if np.all(np.isnan(temp_ts)):
-                mhw_dicts.append(None)
+                if stats:
+                    mhw_dicts.append(None)
                 continue
 
             mhw_ev, cats           = detect_events_with_climatology(
-                temp_ts, clim_seas_ts, clim_thresh_ts, is_cold, t_dates
+                temp_ts, clim_seas_ts, clim_thresh_ts, is_cold, t_dates, stats=stats
             )
             categories[:, i, j]   = cats
-            mhw_dicts.append(mhw_ev)
+            if stats:
+                mhw_dicts.append(mhw_ev)
     return categories, mhw_dicts
 
-def process_single_level(level, n_levels, ds_temp_daily, ds_clim, temp_var_name,
-                          doy_idx, doy_valid, is_cold, t_dates, batch_size, cat_slice):
+def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thresh_level,
+                          is_cold, t_dates, batch_size, cat_slice, stats=False):
     """
     Detect MHW/MCS events for one vertical plane and store inside the in-memory array tracker.
 
-    doy_idx/doy_valid come from build_doy_alignment_index (computed once,
-    outside the level loop, since the mapping is the same for every level).
-    """
-    n_eta = ds_temp_daily.sizes['eta_rho']
+    temp_level/clim_seas_level/clim_thresh_level are all (time, eta_rho, xi_rho)
+    arrays for this level, already resampled to daily means and already aligned
+    onto the forecast days by load_daily_baselines - so nothing is read from
+    disk in here.
 
-    thresh_key = 'threshold_10' if is_cold else 'threshold_90'
-    clim_seas_level   = ds_clim['climatology'].isel(s_rho=level).values   
-    clim_thresh_level = ds_clim[thresh_key].isel(s_rho=level).values      
+    stats defaults to False here (unlike the functions this calls, which
+    default to True for backwards compatibility): this function only ever
+    writes categories into cat_slice, so collecting the per-grid-cell event
+    statistics would be pure overhead - and it is the dominant cost of the
+    operational run.
+    """
+    n_eta = temp_level.shape[1]
 
     print(f"\n   Level {level}/{n_levels - 1}:")
 
     for i in range(0, n_eta, batch_size):
         end_i = min(i + batch_size, n_eta)
 
-        temp_slice = ds_temp_daily[temp_var_name].isel(s_rho=level, eta_rho=slice(i, end_i)).values                                          
-
-        # Vectorized day-of-year alignment - one gather per batch instead of
-        # a nested per-grid-cell Python dict lookup.
-        clim_seas_slice   = align_climatology_batch(clim_seas_level[:, i:end_i, :], doy_idx, doy_valid)
-        clim_thresh_slice = align_climatology_batch(clim_thresh_level[:, i:end_i, :], doy_idx, doy_valid)
-
-        categories, _ = process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates)
+        categories, _ = process_level_batch(temp_level[:, i:end_i, :],
+                                            clim_seas_level[:, i:end_i, :],
+                                            clim_thresh_level[:, i:end_i, :],
+                                            is_cold, t_dates, stats=stats)
 
         if is_cold:
             categories = -np.abs(categories).astype('int8')
@@ -476,7 +538,6 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     num_levels = ds_clim.sizes['s_rho']
     n_eta      = ds_clim.sizes['eta_rho']
     n_xi       = ds_clim.sizes['xi_rho']
-    doy_values = ds_clim['dayofyear'].values
 
     print(f'Loading temperature: {temp_file}')
     ds_temp = post.get_ds(temp_file, temp_var)
@@ -532,14 +593,21 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
         out_density_target[:, mask_rho_2d == 0] = np.nan
         out_stratification[:, mask_rho_2d == 0] = np.nan
 
+    # Read the climatology/thresholds once, for the forecast days only, across
+    # all levels - see load_daily_baselines() for why this matters so much.
+    print("Loading climatology and thresholds for the forecast days")
+    clim_daily, thresh90_daily, thresh10_daily = load_daily_baselines(ds_clim, ds_temp_daily.time.values)
+
     print("Processing vertical planes")
-    doy_idx, doy_valid = build_doy_alignment_index(ds_temp_daily.time.values, doy_values)
     for k in range(num_levels - 1, -1, -1):
+        sst_vals   = ds_temp_daily[temp_var].isel(s_rho=k).values
+        clim_level = clim_daily[:, k, :, :]
+
         mhw_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
-        process_single_level(k, num_levels, ds_temp_daily, ds_clim, temp_var, doy_idx, doy_valid, False, t_dates, batch_size, mhw_layer)
-        
+        process_single_level(k, num_levels, sst_vals, clim_level, thresh90_daily[:, k, :, :], False, t_dates, batch_size, mhw_layer)
+
         mcs_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
-        process_single_level(k, num_levels, ds_temp_daily, ds_clim, temp_var, doy_idx, doy_valid, True, t_dates, batch_size, mcs_layer)
+        process_single_level(k, num_levels, sst_vals, clim_level, thresh10_daily[:, k, :, :], True, t_dates, batch_size, mcs_layer)
 
         combined = mhw_layer.copy()
         combined[combined == 0] = mcs_layer[combined == 0]
@@ -547,10 +615,8 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
         out_category[:, k, :, :] = combined
 
         print(f"Calculating daily temperature anomalies for level {k}")
-        sst_vals = ds_temp_daily[temp_var].isel(s_rho=k).values
-        clim_slice = ds_clim['climatology'].isel(s_rho=k).sel(dayofyear=daily_doy_map).values
-        out_temp_anom[:, k, :, :] = sst_vals - clim_slice
-        
+        out_temp_anom[:, k, :, :] = sst_vals - clim_level
+
         if k == num_levels - 1:
             print("Calculating daily surface thermal fronts (SST fronts)")
             pm = ds_temp['pm'].values if 'pm' in ds_temp else np.ones((n_eta, n_xi))
@@ -591,6 +657,10 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     # Standardize Global Attributes
     ds_out['category'].attrs['long_name'] = 'MHW_MCS Combined Event Categories'
     ds_out['category'].attrs['description'] = 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral'
+    ds_out['category'].attrs['valid_range'] = np.array([-4, 4], dtype='int8')
+    ds_out['category'].attrs['reference'] = ('Hobday et al. (2016), categories 1-4 = '
+                                             'Moderate/Strong/Severe/Extreme, where Extreme is >= 4x '
+                                             'the climatology-to-threshold difference')
     ds_out['temp_anom'].attrs['long_name'] = 'Sea Water Temperature Daily Anomaly'
     ds_out['temp_anom'].attrs['units'] = 'degC'
     ds_out['sst_front'].attrs['long_name'] = 'Sea Surface Temperature Horizontal Front Magnitude'
@@ -630,7 +700,22 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     if out_stratification is not None:
         for v in ('density_bottom', 'density_target_depth', 'stratification'):
             encoding[v] = {'zlib': True, 'complevel': 2, '_FillValue': np.nan}
-    
+    # Write time as 'seconds since Yorig-01-01' (as the rest of the repo does)
+    # so that reading this file back recovers the correct dates. This file gets
+    # re-read by regrid_tier2 -> get_var -> get_ds(decode_times=False) +
+    # handle_time(), so it has to be readable by that path:
+    #   - without any time encoding, xarray defaults to
+    #     'days since <first timestamp>' and handle_time() reads those small
+    #     integers as seconds, collapsing every date to 1970-01-01.
+    #   - dtype must be float64 (as in native CROCO output), because
+    #     handle_time() only applies Yorig when the raw values are float64
+    #     (isinstance(np.float64, float) is True, but np.int32/np.float32 are
+    #     not); an integer time axis silently falls through to being read as
+    #     seconds since the 1970 epoch, shifting every date by Yorig-1970.
+    encoding['time'] = {'units': f'seconds since {Yorig}-01-01 00:00:00',
+                        'calendar': 'standard',
+                        'dtype': 'f8'}
+
     print(f"Exporting to disk: {fname_out}")
     if out_file.exists(): out_file.unlink()
     ds_out.to_netcdf(fname_out, encoding=encoding)
