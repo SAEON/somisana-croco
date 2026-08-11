@@ -252,7 +252,7 @@ def process_single_level(level, n_levels, ds_temp_daily, ds_clim, temp_var_name,
     doy_idx/doy_valid come from build_doy_alignment_index (computed once,
     outside the level loop, since the mapping is the same for every level).
     """
-    n_eta        = ds_temp_daily.sizes['eta_rho']
+    n_eta = ds_temp_daily.sizes['eta_rho']
 
     thresh_key = 'threshold_10' if is_cold else 'threshold_90'
     clim_seas_level   = ds_clim['climatology'].isel(s_rho=level).values   
@@ -307,7 +307,7 @@ def load_and_harmonize_baselines(clim_file, thresh_file):
     return ds_clim
 
 
-# Stratification 
+# Stratification (EOS-80 density) 
 #
 # Density is computed using the full UNESCO EOS-80 equation of state
 # (Millero & Poisson 1981 for density at 1 atm; Fofonoff & Millard 1983 for
@@ -385,11 +385,20 @@ def _compute_stratification_arrays(ds_temp, ds_temp_daily, ds_zeta_daily, target
                               else np.zeros((T_daily, n_eta, n_xi), dtype='float32'))
     h_vals = ds_temp['h'].values
     ds_for_depths['h'] = (('eta_rho', 'xi_rho'), h_vals if h_vals.ndim == 2 else h_vals[0])
-    for attr in ['hc', 'theta_s', 'theta_b', 'Vtransform']:
+    for attr in ['hc', 'theta_s', 'theta_b']:
         if attr in ds_temp:
             ds_for_depths.attrs[attr] = float(ds_temp[attr].values)
         elif attr in ds_temp.attrs:
             ds_for_depths.attrs[attr] = float(ds_temp.attrs[attr])
+
+    if 'Vtransform' in ds_temp:
+        vtransform_val = int(ds_temp['Vtransform'].values)
+    elif 'Vtransform' in ds_temp.attrs:
+        vtransform_val = int(ds_temp.attrs['Vtransform'])
+    else:
+        vtransform_val = 2  # CROCO default
+    ds_for_depths['Vtransform'] = vtransform_val
+
     z_daily = post.get_depths(ds_for_depths)  # (time, s_rho, eta_rho, xi_rho), negative down
 
     out_density_bottom = np.full((T_daily, n_eta, n_xi), np.nan, dtype='float32')
@@ -410,9 +419,11 @@ def _compute_stratification_arrays(ds_temp, ds_temp_daily, ds_zeta_daily, target
         rho_bottom = eos80_density(temp_bottom, salt_bottom, depth_bottom)
 
         # Target depth: linear-interpolate between bracketing sigma levels
-
+        # (vectorized: replaces per-column apply_along_axis/searchsorted
+        # plus a triple nested Python loop with a boolean comparison +
+        # np.take_along_axis gather)
         target_z = -abs(target_depth)
-        above = (z_slice >= target_z) 
+        above = (z_slice >= target_z)
         levs = np.argmax(above, axis=1)
         levs = np.clip(levs, 1, num_levels - 1)
 
