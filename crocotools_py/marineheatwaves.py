@@ -621,7 +621,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
             print("Calculating daily surface thermal fronts (SST fronts)")
             pm = ds_temp['pm'].values if 'pm' in ds_temp else np.ones((n_eta, n_xi))
             pn = ds_temp['pn'].values if 'pn' in ds_temp else np.ones((n_eta, n_xi))
-            if pm.ndim > 2: pm, pn = pm[0], pm[0]
+            if pm.ndim > 2: pm, pn = pm[0], pn[0]
             
             for t_idx in range(T_daily):
                 d_eta, d_xi = np.gradient(sst_vals[t_idx])
@@ -736,7 +736,9 @@ def compute_site_flag_data(sites, cat_ds, lev):
     for site_name, data in sites.items():
         pj, pi = data["pj"], data["pi"]
         cat = (cat_ds["category"].isel(s_rho=lev, eta_rho=pj, xi_rho=pi).load().values.astype(float))
-        cat[cat == -127] = 0
+        # land/fill -> no event. xarray decodes the file's _FillValue (-127) to
+        # NaN on read, so test for that rather than for the raw fill value
+        cat[~np.isfinite(cat)] = 0
         mhw_days = cat[cat > 0]
         mcs_days = cat[cat < 0]
         max_mhw = float(np.max(mhw_days)) if len(mhw_days) > 0 else 0.0
@@ -911,10 +913,11 @@ def _update_spatial_frame(frame, cat_data, time_data, mesh_obj, title_obj, d_nam
     title_obj.set_text(f"MHW & MCS Categories ({d_name})\nDate: {str(time_data[frame])[:10]}")
     return mesh_obj, title_obj
 
-def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, is_varying, idx_2d, out_path):
+def animate_spatial_categories(cat_ds, ds_fcst, lat, lon, depth_name, lev, out_path):
     out_path = Path(out_path); times = pd.to_datetime(cat_ds.time.values)
-    cat = cat_ds["category"].values[:, idx_2d, np.meshgrid(np.arange(idx_2d.shape[0]), np.arange(idx_2d.shape[1]), indexing="ij")[1], np.meshgrid(np.arange(idx_2d.shape[0]), np.arange(idx_2d.shape[1]), indexing="ij")[0]].astype(float) if is_varying else cat_ds["category"].isel(s_rho=lev).values.astype(float)
-    cat[cat == -127] = np.nan
+    cat = cat_ds["category"].isel(s_rho=lev).values.astype(float)
+    # land/fill is already NaN here - xarray decodes the file's _FillValue
+    # (-127) on read - and the mask_rho step below covers it in any case
     mask = ds_fcst["mask_rho"].values if "mask_rho" in ds_fcst else np.ones_like(lat)
     if mask.ndim > 2: mask = mask[0]
     cat = np.where(mask[np.newaxis, :, :] == 1, cat, np.nan)
@@ -1067,19 +1070,21 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
     depth_levels = {"Surface": {"type": "fixed", "lev": nlev - 1},
         "Bottom":  {"type": "fixed", "lev": 0},}
 
-    ds_fcst_single = post.handle_time(xr.open_dataset(forecast_file, decode_times=False), Yorig=Yorig)
-
     for depth_name, depth_info in depth_levels.items():
         print(f"\nProcessing Depth: {depth_name}...")
+        lev_site = depth_info["lev"]
+        # resample the whole level to daily means once per depth, not once per
+        # site - every site reads a single point out of the same field
+        ts = ds_fcst["temp"].isel(s_rho=lev_site).resample(time="1D").mean().load()
+        all_dates = pd.to_datetime(ts.time.values)
+        doy_all = doy_index(all_dates)
+        obs_m, fct_m = all_dates <= today, all_dates >= today
+
         sites = {}
         for site_name, (site_lon, site_lat) in TARGETS.items():
             pj, pi = nearest(lon, lat, site_lon, site_lat)
-            lev_site = depth_info["lev"]
-            ts = ds_fcst_single["temp"].isel(s_rho=lev_site).resample(time="1D").mean().load()
-            all_dates, all_temps = pd.to_datetime(ts.time.values), ts.isel(eta_rho=pj, xi_rho=pi).values
-            doy_all = doy_index(all_dates)
-            obs_m, fct_m = all_dates <= today, all_dates >= today
-            
+            all_temps = ts.isel(eta_rho=pj, xi_rho=pi).values
+
             clim_profile   = ds_clim["climatology"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
             thresh90_profile = ds_clim["threshold_90"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
             thresh10_profile = ds_clim["threshold_10"].isel(s_rho=lev_site, eta_rho=pj, xi_rho=pi).values
@@ -1102,7 +1107,7 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
         plot_flag_map(compute_site_flag_data(sites, ds_cat, depth_info["lev"]), today, start_date, end_date, out_dir / f"FlagMap_{depth_name}_{today.strftime('%Y%m%d')}.png", lat, lon, depth_name)
 
         print("Spatial Category Animation")
-        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], False, None, out_dir / f"Categories_Animation_{depth_name}.mp4")
+        animate_spatial_categories(ds_cat, ds_fcst, lat, lon, depth_name, depth_info["lev"], out_dir / f"Categories_Animation_{depth_name}.mp4")
 
         if depth_name == "Surface":
             print("Temperature Anomaly Animation")
@@ -1118,5 +1123,5 @@ def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, ou
         print("Stratification Spatial Animation")
         animate_stratification(ds_cat, lat, lon, out_dir / "Stratification_Animation.mp4")
 
-    ds_fcst_single.close(); ds_fcst.close(); ds_clim.close(); ds_cat.close()
+    ds_fcst.close(); ds_clim.close(); ds_cat.close()
     print(f"\nAll operational visuals saved cleanly to: {out_dir}")
