@@ -59,6 +59,14 @@ on:
         description: 'climatology file used for computing anomalies'
         required: true
         type: string
+      MHW_CLIM_FILE:
+        description: 'day-of-year climatology file used for detecting marine heatwaves / cold spells. Leave as an empty string to skip the MHW/MCS processing for this domain'
+        required: true
+        type: string
+      MHW_THRESH_FILE:
+        description: 'day-of-year percentile threshold file (threshold_90/threshold_10) used for detecting marine heatwaves / cold spells'
+        required: true
+        type: string
 
 env:
   # define the directory names for this configuration
@@ -299,25 +307,12 @@ jobs:
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
 
-# detect and visualize Marine Heatwaves / Marine Cold Spells (west coast domain only)
+# detect and visualize Marine Heatwaves / Marine Cold Spells
+# (only runs for domains which have a day-of-year climatology, as per the anomalies job above)
   mhw_mcs:
-    if: ${{ inputs.DOMAIN == 'sa_west_02' }}
+    if: ${{ inputs.MHW_CLIM_FILE != '' }}
     runs-on: ${{ inputs.RUNNER_NAME }}
-    env:
-      MHW_CLIM_FILE: /mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_climatology.nc
-      MHW_THRESH_FILE: /mnt/ocims-somisana/public-facing/sa-west/v1.0/hindcasts/GLORYS-ERA5/climatology/day_of_year_thresholds.nc
     steps:
-      - name: compute forecast window dates
-        id: dates
-        run: |
-          run_date=${{ inputs.RUN_DATE }}
-          base_date="${run_date:0:4}-${run_date:4:2}-${run_date:6:2}"
-          start_date=$(date -d "$base_date -4 days" +%Y-%m-%d)
-          end_date=$(date -d "$base_date +4 days" +%Y-%m-%d)
-          echo "base_date=$base_date" >> $GITHUB_OUTPUT
-          echo "start_date=$start_date" >> $GITHUB_OUTPUT
-          echo "end_date=$end_date" >> $GITHUB_OUTPUT
-
       - name: detect MHW/MCS events
         continue-on-error: true
         run: |
@@ -326,8 +321,8 @@ jobs:
           python /home/somisana/code/somisana-croco/cli.py \
               detect_mhw_forecast \
                 --temp_file ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --clim_file ${{ env.MHW_CLIM_FILE }} \
-                --thresh_file ${{ env.MHW_THRESH_FILE }} \
+                --clim_file ${{ inputs.MHW_CLIM_FILE }} \
+                --thresh_file ${{ inputs.MHW_THRESH_FILE }} \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
                 --temp_var temp \
                 --Yorig 2000 \
@@ -351,16 +346,19 @@ jobs:
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
+          # --today is the hindcast/forecast transition i.e. T0 of the run. The
+          # window shown in the plot labels is read from the categories file
+          # itself, so it always matches the data
+          run_date=${{ inputs.RUN_DATE }}
+          base_date="${run_date:0:4}-${run_date:4:2}-${run_date:6:2}"
           python /home/somisana/code/somisana-croco/cli.py \
               plot_mhw_forecast \
                 --forecast_file ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --cat_file ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
-                --clim_file ${{ env.MHW_CLIM_FILE }} \
-                --thresh_file ${{ env.MHW_THRESH_FILE }} \
+                --clim_file ${{ inputs.MHW_CLIM_FILE }} \
+                --thresh_file ${{ inputs.MHW_THRESH_FILE }} \
                 --out_dir ${{ env.RUN_DIR }}/postprocess/mhw_plots \
-                --start_date ${{ steps.dates.outputs.start_date }} \
-                --end_date ${{ steps.dates.outputs.end_date }} \
-                --today ${{ steps.dates.outputs.base_date }} \
+                --today $base_date \
                 --Yorig 2000
 
       - name: ensure permissions

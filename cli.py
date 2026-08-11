@@ -502,18 +502,14 @@ def main():
             help='pre-built day-of-year percentile threshold file (as used as input to detect_mhw_forecast)')
     parser_plot_mhw.add_argument('--out_dir', required=True, type=str,
             help='directory where the figures and animations get written')
-    parser_plot_mhw.add_argument('--start_date', required=True, type=str,
-            help='start of the forecast window shown in the plot labels, in format "YYYY-MM-DD"')
-    parser_plot_mhw.add_argument('--end_date', required=True, type=str,
-            help='end of the forecast window shown in the plot labels, in format "YYYY-MM-DD"')
     parser_plot_mhw.add_argument('--today', required=True, type=str,
-            help='the hindcast/forecast transition date, in format "YYYY-MM-DD"')
+            help='the hindcast/forecast transition date, in format "YYYY-MM-DD". The forecast window shown in the plot labels is read from cat_file, so it does not need to be provided')
     parser_plot_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     def plot_mhw_forecast_handler(args):
         plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file,
                                  args.thresh_file, args.out_dir,
-                                 args.start_date, args.end_date, args.today, args.Yorig)
+                                 args.today, args.Yorig)
     parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
 
     # ----------------

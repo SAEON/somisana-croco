@@ -1050,14 +1050,27 @@ def animate_stratification(ds_cat, lat, lon, out_path):
     plt.close(fig)
 
 
-def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, start_date, end_date, today, Yorig=2000):
+def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, today, Yorig=2000):
+    """
+    Render the operational MHW/MCS figures and animations from the output of
+    detect_mhw_forecast().
+
+    'today' is the hindcast/forecast transition date used to split the
+    time-series plots. The window shown in the flag map titles is taken from
+    cat_file itself rather than being passed in, so the label cannot disagree
+    with the data (it previously came from hardcoded +/-4 day offsets in the
+    workflow, which did not match HDAYS/FDAYS).
+    """
     print("Rendering Operational MHW/MCS Visuals")
     out_dir = Path(out_dir)
-    
+
     ds_clim = load_and_harmonize_baselines(clim_file, thresh_file)
     ds_cat  = xr.open_dataset(cat_file)
     ds_fcst = post.handle_time(post.get_ds(forecast_file, "temp"), Yorig=Yorig)
-    
+
+    cat_dates = pd.to_datetime(ds_cat.time.values)
+    start_date, end_date = cat_dates[0], cat_dates[-1]
+
     lat = ds_fcst.lat_rho.values if "lat_rho" in ds_fcst else ds_fcst.lat.values
     if lat.ndim > 2: lat, lon = lat[0], ds_fcst.lon_rho.values[0] if "lon_rho" in ds_fcst else ds_fcst.lon.values[0]
     else: lon = ds_fcst.lon_rho.values if "lon_rho" in ds_fcst else ds_fcst.lon.values
