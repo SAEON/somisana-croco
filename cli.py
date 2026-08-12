@@ -15,7 +15,8 @@ from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_a
 from crocotools_py.postprocess import get_ts_multivar, compute_anomaly, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
-from crocotools_py.products import detect_mhw_forecast, plot_operational_mhw_mcs
+from crocotools_py.products import (detect_mhw_forecast, plot_operational_mhw_mcs,
+                                    make_products_base)
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
@@ -451,6 +452,25 @@ def main():
             month_now=datetime(month_next.year, month_next.month, 1) # set month_now to the first day of the next month
         
     parser_make_bry_inter.set_defaults(func=make_bry_inter_handler)
+
+    # ----------------------
+    # make_products_base
+    # ----------------------
+    parser_products_base = subparsers.add_parser('make_products_base',
+            help='Create the daily averaged products file from raw CROCO output. The output is itself a valid CROCO file (it carries the full grid), so everything in postprocess.py works on it. This is the file which the add_* commands then append their products to')
+    parser_products_base.add_argument('--fname', required=True, type=str,
+            help='input raw CROCO filename (or a file pattern to be used with open_mfdataset())')
+    parser_products_base.add_argument('--fname_out', required=True, type=str,
+            help='output filename, conventionally croco_avg_products.nc')
+    parser_products_base.add_argument('--Yorig', required=False, type=parse_int, default=2000,
+            help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
+    parser_products_base.add_argument('--varList', required=False, type=parse_list_str, default=None,
+            help="comma separated list of variables to daily-average, e.g. 'temp,salt' (the default). 'zeta' is always included, as it is needed to compute the depths of the sigma levels")
+    def make_products_base_handler(args):
+        make_products_base(args.fname, args.fname_out,
+                           Yorig=args.Yorig,
+                           varList=args.varList)
+    parser_products_base.set_defaults(func=make_products_base_handler)
 
     # ----------------------
     # detect_mhw_forecast

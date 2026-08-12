@@ -31,7 +31,230 @@ import cartopy.feature as cfeature
 import crocotools_py.postprocess as post
 import crocotools_py.marineheatwaves as mhw
 
-# Stratification (EOS-80 density) 
+
+# The products file
+#
+# All the operational products land in a single netcdf file (conventionally
+# croco_avg_products.nc) which is itself a valid CROCO output file, just daily
+# averaged rather than hourly. Keeping it in CROCO format means everything in
+# postprocess.py (get_var, get_depths, regrid_tier*, ...) works on it directly,
+# with no special cases for the products.
+#
+# make_products_base() creates that file from the raw CROCO output, and each
+# add_* step then appends its own variables to it via append_to_products().
+
+# Static grid variables carried through from the raw CROCO output. This is the
+# set postprocess.get_ds() treats as essential, so that anything get_var() can
+# do on croco_avg.nc it can also do on the products file. They are all small.
+# 'theta_s', 'theta_b' and 'hc' are global attributes in CROCO output (and 'hc'
+# is additionally a variable), so they are handled in both forms.
+GRID_VARS = ['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w',
+             'hc', 'angle', 'h', 'f', 'pm', 'pn',
+             'Vtransform', 'theta_s', 'theta_b',
+             'lon_rho', 'lat_rho', 'mask_rho',
+             'lon_u', 'lat_u', 'lon_v', 'lat_v']
+
+# Variables daily-averaged into the products file by default. 'zeta' is added
+# to whatever is asked for rather than listed here, because it is not optional:
+# postprocess.get_depths() reads ds.zeta to work out the depths of the sigma
+# levels, so without it nothing in the file can be interpolated to a z-level.
+BASE_VARS = ['temp', 'salt']
+
+
+def time_encoding(Yorig):
+    """
+    netcdf encoding for the time axis of the products file.
+
+    Written as 'seconds since Yorig-01-01', as the rest of the repo does, so
+    that reading the file back recovers the correct dates. The products file
+    gets re-read by regrid_tier2 -> get_var -> get_ds(decode_times=False) +
+    handle_time(), so it has to be readable by that path:
+      - without any time encoding, xarray defaults to
+        'days since <first timestamp>' and handle_time() reads those small
+        integers as seconds, collapsing every date to 1970-01-01.
+      - dtype must be float64 (as in native CROCO output), because
+        handle_time() only applies Yorig when the raw values are float64
+        (isinstance(np.float64, float) is True, but np.int32/np.float32 are
+        not); an integer time axis silently falls through to being read as
+        seconds since the 1970 epoch, shifting every date by Yorig-1970.
+    """
+    return {'units': f'seconds since {Yorig}-01-01 00:00:00',
+            'calendar': 'standard',
+            'dtype': 'f8'}
+
+
+def default_encoding(ds):
+    """
+    Sensible netcdf encoding for the data variables of ds: deflate everything,
+    and chunk 3D fields one sigma level at a time.
+
+    The chunking matters. If a chunk spans the whole s_rho axis then reading a
+    single level forces the whole file to be decompressed - that is exactly
+    what made reading the day-of-year climatology files so slow.
+    """
+    encoding = {}
+    for var in ds.data_vars:
+        enc = {'zlib': True, 'complevel': 2}
+        if ds[var].dtype.kind == 'f':
+            enc['_FillValue'] = np.nan
+        if 's_rho' in ds[var].dims:
+            enc['chunksizes'] = tuple(1 if d == 's_rho' else ds.sizes[d]
+                                      for d in ds[var].dims)
+        encoding[var] = enc
+    return encoding
+
+
+def get_grid_vars(ds_raw):
+    """
+    Pull the static grid variables and vertical-coordinate attributes out of a
+    raw CROCO dataset, as a dataset ready to be merged into the products file.
+    """
+    ds_grid = xr.Dataset()
+    for var in GRID_VARS:
+        if var in ds_raw.variables:
+            # take dims/values/attrs only - carrying the DataArray across with
+            # its own coords attached leaves xarray unable to work out whether
+            # things like lon_u are coordinates or data variables on merge
+            da = ds_raw[var]
+            ds_grid[var] = (da.dims, da.values, dict(da.attrs))
+    # keep whatever the raw file treats as a coordinate (lon_rho/lat_rho are
+    # promoted to coordinates via the 'coordinates' attribute on the data
+    # variables) as a coordinate here too, otherwise merging into a dataset
+    # that already has them as coordinates is ambiguous
+    ds_grid = ds_grid.set_coords([v for v in ds_grid.data_vars if v in ds_raw.coords])
+    for attr in ['theta_s', 'theta_b', 'hc', 'Vtransform']:
+        if attr in ds_raw.attrs:
+            ds_grid.attrs[attr] = ds_raw.attrs[attr]
+    return ds_grid
+
+
+def make_products_base(fname, fname_out, Yorig=2000, varList=None):
+    """
+    Create the products file: a daily average of the raw CROCO output, carrying
+    through the full grid so that the result is itself a valid CROCO file.
+
+    Parameters
+    ----------
+    fname     : raw CROCO output file(s) - anything postprocess.get_ds accepts
+    fname_out : products file to create (conventionally croco_avg_products.nc)
+    Yorig     : origin year of the CROCO time axis
+    varList   : variables to daily-average, default ['temp','salt']. 'zeta' is
+                always included whether or not it is asked for, because
+                get_depths() needs it.
+
+    Any existing fname_out is overwritten - this is the step that creates the
+    file, and the add_* steps then append to it.
+    """
+    os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+    out_file = Path(fname_out)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    varList = list(BASE_VARS if varList is None else varList)
+    if 'zeta' not in varList:
+        varList.append('zeta')
+
+    print(f'Loading raw CROCO output: {fname}')
+    ds_raw = post.handle_time(post.get_ds(fname, 'temp'), Yorig=Yorig)
+
+    missing = [v for v in varList if v not in ds_raw]
+    if missing:
+        raise ValueError(f'variable(s) {missing} not found in {fname}')
+
+    # resample() already produces one bin per day over the full span, leaving
+    # NaN for any day with no data - so no reindexing or gap filling is needed
+    # (and a 'nearest' reindex would quietly duplicate a neighbouring day into
+    # a real gap rather than showing it as missing).
+    print(f'Computing daily means of: {", ".join(varList)}')
+    ds_out = ds_raw[varList].resample(time='1D').mean().compute()
+
+    print('Carrying through the grid variables')
+    ds_grid = get_grid_vars(ds_raw)
+    ds_out = ds_out.merge(ds_grid)
+    ds_out.attrs.update(ds_grid.attrs)
+
+    # resample() drops the variable attributes, so put them back
+    for var in varList:
+        ds_out[var].attrs = dict(ds_raw[var].attrs)
+
+    encoding = default_encoding(ds_out)
+    encoding['time'] = time_encoding(Yorig)
+
+    print(f'Writing {fname_out}')
+    if out_file.exists():
+        out_file.unlink()
+    ds_out.to_netcdf(fname_out, encoding=encoding)
+    ds_raw.close()
+    print(f'Done: {fname_out} ({out_file.stat().st_size / (1024 ** 2):.1f} MB, '
+          f'{ds_out.sizes["time"]} days)')
+
+
+def append_to_products(ds_new, fname_out, fname_raw=None, Yorig=2000, encoding=None):
+    """
+    Add the variables in ds_new to the products file, creating it if it does
+    not exist yet.
+
+    This is how every add_* step writes its output, so that the steps can be
+    run in any order, individually re-run after a fix, or run standalone
+    without make_products_base having been run first (in which case fname_raw
+    is used to pick up the grid variables).
+
+    Appending is done in place, so it costs the size of ds_new rather than the
+    size of the file. Re-running a step overwrites its own variables.
+    """
+    os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+    out_file = Path(fname_out)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    enc = dict(encoding) if encoding else default_encoding(ds_new)
+
+    if not out_file.exists():
+        # Build the base first rather than writing ds_new on its own, so that a
+        # file created by a standalone add_* step is structurally identical to
+        # one created by make_products_base - same grid, same zeta (without
+        # which get_depths cannot work), same time encoding. Then fall through
+        # and append as usual.
+        if fname_raw is None:
+            raise ValueError(
+                f'{fname_out} does not exist, and no raw CROCO file was given to '
+                'create it from. Either run make_products_base first, or pass '
+                'the raw file so this step can create the products file itself.')
+        print(f'{fname_out} does not exist yet - creating it from {fname_raw}')
+        make_products_base(fname_raw, fname_out, Yorig=Yorig)
+
+    # The file must not be held open while we append to it, or netcdf4 raises
+    # an HDF error, so read what we need from it and close it again first.
+    with xr.open_dataset(fname_out, decode_times=False) as ds_existing:
+        existing_vars = set(ds_existing.data_vars)
+        existing_time = post.handle_time(ds_existing.copy(), Yorig=Yorig).time.values
+
+    if 'time' in ds_new.dims:
+        new_time = ds_new.time.values
+        if len(new_time) != len(existing_time) or not np.array_equal(
+                pd.to_datetime(new_time), pd.to_datetime(existing_time)):
+            raise ValueError(
+                f'time axis of the new variables does not match {fname_out}\n'
+                f'  existing: {len(existing_time)} steps, '
+                f'{pd.Timestamp(existing_time[0])} to {pd.Timestamp(existing_time[-1])}\n'
+                f'  new     : {len(new_time)} steps, '
+                f'{pd.Timestamp(new_time[0])} to {pd.Timestamp(new_time[-1])}\n'
+                'The products file is built from a single forecast - re-run '
+                'make_products_base if the forecast window has changed.')
+
+    # coordinates already on disk must not be rewritten on append
+    ds_new = ds_new.drop_vars([c for c in ds_new.coords if c in existing_vars
+                               or c in ('time', 's_rho', 'eta_rho', 'xi_rho')],
+                              errors='ignore')
+    enc = {v: e for v, e in enc.items() if v in ds_new.data_vars}
+
+    overwriting = sorted(set(ds_new.data_vars) & existing_vars)
+    if overwriting:
+        print(f'Overwriting existing variable(s): {", ".join(overwriting)}')
+
+    ds_new.to_netcdf(fname_out, mode='a', encoding=enc)
+    print(f'Appended to {fname_out}: {", ".join(ds_new.data_vars)}')
+
+
+# Stratification (EOS-80 density)
 #
 # Density is computed using the full UNESCO EOS-80 equation of state
 # (Millero & Poisson 1981 for density at 1 atm; Fofonoff & Millard 1983 for
