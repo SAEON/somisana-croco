@@ -188,31 +188,24 @@ def make_products_base(fname, fname_out, Yorig=2000, varList=None):
           f'{ds_out.sizes["time"]} days)')
 
 
-def append_to_products(ds_new, fname_out, fname_raw=None, Yorig=2000, encoding=None):
+def open_products(fname_out, fname_raw=None, Yorig=2000):
     """
-    Add the variables in ds_new to the products file, creating it if it does
-    not exist yet.
+    Open the products file, ready to be read by an add_* step.
 
-    This is how every add_* step writes its output, so that the steps can be
-    run in any order, individually re-run after a fix, or run standalone
-    without make_products_base having been run first (in which case fname_raw
-    is used to pick up the grid variables).
+    If the file does not exist yet it is created from the raw CROCO output
+    first, so that a step can be run standalone without make_products_base
+    having been run - this is the 'either write it or add to it' behaviour that
+    lets the add_* steps run in any order or be re-run individually.
 
-    Appending is done in place, so it costs the size of ds_new rather than the
-    size of the file. Re-running a step overwrites its own variables.
+    The contents are read into memory and the file is then closed, because the
+    step is going to append to that same file and netcdf4 raises an HDF error
+    if it is still open for reading. Closing alone is not enough to rely on:
+    handle_time() returns datasets derived via assign_coords/sel, so the object
+    the caller holds is not the one that owns the file handle. The file is
+    daily and only a few hundred MB, so reading it up front is cheap.
     """
     os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
-    out_file = Path(fname_out)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-
-    enc = dict(encoding) if encoding else default_encoding(ds_new)
-
-    if not out_file.exists():
-        # Build the base first rather than writing ds_new on its own, so that a
-        # file created by a standalone add_* step is structurally identical to
-        # one created by make_products_base - same grid, same zeta (without
-        # which get_depths cannot work), same time encoding. Then fall through
-        # and append as usual.
+    if not Path(fname_out).exists():
         if fname_raw is None:
             raise ValueError(
                 f'{fname_out} does not exist, and no raw CROCO file was given to '
@@ -220,12 +213,33 @@ def append_to_products(ds_new, fname_out, fname_raw=None, Yorig=2000, encoding=N
                 'the raw file so this step can create the products file itself.')
         print(f'{fname_out} does not exist yet - creating it from {fname_raw}')
         make_products_base(fname_raw, fname_out, Yorig=Yorig)
+    ds = post.handle_time(post.get_ds(fname_out, 'temp'), Yorig=Yorig).load()
+    ds.close()
+    return ds
+
+
+def append_to_products(ds_new, fname_out, Yorig=2000, encoding=None):
+    """
+    Add the variables in ds_new to an existing products file (see
+    open_products, which is what creates it if it is not there yet).
+
+    Appending is done in place, so it costs the size of ds_new rather than the
+    size of the file. Re-running a step overwrites its own variables.
+    """
+    os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+    out_file = Path(fname_out)
+    enc = dict(encoding) if encoding else default_encoding(ds_new)
+
+    if not out_file.exists():
+        raise ValueError(f'{fname_out} does not exist - open_products() should '
+                         'have created it before anything is appended')
 
     # The file must not be held open while we append to it, or netcdf4 raises
-    # an HDF error, so read what we need from it and close it again first.
-    with xr.open_dataset(fname_out, decode_times=False) as ds_existing:
-        existing_vars = set(ds_existing.data_vars)
-        existing_time = post.handle_time(ds_existing.copy(), Yorig=Yorig).time.values
+    # an HDF error, so read what we need from it into memory and close it first.
+    ds_existing = xr.open_dataset(fname_out, decode_times=False)
+    existing_vars = set(ds_existing.data_vars)
+    existing_time = np.asarray(post.handle_time(ds_existing, Yorig=Yorig).time.values)
+    ds_existing.close()
 
     if 'time' in ds_new.dims:
         new_time = ds_new.time.values
@@ -315,38 +329,21 @@ def eos80_density(temp, salt, pressure):
     return rho
 
 
-def _compute_stratification_arrays(ds_temp, ds_temp_daily, ds_zeta_daily, target_dates,
-                                    temp_var, salt_var, target_depth, batch_size,
-                                    T_daily, n_eta, n_xi, num_levels):
+def _compute_stratification_arrays(ds_prod, temp_var, salt_var, target_depth, batch_size):
     """
-    Internal helper called from detect_mhw_forecast to compute bottom density,
-    density at target_depth, and stratification. Returns three (T_daily, n_eta,
-    n_xi) arrays: (density_bottom, density_target_depth, stratification).
+    Compute bottom density, density at target_depth, and the difference between
+    them, from the daily fields in the products file. Returns three
+    (time, eta_rho, xi_rho) arrays.
+
+    The products file is already a valid CROCO file on the daily timeline, so
+    get_depths() can be handed it directly - no need to assemble a stand-in
+    dataset with the vertical grid copied across by hand.
     """
     print(f"\nComputing stratification (bottom vs {target_depth}m density)")
-    # lightweight dataset on the daily timeline so get_depths() gives us z
-    # aligned to target_dates rather than the raw sub-daily times
-    ds_for_depths = xr.Dataset(coords={'time': target_dates, 's_rho': ds_temp['s_rho'].values})
-    ds_for_depths['zeta'] = (('time', 'eta_rho', 'xi_rho'),
-                              ds_zeta_daily.values if ds_zeta_daily is not None
-                              else np.zeros((T_daily, n_eta, n_xi), dtype='float32'))
-    h_vals = ds_temp['h'].values
-    ds_for_depths['h'] = (('eta_rho', 'xi_rho'), h_vals if h_vals.ndim == 2 else h_vals[0])
-    for attr in ['hc', 'theta_s', 'theta_b']:
-        if attr in ds_temp:
-            ds_for_depths.attrs[attr] = float(ds_temp[attr].values)
-        elif attr in ds_temp.attrs:
-            ds_for_depths.attrs[attr] = float(ds_temp.attrs[attr])
+    T_daily, num_levels = ds_prod.sizes['time'], ds_prod.sizes['s_rho']
+    n_eta, n_xi = ds_prod.sizes['eta_rho'], ds_prod.sizes['xi_rho']
 
-    if 'Vtransform' in ds_temp:
-        vtransform_val = int(ds_temp['Vtransform'].values)
-    elif 'Vtransform' in ds_temp.attrs:
-        vtransform_val = int(ds_temp.attrs['Vtransform'])
-    else:
-        vtransform_val = 2  # CROCO default
-    ds_for_depths['Vtransform'] = vtransform_val
-
-    z_daily = post.get_depths(ds_for_depths)  # (time, s_rho, eta_rho, xi_rho), negative down
+    z_daily = post.get_depths(ds_prod)  # (time, s_rho, eta_rho, xi_rho), negative down
 
     out_density_bottom = np.full((T_daily, n_eta, n_xi), np.nan, dtype='float32')
     out_density_target = np.full((T_daily, n_eta, n_xi), np.nan, dtype='float32')
@@ -355,8 +352,8 @@ def _compute_stratification_arrays(ds_temp, ds_temp_daily, ds_zeta_daily, target
         end_i = min(i + batch_size, n_eta)
         print(f"   Stratification rows {i:3d}-{end_i:3d}", end='\r', flush=True)
 
-        temp_slice = ds_temp_daily[temp_var].isel(eta_rho=slice(i, end_i)).values
-        salt_slice = ds_temp_daily[salt_var].isel(eta_rho=slice(i, end_i)).values
+        temp_slice = ds_prod[temp_var].isel(eta_rho=slice(i, end_i)).values
+        salt_slice = ds_prod[salt_var].isel(eta_rho=slice(i, end_i)).values
         z_slice = z_daily.isel(eta_rho=slice(i, end_i)).values
 
         # Bottom: CROCO convention s_rho index 0 = bottom-most sigma layer
@@ -402,211 +399,251 @@ def _compute_stratification_arrays(ds_temp, ds_temp_daily, ds_zeta_daily, target
     return out_density_bottom, out_density_target, out_stratification
 
 
-def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='temp', Yorig=2000, batch_size=5,
-                         salt_var='salt', target_depth=5.0, compute_stratification=True):
-    """
-    Centralized operational tracking pipeline using pure Xarray for dataset assembly.
+def _mask_2d(ds_prod):
+    """The 2D land/sea mask of the products file (1 = sea, 0 = land)."""
+    mask = ds_prod['mask_rho'].values
+    return mask[0] if mask.ndim > 2 else mask
 
-    If compute_stratification=True (default), also computes daily bottom
-    density, density at target_depth (default 5m), and their difference
-    (stratification = bottom - target_depth), added as extra 2D
-    (time, eta_rho, xi_rho) variables in the same output NetCDF as
-    category/temp_anom/etc. See the stratification support section above
-    for methodology notes.
-    """
-    os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
-    out_file = Path(fname_out)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
 
+def add_anomalies(fname_out, clim_file, fname=None, Yorig=2000):
+    """
+    Add daily temperature and sea-level anomalies to the products file.
+
+    Anomalies are taken against the day-of-year climatology - the same baseline
+    the MHW/MCS categories are computed from - so that the anomaly and the
+    category for a given day are consistent with each other.
+
+    Parameters
+    ----------
+    fname_out : products file to add to (created first if it does not exist)
+    clim_file : pre-built day-of-year climatology file
+    fname     : raw CROCO file, only needed if fname_out does not exist yet
+    Yorig     : origin year of the CROCO time axis
+    """
+    ds_prod = open_products(fname_out, fname, Yorig)
+    ds_clim = mhw.load_and_harmonize_baselines(clim_file)
+
+    print('Computing daily temperature anomalies')
+    clim_daily, = mhw.load_daily_baselines(ds_clim, ds_prod.time.values,
+                                           variables=('climatology',))
+    ds_new = xr.Dataset(
+        {'temp_anom': (['time', 's_rho', 'eta_rho', 'xi_rho'],
+                       (ds_prod['temp'].values - clim_daily).astype('float32'))},
+        coords={'time': ds_prod.time.values})
+    ds_new['temp_anom'].attrs = {'long_name': 'Sea Water Temperature Daily Anomaly',
+                                 'units': 'degC'}
+
+    if 'zeta' in ds_clim and 'zeta' in ds_prod:
+        print('Computing daily sea level anomalies')
+        # positional selection on the same alignment index the temperature
+        # anomalies use, so both handle a climatology without day 366 the same
+        idx, valid = mhw.build_doy_alignment_index(ds_prod.time.values,
+                                                   ds_clim['dayofyear'].values)
+        zeta_clim = ds_clim['zeta'].isel(dayofyear=idx).values.astype('float32')
+        if not valid.all():
+            zeta_clim[~valid, ...] = np.nan
+        ds_new['zeta_anom'] = (['time', 'eta_rho', 'xi_rho'],
+                               (ds_prod['zeta'].values - zeta_clim).astype('float32'))
+        ds_new['zeta_anom'].attrs = {'long_name': 'Sea Surface Elevation Daily Anomaly',
+                                     'units': 'm'}
+
+    ds_prod.close()
+    ds_clim.close()
+    append_to_products(ds_new, fname_out, Yorig=Yorig)
+
+
+def add_mhw_mcs(fname_out, clim_file, thresh_file, fname=None, Yorig=2000, batch_size=5):
+    """
+    Add signed Marine Heatwave / Marine Cold Spell event categories to the
+    products file.
+
+    'category' is +1..+4 for a heatwave, -1..-4 for a cold spell and 0 for
+    neither, following Hobday et al. (2016). Where a cell is in neither state
+    the MCS category is used, so the two never overlap. Land is set to -127.
+
+    Parameters
+    ----------
+    fname_out   : products file to add to (created first if it does not exist)
+    clim_file   : pre-built day-of-year climatology file
+    thresh_file : pre-built day-of-year percentile threshold file
+    fname       : raw CROCO file, only needed if fname_out does not exist yet
+    Yorig       : origin year of the CROCO time axis
+    batch_size  : number of eta_rho rows detected at a time (memory vs speed)
+    """
+    ds_prod = open_products(fname_out, fname, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file, thresh_file)
 
-    num_levels = ds_clim.sizes['s_rho']
-    n_eta      = ds_clim.sizes['eta_rho']
-    n_xi       = ds_clim.sizes['xi_rho']
-
-    print(f'Loading temperature: {temp_file}')
-    ds_temp = post.get_ds(temp_file, temp_var)
-    ds_temp = post.handle_time(ds_temp, Yorig=Yorig)
-
-    if compute_stratification and salt_var not in ds_temp:
-        print(f'Loading salinity: {temp_file}')
-        ds_salt = post.get_ds(temp_file, salt_var)
-        ds_salt = post.handle_time(ds_salt, Yorig=Yorig)
-        ds_temp[salt_var] = ds_salt[salt_var]
-        ds_salt.close()
-
-    raw_times    = ds_temp.time.values
-    first_day    = pd.Timestamp(raw_times[0]).normalize()
-    last_day     = pd.Timestamp(raw_times[-1]).normalize()
-    target_dates = pd.date_range(start=first_day, end=last_day, freq='1D')
-    T_daily      = len(target_dates)
-    t_dates      = np.array([d.toordinal() for d in target_dates], dtype=int)
-    daily_doy_map = target_dates.dayofyear.values
-
-    out_category  = np.zeros((T_daily, num_levels, n_eta, n_xi), dtype='int8')
-    out_temp_anom = np.zeros((T_daily, num_levels, n_eta, n_xi), dtype='float32')
-    out_zeta      = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
-    out_zeta_anom = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
-    out_sst_front = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
-
-    print("Computing Daily Zeta and Zeta Anomalies")
-    ds_zeta_daily = None
-    if 'zeta' in ds_temp:
-        ds_zeta_daily = (ds_temp['zeta'].resample(time='1D').mean()
-                         .reindex(time=target_dates, method='nearest')
-                         .interpolate_na(dim='time', limit=None).compute())
-        out_zeta[:] = ds_zeta_daily.values
-        if 'zeta' in ds_clim:
-            out_zeta_anom[:] = ds_zeta_daily.values - ds_clim['zeta'].sel(dayofyear=daily_doy_map).values
-
-    print("Resampling forecast temperature to daily means")
-    resample_vars = [temp_var, salt_var] if (compute_stratification and salt_var in ds_temp) else [temp_var]
-    ds_temp_daily = (ds_temp[resample_vars].resample(time='1D').mean()
-                     .reindex(time=target_dates, method='nearest')
-                     .interpolate_na(dim='time', limit=None).compute())
-
-    mask_rho_2d = ds_temp['mask_rho'].values
-    if mask_rho_2d.ndim > 2: mask_rho_2d = mask_rho_2d[0]
-
-    # --- Stratification (bottom density minus density at target_depth) ---
-    out_density_bottom = out_density_target = out_stratification = None
-    if compute_stratification and salt_var in ds_temp_daily:
-        out_density_bottom, out_density_target, out_stratification = _compute_stratification_arrays(
-            ds_temp, ds_temp_daily, ds_zeta_daily, target_dates, temp_var, salt_var,
-            target_depth, batch_size, T_daily, n_eta, n_xi, num_levels)
-        out_density_bottom[:, mask_rho_2d == 0] = np.nan
-        out_density_target[:, mask_rho_2d == 0] = np.nan
-        out_stratification[:, mask_rho_2d == 0] = np.nan
+    T_daily, num_levels = ds_prod.sizes['time'], ds_prod.sizes['s_rho']
+    n_eta, n_xi = ds_prod.sizes['eta_rho'], ds_prod.sizes['xi_rho']
+    t_dates = np.array([d.toordinal() for d in pd.to_datetime(ds_prod.time.values)],
+                       dtype=int)
+    mask_rho_2d = _mask_2d(ds_prod)
 
     # Read the climatology/thresholds once, for the forecast days only, across
     # all levels - see marineheatwaves.load_daily_baselines() for why this
     # matters so much.
-    print("Loading climatology and thresholds for the forecast days")
-    clim_daily, thresh90_daily, thresh10_daily = mhw.load_daily_baselines(ds_clim, ds_temp_daily.time.values)
+    print('Loading climatology and thresholds for the forecast days')
+    clim_daily, thresh90_daily, thresh10_daily = mhw.load_daily_baselines(
+        ds_clim, ds_prod.time.values)
 
-    print("Processing vertical planes")
+    out_category = np.zeros((T_daily, num_levels, n_eta, n_xi), dtype='int8')
+
+    print('Processing vertical planes')
     for k in range(num_levels - 1, -1, -1):
-        sst_vals   = ds_temp_daily[temp_var].isel(s_rho=k).values
+        temp_level = ds_prod['temp'].isel(s_rho=k).values
         clim_level = clim_daily[:, k, :, :]
 
         mhw_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
-        mhw.process_single_level(k, num_levels, sst_vals, clim_level, thresh90_daily[:, k, :, :], False, t_dates, batch_size, mhw_layer)
+        mhw.process_single_level(k, num_levels, temp_level, clim_level,
+                                 thresh90_daily[:, k, :, :], False, t_dates,
+                                 batch_size, mhw_layer)
 
         mcs_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
-        mhw.process_single_level(k, num_levels, sst_vals, clim_level, thresh10_daily[:, k, :, :], True, t_dates, batch_size, mcs_layer)
+        mhw.process_single_level(k, num_levels, temp_level, clim_level,
+                                 thresh10_daily[:, k, :, :], True, t_dates,
+                                 batch_size, mcs_layer)
 
         combined = mhw_layer.copy()
         combined[combined == 0] = mcs_layer[combined == 0]
         combined[:, mask_rho_2d == 0] = -127
         out_category[:, k, :, :] = combined
-
-        print(f"Calculating daily temperature anomalies for level {k}")
-        out_temp_anom[:, k, :, :] = sst_vals - clim_level
-
-        if k == num_levels - 1:
-            print("Calculating daily surface thermal fronts (SST fronts)")
-            pm = ds_temp['pm'].values if 'pm' in ds_temp else np.ones((n_eta, n_xi))
-            pn = ds_temp['pn'].values if 'pn' in ds_temp else np.ones((n_eta, n_xi))
-            if pm.ndim > 2: pm, pn = pm[0], pn[0]
-            
-            for t_idx in range(T_daily):
-                d_eta, d_xi = np.gradient(sst_vals[t_idx])
-                out_sst_front[t_idx] = np.hypot(d_xi * pm, d_eta * pn) * 1000.0
-            out_sst_front = np.where(mask_rho_2d[np.newaxis, :, :] == 1, out_sst_front, np.nan)
         gc.collect()
 
-    print("Assembling unified output dataset using Xarray")
-    data_vars = {
-        'category': (['time', 's_rho', 'eta_rho', 'xi_rho'], out_category),
-        'temp_anom': (['time', 's_rho', 'eta_rho', 'xi_rho'], out_temp_anom),
-        'zeta': (['time', 'eta_rho', 'xi_rho'], out_zeta),
-        'zeta_anom': (['time', 'eta_rho', 'xi_rho'], out_zeta_anom),
-        'sst_front': (['time', 'eta_rho', 'xi_rho'], out_sst_front),
-        'lon_rho': (['eta_rho', 'xi_rho'], ds_temp['lon_rho'].values if 'lon_rho' in ds_temp else ds_clim['lon_rho'].values),
-        'lat_rho': (['eta_rho', 'xi_rho'], ds_temp['lat_rho'].values if 'lat_rho' in ds_temp else ds_clim['lat_rho'].values),
-        'h': (['eta_rho', 'xi_rho'], ds_temp['h'].values),
-        'mask_rho': (['eta_rho', 'xi_rho'], ds_temp['mask_rho'].values),
-    }
-    if out_stratification is not None:
-        data_vars['density_bottom'] = (['time', 'eta_rho', 'xi_rho'], out_density_bottom)
-        data_vars['density_target_depth'] = (['time', 'eta_rho', 'xi_rho'], out_density_target)
-        data_vars['stratification'] = (['time', 'eta_rho', 'xi_rho'], out_stratification.astype('float32'))
+    ds_new = xr.Dataset(
+        {'category': (['time', 's_rho', 'eta_rho', 'xi_rho'], out_category)},
+        coords={'time': ds_prod.time.values})
+    ds_new['category'].attrs = {
+        'long_name': 'MHW_MCS Combined Event Categories',
+        'description': 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral',
+        'valid_range': np.array([-4, 4], dtype='int8'),
+        'reference': ('Hobday et al. (2016), categories 1-4 = '
+                      'Moderate/Strong/Severe/Extreme, where Extreme is >= 4x '
+                      'the climatology-to-threshold difference')}
 
-    ds_out = xr.Dataset(
-        data_vars=data_vars,
-        coords={
-            'time': target_dates,
-            's_rho': np.arange(num_levels),
-            'eta_rho': np.arange(n_eta),
-            'xi_rho': np.arange(n_xi),})
-    
-    # Standardize Global Attributes
-    ds_out['category'].attrs['long_name'] = 'MHW_MCS Combined Event Categories'
-    ds_out['category'].attrs['description'] = 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral'
-    ds_out['category'].attrs['valid_range'] = np.array([-4, 4], dtype='int8')
-    ds_out['category'].attrs['reference'] = ('Hobday et al. (2016), categories 1-4 = '
-                                             'Moderate/Strong/Severe/Extreme, where Extreme is >= 4x '
-                                             'the climatology-to-threshold difference')
-    ds_out['temp_anom'].attrs['long_name'] = 'Sea Water Temperature Daily Anomaly'
-    ds_out['temp_anom'].attrs['units'] = 'degC'
-    ds_out['sst_front'].attrs['long_name'] = 'Sea Surface Temperature Horizontal Front Magnitude'
-    ds_out['sst_front'].attrs['units'] = 'degC / km'
-    ds_out['zeta'].attrs['long_name'] = 'daily averaged free-surface'
-    ds_out['zeta'].attrs['units'] = 'meter'
-    ds_out['zeta_anom'].attrs['long_name'] = 'Sea Surface Elevation Daily Anomaly'
-    ds_out['zeta_anom'].attrs['units'] = 'm'
-    if out_stratification is not None:
-        ds_out['density_bottom'].attrs = {'long_name': 'Bottom in-situ density', 'units': 'kg m-3'}
-        ds_out['density_target_depth'].attrs = {'long_name': f'In-situ density at {target_depth} m depth', 'units': 'kg m-3'}
-        ds_out['stratification'].attrs = {
-            'long_name': 'Water column stratification (bottom density minus density at target depth)',
-            'units': 'kg m-3',
-            'description': 'Positive = stably stratified, near-zero/negative = well-mixed',
-            'target_depth_m': target_depth,
-        }
-    
-    for attr in ['hc', 'theta_s', 'theta_b']:
-        if attr in ds_temp: ds_out.attrs[attr] = float(ds_temp[attr].values)
-        elif attr in ds_temp.attrs: ds_out.attrs[attr] = float(ds_temp.attrs[attr])
-        
-    if 'Vtransform' in ds_temp:
-        vtransform_val = int(ds_temp['Vtransform'].values)
-    elif 'Vtransform' in ds_temp.attrs: 
-        vtransform_val = int(ds_temp.attrs['Vtransform'])
-    else: 
-        vtransform_val = 2  # CROCO default
-    ds_out['Vtransform'] = vtransform_val
+    ds_prod.close()
+    ds_clim.close()
+    append_to_products(ds_new, fname_out, Yorig=Yorig,
+                       encoding={'category': {'zlib': True, 'complevel': 2,
+                                              '_FillValue': -127,
+                                              'chunksizes': (T_daily, 1, n_eta, n_xi)}})
 
-    encoding = {
-        'category': {'zlib': True, 'complevel': 2, '_FillValue': -127, 'chunksizes': (T_daily, 1, n_eta, n_xi)},
-        'temp_anom': {'zlib': True, 'complevel': 2, '_FillValue': np.nan, 'chunksizes': (T_daily, 1, n_eta, n_xi)},
-        'zeta': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},
-        'zeta_anom': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},
-        'sst_front': {'zlib': True, 'complevel': 2, '_FillValue': np.nan},}
-    if out_stratification is not None:
-        for v in ('density_bottom', 'density_target_depth', 'stratification'):
-            encoding[v] = {'zlib': True, 'complevel': 2, '_FillValue': np.nan}
-    # Write time as 'seconds since Yorig-01-01' (as the rest of the repo does)
-    # so that reading this file back recovers the correct dates. This file gets
-    # re-read by regrid_tier2 -> get_var -> get_ds(decode_times=False) +
-    # handle_time(), so it has to be readable by that path:
-    #   - without any time encoding, xarray defaults to
-    #     'days since <first timestamp>' and handle_time() reads those small
-    #     integers as seconds, collapsing every date to 1970-01-01.
-    #   - dtype must be float64 (as in native CROCO output), because
-    #     handle_time() only applies Yorig when the raw values are float64
-    #     (isinstance(np.float64, float) is True, but np.int32/np.float32 are
-    #     not); an integer time axis silently falls through to being read as
-    #     seconds since the 1970 epoch, shifting every date by Yorig-1970.
-    encoding['time'] = {'units': f'seconds since {Yorig}-01-01 00:00:00',
-                        'calendar': 'standard',
-                        'dtype': 'f8'}
 
-    print(f"Exporting to disk: {fname_out}")
-    if out_file.exists(): out_file.unlink()
-    ds_out.to_netcdf(fname_out, encoding=encoding)
-    ds_clim.close(); ds_temp.close()
-    print(f'Done: {fname_out} ({out_file.stat().st_size / (1024 ** 2):.1f} MB)')
+def add_sst_front(fname_out, fname=None, Yorig=2000):
+    """
+    Add the daily surface thermal front magnitude to the products file.
+
+    This is the horizontal gradient magnitude of the daily mean sea surface
+    temperature, in degC/km, using the grid metrics pm/pn to convert the
+    per-cell differences to physical distances.
+
+    Parameters
+    ----------
+    fname_out : products file to add to (created first if it does not exist)
+    fname     : raw CROCO file, only needed if fname_out does not exist yet
+    Yorig     : origin year of the CROCO time axis
+    """
+    ds_prod = open_products(fname_out, fname, Yorig)
+
+    T_daily = ds_prod.sizes['time']
+    n_eta, n_xi = ds_prod.sizes['eta_rho'], ds_prod.sizes['xi_rho']
+    mask_rho_2d = _mask_2d(ds_prod)
+
+    print('Calculating daily surface thermal fronts (SST fronts)')
+    sst = ds_prod['temp'].isel(s_rho=-1).values  # s_rho -1 = surface in CROCO
+    pm = ds_prod['pm'].values if 'pm' in ds_prod else np.ones((n_eta, n_xi))
+    pn = ds_prod['pn'].values if 'pn' in ds_prod else np.ones((n_eta, n_xi))
+    if pm.ndim > 2:
+        pm, pn = pm[0], pn[0]
+
+    out_sst_front = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
+    for t_idx in range(T_daily):
+        d_eta, d_xi = np.gradient(sst[t_idx])
+        out_sst_front[t_idx] = np.hypot(d_xi * pm, d_eta * pn) * 1000.0
+    out_sst_front = np.where(mask_rho_2d[np.newaxis, :, :] == 1, out_sst_front, np.nan)
+
+    ds_new = xr.Dataset(
+        {'sst_front': (['time', 'eta_rho', 'xi_rho'], out_sst_front.astype('float32'))},
+        coords={'time': ds_prod.time.values})
+    ds_new['sst_front'].attrs = {
+        'long_name': 'Sea Surface Temperature Horizontal Front Magnitude',
+        'units': 'degC / km'}
+
+    ds_prod.close()
+    append_to_products(ds_new, fname_out, Yorig=Yorig)
+
+
+def add_stratification(fname_out, fname=None, Yorig=2000, target_depth=5.0,
+                       batch_size=5, temp_var='temp', salt_var='salt'):
+    """
+    Add daily bottom density, density at target_depth, and the difference
+    between them (the stratification) to the products file.
+
+    Parameters
+    ----------
+    fname_out    : products file to add to (created first if it does not exist)
+    fname        : raw CROCO file, only needed if fname_out does not exist yet
+    Yorig        : origin year of the CROCO time axis
+    target_depth : depth in metres (positive down) whose density is compared
+                   against the bottom density
+    batch_size   : number of eta_rho rows processed at a time
+    """
+    ds_prod = open_products(fname_out, fname, Yorig)
+
+    if salt_var not in ds_prod:
+        raise ValueError(
+            f"'{salt_var}' is not in {fname_out}, so the stratification cannot be "
+            'computed. Re-run make_products_base including salinity in --varList.')
+
+    density_bottom, density_target, stratification = _compute_stratification_arrays(
+        ds_prod, temp_var, salt_var, target_depth, batch_size)
+
+    mask_rho_2d = _mask_2d(ds_prod)
+    for arr in (density_bottom, density_target, stratification):
+        arr[:, mask_rho_2d == 0] = np.nan
+
+    dims = ['time', 'eta_rho', 'xi_rho']
+    ds_new = xr.Dataset({'density_bottom': (dims, density_bottom),
+                         'density_target_depth': (dims, density_target),
+                         'stratification': (dims, stratification.astype('float32'))},
+                        coords={'time': ds_prod.time.values})
+    ds_new['density_bottom'].attrs = {'long_name': 'Bottom in-situ density',
+                                      'units': 'kg m-3'}
+    ds_new['density_target_depth'].attrs = {
+        'long_name': f'In-situ density at {target_depth} m depth', 'units': 'kg m-3'}
+    ds_new['stratification'].attrs = {
+        'long_name': 'Water column stratification (bottom density minus density at target depth)',
+        'units': 'kg m-3',
+        'description': 'Positive = stably stratified, near-zero/negative = well-mixed',
+        'target_depth_m': target_depth}
+
+    ds_prod.close()
+    append_to_products(ds_new, fname_out, Yorig=Yorig)
+
+
+def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='temp',
+                        Yorig=2000, batch_size=5, salt_var='salt', target_depth=5.0,
+                        compute_stratification=True):
+    """
+    Run the whole products pipeline in one call.
+
+    Kept so that the existing operational workflow keeps working while it is
+    moved onto the individual steps; new callers should use make_products_base
+    followed by whichever add_* steps they want, which is what this does.
+
+    Note that the output now also contains the daily mean temp/salt/zeta and
+    the full CROCO grid, so it is a valid CROCO file rather than a bare
+    collection of product fields.
+    """
+    make_products_base(temp_file, fname_out, Yorig=Yorig,
+                       varList=[temp_var, salt_var] if compute_stratification else [temp_var])
+    add_anomalies(fname_out, clim_file, Yorig=Yorig)
+    add_mhw_mcs(fname_out, clim_file, thresh_file, Yorig=Yorig, batch_size=batch_size)
+    add_sst_front(fname_out, Yorig=Yorig)
+    if compute_stratification:
+        add_stratification(fname_out, Yorig=Yorig, target_depth=target_depth,
+                           batch_size=batch_size, temp_var=temp_var, salt_var=salt_var)
+    print(f'Done: {fname_out} '
+          f'({Path(fname_out).stat().st_size / (1024 ** 2):.1f} MB)')
 
 
 # Operational Plotting & Animation Routines

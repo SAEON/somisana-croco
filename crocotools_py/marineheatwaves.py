@@ -237,10 +237,11 @@ def build_doy_alignment_index(temp_time, doy_values):
     return idx, valid
 
 
-def load_daily_baselines(ds_clim, temp_time):
+def load_daily_baselines(ds_clim, temp_time,
+                         variables=('climatology', 'threshold_90', 'threshold_10')):
     """
-    Read the climatology and the two percentile thresholds ONCE, for only the
-    days we actually need, across all vertical levels.
+    Read the requested baseline fields ONCE, for only the days we actually
+    need, across all vertical levels.
 
     The day-of-year climatology files are chunked with s_rho spanning a full
     chunk (e.g. 30 dayofyear x 30 s_rho x 5 eta_rho x 130 xi_rho, deflate 4),
@@ -256,13 +257,16 @@ def load_daily_baselines(ds_clim, temp_time):
     label-based (sel) so we keep the Feb-29 fallback in
     build_doy_alignment_index for climatologies that don't carry day 366.
 
-    Returns (climatology, threshold_90, threshold_10), each with shape
-    (len(temp_time), s_rho, eta_rho, xi_rho), NaN on days with no climatology.
+    Returns one array per name in `variables` (by default the climatology and
+    both thresholds), each with shape (len(temp_time), s_rho, eta_rho, xi_rho)
+    and NaN on days with no climatology. Computing anomalies only needs the
+    climatology, so it asks for that alone rather than reading thresholds it
+    will not use.
     """
     idx, valid = build_doy_alignment_index(temp_time, ds_clim['dayofyear'].values)
 
     out = []
-    for var in ('climatology', 'threshold_90', 'threshold_10'):
+    for var in variables:
         arr = ds_clim[var].isel(dayofyear=idx).values.astype('float32')
         if not valid.all():
             arr[~valid, ...] = np.nan
@@ -339,27 +343,32 @@ def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thre
         print(f"      Rows {i:3d}-{end_i:3d} complete", end='\r')
     print(f"      Level {level} complete" + " " * 20)
 
-def load_and_harmonize_baselines(clim_file, thresh_file):
+def load_and_harmonize_baselines(clim_file, thresh_file=None):
     """
-    Centralized memory-safe reader for baseline datasets using native dayofyear variables.
+    Centralized memory-safe reader for baseline datasets using native dayofyear
+    variables.
+
+    thresh_file is optional: computing anomalies needs only the climatology,
+    whereas MHW/MCS detection needs the percentile thresholds as well.
     """
     print(f'Opening climatology (dropping heavy variables): {clim_file}')
     vars_to_drop = ['u', 'v', 'salt', 'ubar', 'vbar']
     ds_clim_raw = xr.open_dataset(clim_file, drop_variables=vars_to_drop)
-    
-    print(f'Opening thresholds: {thresh_file}')
-    ds_thresh_raw = xr.open_dataset(thresh_file)
 
     # Use native coordinate names directly
     ds_clim = xr.Dataset(coords=ds_clim_raw.coords)
     ds_clim['climatology'] = ds_clim_raw['temp'] if 'temp' in ds_clim_raw.data_vars else ds_clim_raw['climatology']
-    
-    if 'zeta' in ds_clim_raw.data_vars: 
+
+    if 'zeta' in ds_clim_raw.data_vars:
         ds_clim['zeta'] = ds_clim_raw['zeta']
-        
-    ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
-    ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
-        
+
+    if thresh_file is not None:
+        print(f'Opening thresholds: {thresh_file}')
+        ds_thresh_raw = xr.open_dataset(thresh_file)
+        ds_clim['threshold_90'] = ds_thresh_raw['threshold_90']
+        ds_clim['threshold_10'] = ds_thresh_raw['threshold_10']
+
+
     for v in ['lon_rho', 'lat_rho', 'dayofyear']:
         if v in ds_clim_raw.coords and v not in ds_clim.coords:
             ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
