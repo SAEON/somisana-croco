@@ -457,7 +457,7 @@ def main():
     parser_products_base.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_products_base.add_argument('--varList', required=False, type=parse_list_str, default=None,
-            help="comma separated list of variables to daily-average, e.g. 'temp,salt' (the default). 'zeta' is always included, as it is needed to compute the depths of the sigma levels")
+            help="comma separated list of variables to daily-average. Default is 'temp,salt,u,v'. 'zeta' is always included on top of whatever is asked for, as it is needed to compute the depths of the sigma levels. u/v are kept grid-aligned on their staggered grids, as CROCO writes them, so that get_ts_uv/regrid_tier* rotate them to east/north exactly as they do for the raw output")
     def make_products_base_handler(args):
         make_products_base(args.fname_in, args.fname_out,
                            Yorig=args.Yorig,

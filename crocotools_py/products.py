@@ -50,7 +50,15 @@ GRID_VARS = ['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w',
 # to whatever is asked for rather than listed here, because it is not optional:
 # postprocess.get_depths() reads ds.zeta to work out the depths of the sigma
 # levels, so without it nothing in the file can be interpolated to a z-level.
-BASE_VARS = ['temp', 'salt']
+#
+# u/v are carried even though none of the add_* products use them, because
+# downstream users want the daily currents. They are kept as CROCO writes them
+# - grid-aligned, on the staggered u/v grids - so the products file stays a
+# valid CROCO file and get_uv()/get_ts_uv()/regrid_tier* do the rotation to
+# east/north exactly as they do for the raw output. Averaging the staggered
+# components and then rotating gives the same answer as rotating each hour and
+# then averaging, since both steps are linear.
+BASE_VARS = ['temp', 'salt', 'u', 'v']
 
 
 def time_encoding(Yorig):
