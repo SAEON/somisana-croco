@@ -540,11 +540,9 @@ def main():
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_add_strat.add_argument('--target_depth', required=False, type=float, default=5.0,
             help='depth (in metres, positive down) whose density is compared against the bottom density to get the stratification')
-    parser_add_strat.add_argument('--batch_size', required=False, type=parse_int, default=5,
-            help='number of eta_rho rows processed at a time (trade-off between memory use and speed)')
     def add_stratification_handler(args):
         add_stratification(args.fname_out, fname=args.fname, Yorig=args.Yorig,
-                           target_depth=args.target_depth, batch_size=args.batch_size)
+                           target_depth=args.target_depth)
     parser_add_strat.set_defaults(func=add_stratification_handler)
 
     # ----------------------

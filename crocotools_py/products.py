@@ -329,74 +329,72 @@ def eos80_density(temp, salt, pressure):
     return rho
 
 
-def _compute_stratification_arrays(ds_prod, temp_var, salt_var, target_depth, batch_size):
+def add_stratification(fname_out, fname=None, Yorig=2000, target_depth=5.0,
+                       temp_var='temp', salt_var='salt'):
     """
-    Compute bottom density, density at target_depth, and the difference between
-    them, from the daily fields in the products file. Returns three
-    (time, eta_rho, xi_rho) arrays.
+    Add daily bottom density, density at target_depth, and the difference
+    between them (the stratification) to the products file.
 
-    The products file is already a valid CROCO file on the daily timeline, so
-    get_depths() can be handed it directly - no need to assemble a stand-in
-    dataset with the vertical grid copied across by hand.
+    Density is in-situ EOS-80 density; the bottom is the bottom-most sigma
+    layer (s_rho index 0 in CROCO), and the value at target_depth comes from
+    the repo's own sigma-to-z interpolation (postprocess.hlev_xarray, the same
+    routine get_var uses for level=-N). Cells where the seabed is shallower
+    than target_depth come out as NaN rather than being extrapolated.
+
+    Parameters
+    ----------
+    fname_out    : products file to add to (created first if it does not exist)
+    fname        : raw CROCO file, only needed if fname_out does not exist yet
+    Yorig        : origin year of the CROCO time axis
+    target_depth : depth in metres (positive down) whose density is compared
+                   against the bottom density
     """
-    print(f"\nComputing stratification (bottom vs {target_depth}m density)")
-    T_daily, num_levels = ds_prod.sizes['time'], ds_prod.sizes['s_rho']
-    n_eta, n_xi = ds_prod.sizes['eta_rho'], ds_prod.sizes['xi_rho']
+    ds_prod = open_products(fname_out, fname, Yorig)
 
-    z_daily = post.get_depths(ds_prod)  # (time, s_rho, eta_rho, xi_rho), negative down
+    if salt_var not in ds_prod:
+        raise ValueError(
+            f"'{salt_var}' is not in {fname_out}, so the stratification cannot be "
+            'computed. Re-run make_products_base including salinity in --varList.')
 
-    out_density_bottom = np.full((T_daily, n_eta, n_xi), np.nan, dtype='float32')
-    out_density_target = np.full((T_daily, n_eta, n_xi), np.nan, dtype='float32')
+    print(f'Computing stratification (bottom vs {target_depth}m density)')
+    z = post.get_depths(ds_prod)  # (time, s_rho, eta_rho, xi_rho), negative down
 
-    for i in range(0, n_eta, batch_size):
-        end_i = min(i + batch_size, n_eta)
-        print(f"   Stratification rows {i:3d}-{end_i:3d}", end='\r', flush=True)
+    # Bottom: CROCO convention s_rho index 0 = bottom-most sigma layer
+    density_bottom = eos80_density(ds_prod[temp_var].isel(s_rho=0),
+                                   ds_prod[salt_var].isel(s_rho=0),
+                                   -z.isel(s_rho=0))
 
-        temp_slice = ds_prod[temp_var].isel(eta_rho=slice(i, end_i)).values
-        salt_slice = ds_prod[salt_var].isel(eta_rho=slice(i, end_i)).values
-        z_slice = z_daily.isel(eta_rho=slice(i, end_i)).values
+    # hlev_xarray drops the depth dimension itself for a single depth
+    target_z = -abs(target_depth)
+    density_target = eos80_density(post.hlev_xarray(ds_prod[temp_var], z, target_z),
+                                   post.hlev_xarray(ds_prod[salt_var], z, target_z),
+                                   abs(target_depth))
 
-        # Bottom: CROCO convention s_rho index 0 = bottom-most sigma layer
-        temp_bottom = temp_slice[:, 0, :, :]
-        salt_bottom = salt_slice[:, 0, :, :]
-        depth_bottom = -z_slice[:, 0, :, :]
-        rho_bottom = eos80_density(temp_bottom, salt_bottom, depth_bottom)
+    density_bottom = density_bottom.astype('float32')
+    density_target = density_target.astype('float32')
+    stratification = density_bottom - density_target
 
-        # Target depth: linear-interpolate between bracketing sigma levels
-        # (vectorized: replaces per-column apply_along_axis/searchsorted
-        # plus a triple nested Python loop with a boolean comparison +
-        # np.take_along_axis gather)
-        target_z = -abs(target_depth)
-        above = (z_slice >= target_z)
-        levs = np.argmax(above, axis=1)
-        levs = np.clip(levs, 1, num_levels - 1)
+    mask_rho_2d = _mask_2d(ds_prod)
+    for arr in (density_bottom, density_target, stratification):
+        arr[:, mask_rho_2d == 0] = np.nan
 
-        levs_up = levs[:, None, :, :]
-        levs_down = levs_up - 1
-        z_up      = np.take_along_axis(z_slice, levs_up, axis=1)[:, 0]
-        z_down    = np.take_along_axis(z_slice, levs_down, axis=1)[:, 0]
-        temp_up   = np.take_along_axis(temp_slice, levs_up, axis=1)[:, 0]
-        temp_down = np.take_along_axis(temp_slice, levs_down, axis=1)[:, 0]
-        salt_up   = np.take_along_axis(salt_slice, levs_up, axis=1)[:, 0]
-        salt_down = np.take_along_axis(salt_slice, levs_down, axis=1)[:, 0]
+    dims = ['time', 'eta_rho', 'xi_rho']
+    ds_new = xr.Dataset({'density_bottom': (dims, density_bottom),
+                         'density_target_depth': (dims, density_target),
+                         'stratification': (dims, stratification)},
+                        coords={'time': ds_prod.time.values})
+    ds_new['density_bottom'].attrs = {'long_name': 'Bottom in-situ density',
+                                      'units': 'kg m-3'}
+    ds_new['density_target_depth'].attrs = {
+        'long_name': f'In-situ density at {target_depth} m depth', 'units': 'kg m-3'}
+    ds_new['stratification'].attrs = {
+        'long_name': 'Water column stratification (bottom density minus density at target depth)',
+        'units': 'kg m-3',
+        'description': 'Positive = stably stratified, near-zero/negative = well-mixed',
+        'target_depth_m': target_depth}
 
-        denom = z_up - z_down
-        with np.errstate(invalid='ignore', divide='ignore'):
-            frac = np.where(denom != 0, (target_z - z_down) / denom, np.nan)
-        temp_at_target = (temp_down + frac * (temp_up - temp_down)).astype('float32')
-        salt_at_target = (salt_down + frac * (salt_up - salt_down)).astype('float32')
-
-        rho_target = eos80_density(temp_at_target, salt_at_target, abs(target_depth))
-
-        out_density_bottom[:, i:end_i, :] = rho_bottom
-        out_density_target[:, i:end_i, :] = rho_target
-
-        del temp_slice, salt_slice, z_slice
-        gc.collect()
-
-    print("\n   Stratification complete" + " " * 20)
-    out_stratification = out_density_bottom - out_density_target
-    return out_density_bottom, out_density_target, out_stratification
+    ds_prod.close()
+    append_to_products(ds_new, fname_out, Yorig=Yorig)
 
 
 def _mask_2d(ds_prod):
@@ -572,54 +570,6 @@ def add_sst_front(fname_out, fname=None, Yorig=2000):
     append_to_products(ds_new, fname_out, Yorig=Yorig)
 
 
-def add_stratification(fname_out, fname=None, Yorig=2000, target_depth=5.0,
-                       batch_size=5, temp_var='temp', salt_var='salt'):
-    """
-    Add daily bottom density, density at target_depth, and the difference
-    between them (the stratification) to the products file.
-
-    Parameters
-    ----------
-    fname_out    : products file to add to (created first if it does not exist)
-    fname        : raw CROCO file, only needed if fname_out does not exist yet
-    Yorig        : origin year of the CROCO time axis
-    target_depth : depth in metres (positive down) whose density is compared
-                   against the bottom density
-    batch_size   : number of eta_rho rows processed at a time
-    """
-    ds_prod = open_products(fname_out, fname, Yorig)
-
-    if salt_var not in ds_prod:
-        raise ValueError(
-            f"'{salt_var}' is not in {fname_out}, so the stratification cannot be "
-            'computed. Re-run make_products_base including salinity in --varList.')
-
-    density_bottom, density_target, stratification = _compute_stratification_arrays(
-        ds_prod, temp_var, salt_var, target_depth, batch_size)
-
-    mask_rho_2d = _mask_2d(ds_prod)
-    for arr in (density_bottom, density_target, stratification):
-        arr[:, mask_rho_2d == 0] = np.nan
-
-    dims = ['time', 'eta_rho', 'xi_rho']
-    ds_new = xr.Dataset({'density_bottom': (dims, density_bottom),
-                         'density_target_depth': (dims, density_target),
-                         'stratification': (dims, stratification.astype('float32'))},
-                        coords={'time': ds_prod.time.values})
-    ds_new['density_bottom'].attrs = {'long_name': 'Bottom in-situ density',
-                                      'units': 'kg m-3'}
-    ds_new['density_target_depth'].attrs = {
-        'long_name': f'In-situ density at {target_depth} m depth', 'units': 'kg m-3'}
-    ds_new['stratification'].attrs = {
-        'long_name': 'Water column stratification (bottom density minus density at target depth)',
-        'units': 'kg m-3',
-        'description': 'Positive = stably stratified, near-zero/negative = well-mixed',
-        'target_depth_m': target_depth}
-
-    ds_prod.close()
-    append_to_products(ds_new, fname_out, Yorig=Yorig)
-
-
 def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='temp',
                         Yorig=2000, batch_size=5, salt_var='salt', target_depth=5.0,
                         compute_stratification=True):
@@ -641,7 +591,7 @@ def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='
     add_sst_front(fname_out, Yorig=Yorig)
     if compute_stratification:
         add_stratification(fname_out, Yorig=Yorig, target_depth=target_depth,
-                           batch_size=batch_size, temp_var=temp_var, salt_var=salt_var)
+                           temp_var=temp_var, salt_var=salt_var)
     print(f'Done: {fname_out} '
           f'({Path(fname_out).stat().st_size / (1024 ** 2):.1f} MB)')
 
