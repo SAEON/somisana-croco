@@ -15,9 +15,9 @@ from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_a
 from crocotools_py.postprocess import get_ts_multivar, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
-from crocotools_py.products import (detect_mhw_forecast, plot_operational_mhw_mcs,
-                                    make_products_base, add_anomalies, add_mhw_mcs,
-                                    add_sst_front, add_stratification)
+from crocotools_py.products import (plot_operational_mhw_mcs, make_products_base,
+                                    add_anomalies, add_mhw_mcs, add_sst_front,
+                                    add_stratification)
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
@@ -437,7 +437,7 @@ def main():
     # ----------------------
     parser_products_base = subparsers.add_parser('make_products_base',
             help='Create the daily averaged products file from raw CROCO output. The output is itself a valid CROCO file (it carries the full grid), so everything in postprocess.py works on it. This is the file which the add_* commands then append their products to')
-    parser_products_base.add_argument('--fname', required=True, type=str,
+    parser_products_base.add_argument('--fname_in', required=True, type=str,
             help='input raw CROCO filename (or a file pattern to be used with open_mfdataset())')
     parser_products_base.add_argument('--fname_out', required=True, type=str,
             help='output filename, conventionally croco_avg_products.nc')
@@ -446,7 +446,7 @@ def main():
     parser_products_base.add_argument('--varList', required=False, type=parse_list_str, default=None,
             help="comma separated list of variables to daily-average, e.g. 'temp,salt' (the default). 'zeta' is always included, as it is needed to compute the depths of the sigma levels")
     def make_products_base_handler(args):
-        make_products_base(args.fname, args.fname_out,
+        make_products_base(args.fname_in, args.fname_out,
                            Yorig=args.Yorig,
                            varList=args.varList)
     parser_products_base.set_defaults(func=make_products_base_handler)
@@ -460,12 +460,12 @@ def main():
             help='the products file to add to, as created by make_products_base. If it does not exist it gets created first, in which case --fname is needed')
     parser_add_anom.add_argument('--clim_file', required=True, type=str,
             help='pre-built day-of-year climatology file (see the hindcasts/*/climatology directory for the domain)')
-    parser_add_anom.add_argument('--fname', required=False, type=str, default=None,
-            help='input raw CROCO filename, only needed if fname_out does not exist yet')
+    parser_add_anom.add_argument('--fname_in', required=False, type=str, default=None,
+            help='CROCO file(s) to read the daily fields from - can include wildcards (*). Defaults to fname_out, which is the usual case of adding to a products file that already exists. If fname_out does not exist yet it gets created from this input first')
     parser_add_anom.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     def add_anomalies_handler(args):
-        add_anomalies(args.fname_out, args.clim_file, fname=args.fname, Yorig=args.Yorig)
+        add_anomalies(args.fname_out, args.clim_file, fname_in=args.fname_in, Yorig=args.Yorig)
     parser_add_anom.set_defaults(func=add_anomalies_handler)
 
     # ----------------------
@@ -479,15 +479,15 @@ def main():
             help='pre-built day-of-year climatology file (see the hindcasts/*/climatology directory for the domain)')
     parser_add_mhw.add_argument('--thresh_file', required=True, type=str,
             help='pre-built day-of-year percentile threshold file, containing threshold_90 and threshold_10')
-    parser_add_mhw.add_argument('--fname', required=False, type=str, default=None,
-            help='input raw CROCO filename, only needed if fname_out does not exist yet')
+    parser_add_mhw.add_argument('--fname_in', required=False, type=str, default=None,
+            help='CROCO file(s) to read the daily fields from - can include wildcards (*). Defaults to fname_out, which is the usual case of adding to a products file that already exists. If fname_out does not exist yet it gets created from this input first')
     parser_add_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_add_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5,
             help='number of eta_rho rows processed at a time (trade-off between memory use and speed)')
     def add_mhw_mcs_handler(args):
         add_mhw_mcs(args.fname_out, args.clim_file, args.thresh_file,
-                    fname=args.fname, Yorig=args.Yorig, batch_size=args.batch_size)
+                    fname_in=args.fname_in, Yorig=args.Yorig, batch_size=args.batch_size)
     parser_add_mhw.set_defaults(func=add_mhw_mcs_handler)
 
     # ----------------------
@@ -497,12 +497,12 @@ def main():
             help='Add the daily surface thermal front magnitude (the horizontal gradient of daily mean SST, in degC/km) to the products file')
     parser_add_front.add_argument('--fname_out', required=True, type=str,
             help='the products file to add to, as created by make_products_base. If it does not exist it gets created first, in which case --fname is needed')
-    parser_add_front.add_argument('--fname', required=False, type=str, default=None,
-            help='input raw CROCO filename, only needed if fname_out does not exist yet')
+    parser_add_front.add_argument('--fname_in', required=False, type=str, default=None,
+            help='CROCO file(s) to read the daily fields from - can include wildcards (*). Defaults to fname_out, which is the usual case of adding to a products file that already exists. If fname_out does not exist yet it gets created from this input first')
     parser_add_front.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     def add_sst_front_handler(args):
-        add_sst_front(args.fname_out, fname=args.fname, Yorig=args.Yorig)
+        add_sst_front(args.fname_out, fname_in=args.fname_in, Yorig=args.Yorig)
     parser_add_front.set_defaults(func=add_sst_front_handler)
 
     # ----------------------
@@ -512,65 +512,30 @@ def main():
             help='Add the daily bottom density, the density at target_depth, and the difference between them (the stratification) to the products file')
     parser_add_strat.add_argument('--fname_out', required=True, type=str,
             help='the products file to add to, as created by make_products_base. If it does not exist it gets created first, in which case --fname is needed')
-    parser_add_strat.add_argument('--fname', required=False, type=str, default=None,
-            help='input raw CROCO filename, only needed if fname_out does not exist yet')
+    parser_add_strat.add_argument('--fname_in', required=False, type=str, default=None,
+            help='CROCO file(s) to read the daily fields from - can include wildcards (*). Defaults to fname_out, which is the usual case of adding to a products file that already exists. If fname_out does not exist yet it gets created from this input first')
     parser_add_strat.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_add_strat.add_argument('--target_depth', required=False, type=float, default=5.0,
             help='depth (in metres, positive down) whose density is compared against the bottom density to get the stratification')
     def add_stratification_handler(args):
-        add_stratification(args.fname_out, fname=args.fname, Yorig=args.Yorig,
+        add_stratification(args.fname_out, fname_in=args.fname_in, Yorig=args.Yorig,
                            target_depth=args.target_depth)
     parser_add_strat.set_defaults(func=add_stratification_handler)
-
-    # ----------------------
-    # detect_mhw_forecast
-    # ----------------------
-    parser_detect_mhw = subparsers.add_parser('detect_mhw_forecast',
-            help='Detect Marine Heatwave (MHW) and Marine Cold Spell (MCS) events in a CROCO forecast file using a pre-built day-of-year climatology and percentile thresholds. Writes a netcdf file of daily averaged fields, including signed event categories (+1..+4 = MHW, 0 = no event, -1..-4 = MCS)')
-    parser_detect_mhw.add_argument('--temp_file', required=True, type=str,
-            help='input CROCO filename containing the temperature (and salinity) data')
-    parser_detect_mhw.add_argument('--clim_file', required=True, type=str,
-            help='pre-built day-of-year climatology file (see the hindcasts/*/climatology directory for the domain)')
-    parser_detect_mhw.add_argument('--thresh_file', required=True, type=str,
-            help='pre-built day-of-year percentile threshold file, containing threshold_90 and threshold_10')
-    parser_detect_mhw.add_argument('--fname_out', required=True, type=str,
-            help='output filename')
-    parser_detect_mhw.add_argument('--temp_var', required=False, type=str, default='temp',
-            help='name of the temperature variable in temp_file')
-    parser_detect_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000,
-            help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
-    parser_detect_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5,
-            help='number of eta_rho rows processed at a time (trade-off between memory use and speed)')
-    parser_detect_mhw.add_argument('--salt_var', required=False, type=str, default='salt',
-            help='name of the salinity variable in temp_file (only used if compute_stratification is true)')
-    parser_detect_mhw.add_argument('--target_depth', required=False, type=float, default=5.0,
-            help='depth (in metres, positive down) whose density is compared against the bottom density to get the stratification')
-    parser_detect_mhw.add_argument('--compute_stratification', required=False, type=parse_bool, default='True',
-            help='if true, also compute the bottom density, the density at target_depth, and the difference between them')
-    def detect_mhw_forecast_handler(args):
-        detect_mhw_forecast(args.temp_file, args.clim_file, args.thresh_file, args.fname_out,
-                            temp_var=args.temp_var,
-                            Yorig=args.Yorig,
-                            batch_size=args.batch_size,
-                            salt_var=args.salt_var,
-                            target_depth=args.target_depth,
-                            compute_stratification=args.compute_stratification)
-    parser_detect_mhw.set_defaults(func=detect_mhw_forecast_handler)
 
     # ----------------------
     # plot_mhw_forecast
     # ----------------------
     parser_plot_mhw = subparsers.add_parser('plot_mhw_forecast',
-            help='Generate the operational MHW/MCS plots and animations from the output of detect_mhw_forecast')
+            help='Generate the operational MHW/MCS plots and animations from a products file (see make_products_base and the add_* commands)')
     parser_plot_mhw.add_argument('--forecast_file', required=True, type=str,
-            help='input native CROCO filename (as used as input to detect_mhw_forecast)')
+            help='input native CROCO filename (the raw model output the products file was built from)')
     parser_plot_mhw.add_argument('--cat_file', required=True, type=str,
-            help='the netcdf file written by detect_mhw_forecast')
+            help='the products file, as written by make_products_base and add_mhw_mcs')
     parser_plot_mhw.add_argument('--clim_file', required=True, type=str,
-            help='pre-built day-of-year climatology file (as used as input to detect_mhw_forecast)')
+            help='pre-built day-of-year climatology file (as used as input to add_mhw_mcs)')
     parser_plot_mhw.add_argument('--thresh_file', required=True, type=str,
-            help='pre-built day-of-year percentile threshold file (as used as input to detect_mhw_forecast)')
+            help='pre-built day-of-year percentile threshold file (as used as input to add_mhw_mcs)')
     parser_plot_mhw.add_argument('--out_dir', required=True, type=str,
             help='directory where the figures and animations get written')
     parser_plot_mhw.add_argument('--today', required=True, type=str,

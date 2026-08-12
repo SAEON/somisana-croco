@@ -128,14 +128,14 @@ def get_grid_vars(ds_raw):
     return ds_grid
 
 
-def make_products_base(fname, fname_out, Yorig=2000, varList=None):
+def make_products_base(fname_in, fname_out, Yorig=2000, varList=None):
     """
     Create the products file: a daily average of the raw CROCO output, carrying
     through the full grid so that the result is itself a valid CROCO file.
 
     Parameters
     ----------
-    fname     : raw CROCO output file(s) - anything postprocess.get_ds accepts
+    fname_in  : raw CROCO output file(s) - anything postprocess.get_ds accepts
     fname_out : products file to create (conventionally croco_avg_products.nc)
     Yorig     : origin year of the CROCO time axis
     varList   : variables to daily-average, default ['temp','salt']. 'zeta' is
@@ -153,12 +153,12 @@ def make_products_base(fname, fname_out, Yorig=2000, varList=None):
     if 'zeta' not in varList:
         varList.append('zeta')
 
-    print(f'Loading raw CROCO output: {fname}')
-    ds_raw = post.handle_time(post.get_ds(fname, 'temp'), Yorig=Yorig)
+    print(f'Loading raw CROCO output: {fname_in}')
+    ds_raw = post.handle_time(post.get_ds(fname_in, 'temp'), Yorig=Yorig)
 
     missing = [v for v in varList if v not in ds_raw]
     if missing:
-        raise ValueError(f'variable(s) {missing} not found in {fname}')
+        raise ValueError(f'variable(s) {missing} not found in {fname_in}')
 
     # resample() already produces one bin per day over the full span, leaving
     # NaN for any day with no data - so no reindexing or gap filling is needed
@@ -188,14 +188,22 @@ def make_products_base(fname, fname_out, Yorig=2000, varList=None):
           f'{ds_out.sizes["time"]} days)')
 
 
-def open_products(fname_out, fname_raw=None, Yorig=2000):
+def open_products(fname_out, fname_in=None, Yorig=2000):
     """
-    Open the products file, ready to be read by an add_* step.
+    Open the daily fields an add_* step needs, ready for it to append to
+    fname_out.
 
-    If the file does not exist yet it is created from the raw CROCO output
-    first, so that a step can be run standalone without make_products_base
-    having been run - this is the 'either write it or add to it' behaviour that
-    lets the add_* steps run in any order or be re-run individually.
+    fname_in is where the data comes from, and can be any CROCO file(s) that
+    postprocess.get_ds accepts - the raw model output, a set of files matched
+    by a wildcard, or an existing products file. If it is left as None it
+    defaults to fname_out, which is the usual operational case of a step adding
+    to a products file that is already there.
+
+    If fname_out does not exist it is created from fname_in first, so a step
+    can be run standalone without make_products_base having been run. That is
+    the 'either write it or add to it' behaviour which lets the add_* steps run
+    in any order, be re-run individually, or be used one at a time on a
+    hindcast.
 
     The contents are read into memory and the file is then closed, because the
     step is going to append to that same file and netcdf4 raises an HDF error
@@ -205,14 +213,16 @@ def open_products(fname_out, fname_raw=None, Yorig=2000):
     daily and only a few hundred MB, so reading it up front is cheap.
     """
     os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+    if fname_in is None:
+        fname_in = fname_out
     if not Path(fname_out).exists():
-        if fname_raw is None:
+        if fname_in == fname_out:
             raise ValueError(
-                f'{fname_out} does not exist, and no raw CROCO file was given to '
-                'create it from. Either run make_products_base first, or pass '
-                'the raw file so this step can create the products file itself.')
-        print(f'{fname_out} does not exist yet - creating it from {fname_raw}')
-        make_products_base(fname_raw, fname_out, Yorig=Yorig)
+                f'{fname_out} does not exist, and no input file was given to create '
+                'it from. Either run make_products_base first, or pass fname_in so '
+                'this step can create the products file itself.')
+        print(f'{fname_out} does not exist yet - creating it from {fname_in}')
+        make_products_base(fname_in, fname_out, Yorig=Yorig)
     ds = post.handle_time(post.get_ds(fname_out, 'temp'), Yorig=Yorig).load()
     ds.close()
     return ds
@@ -329,7 +339,7 @@ def eos80_density(temp, salt, pressure):
     return rho
 
 
-def add_stratification(fname_out, fname=None, Yorig=2000, target_depth=5.0,
+def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
                        temp_var='temp', salt_var='salt'):
     """
     Add daily bottom density, density at target_depth, and the difference
@@ -344,12 +354,13 @@ def add_stratification(fname_out, fname=None, Yorig=2000, target_depth=5.0,
     Parameters
     ----------
     fname_out    : products file to add to (created first if it does not exist)
-    fname        : raw CROCO file, only needed if fname_out does not exist yet
+    fname_in     : CROCO file(s) to read the daily fields from; defaults to
+                   fname_out, and is used to create it if it is not there yet
     Yorig        : origin year of the CROCO time axis
     target_depth : depth in metres (positive down) whose density is compared
                    against the bottom density
     """
-    ds_prod = open_products(fname_out, fname, Yorig)
+    ds_prod = open_products(fname_out, fname_in, Yorig)
 
     if salt_var not in ds_prod:
         raise ValueError(
@@ -403,7 +414,7 @@ def _mask_2d(ds_prod):
     return mask[0] if mask.ndim > 2 else mask
 
 
-def add_anomalies(fname_out, clim_file, fname=None, Yorig=2000):
+def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
     """
     Add daily temperature and sea-level anomalies to the products file.
 
@@ -415,10 +426,11 @@ def add_anomalies(fname_out, clim_file, fname=None, Yorig=2000):
     ----------
     fname_out : products file to add to (created first if it does not exist)
     clim_file : pre-built day-of-year climatology file
-    fname     : raw CROCO file, only needed if fname_out does not exist yet
+    fname_in  : CROCO file(s) to read the daily fields from; defaults to
+                fname_out, and is used to create it if it is not there yet
     Yorig     : origin year of the CROCO time axis
     """
-    ds_prod = open_products(fname_out, fname, Yorig)
+    ds_prod = open_products(fname_out, fname_in, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file)
 
     print('Computing daily temperature anomalies')
@@ -450,7 +462,7 @@ def add_anomalies(fname_out, clim_file, fname=None, Yorig=2000):
     append_to_products(ds_new, fname_out, Yorig=Yorig)
 
 
-def add_mhw_mcs(fname_out, clim_file, thresh_file, fname=None, Yorig=2000, batch_size=5):
+def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, batch_size=5):
     """
     Add signed Marine Heatwave / Marine Cold Spell event categories to the
     products file.
@@ -464,11 +476,12 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname=None, Yorig=2000, batch
     fname_out   : products file to add to (created first if it does not exist)
     clim_file   : pre-built day-of-year climatology file
     thresh_file : pre-built day-of-year percentile threshold file
-    fname       : raw CROCO file, only needed if fname_out does not exist yet
+    fname_in    : CROCO file(s) to read the daily fields from; defaults to
+                  fname_out, and is used to create it if it is not there yet
     Yorig       : origin year of the CROCO time axis
     batch_size  : number of eta_rho rows detected at a time (memory vs speed)
     """
-    ds_prod = open_products(fname_out, fname, Yorig)
+    ds_prod = open_products(fname_out, fname_in, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file, thresh_file)
 
     T_daily, num_levels = ds_prod.sizes['time'], ds_prod.sizes['s_rho']
@@ -526,7 +539,7 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname=None, Yorig=2000, batch
                                               'chunksizes': (T_daily, 1, n_eta, n_xi)}})
 
 
-def add_sst_front(fname_out, fname=None, Yorig=2000):
+def add_sst_front(fname_out, fname_in=None, Yorig=2000):
     """
     Add the daily surface thermal front magnitude to the products file.
 
@@ -537,10 +550,11 @@ def add_sst_front(fname_out, fname=None, Yorig=2000):
     Parameters
     ----------
     fname_out : products file to add to (created first if it does not exist)
-    fname     : raw CROCO file, only needed if fname_out does not exist yet
+    fname_in  : CROCO file(s) to read the daily fields from; defaults to
+                fname_out, and is used to create it if it is not there yet
     Yorig     : origin year of the CROCO time axis
     """
-    ds_prod = open_products(fname_out, fname, Yorig)
+    ds_prod = open_products(fname_out, fname_in, Yorig)
 
     T_daily = ds_prod.sizes['time']
     n_eta, n_xi = ds_prod.sizes['eta_rho'], ds_prod.sizes['xi_rho']
@@ -570,30 +584,6 @@ def add_sst_front(fname_out, fname=None, Yorig=2000):
     append_to_products(ds_new, fname_out, Yorig=Yorig)
 
 
-def detect_mhw_forecast(temp_file, clim_file, thresh_file, fname_out, temp_var='temp',
-                        Yorig=2000, batch_size=5, salt_var='salt', target_depth=5.0,
-                        compute_stratification=True):
-    """
-    Run the whole products pipeline in one call.
-
-    Kept so that the existing operational workflow keeps working while it is
-    moved onto the individual steps; new callers should use make_products_base
-    followed by whichever add_* steps they want, which is what this does.
-
-    Note that the output now also contains the daily mean temp/salt/zeta and
-    the full CROCO grid, so it is a valid CROCO file rather than a bare
-    collection of product fields.
-    """
-    make_products_base(temp_file, fname_out, Yorig=Yorig,
-                       varList=[temp_var, salt_var] if compute_stratification else [temp_var])
-    add_anomalies(fname_out, clim_file, Yorig=Yorig)
-    add_mhw_mcs(fname_out, clim_file, thresh_file, Yorig=Yorig, batch_size=batch_size)
-    add_sst_front(fname_out, Yorig=Yorig)
-    if compute_stratification:
-        add_stratification(fname_out, Yorig=Yorig, target_depth=target_depth,
-                           temp_var=temp_var, salt_var=salt_var)
-    print(f'Done: {fname_out} '
-          f'({Path(fname_out).stat().st_size / (1024 ** 2):.1f} MB)')
 
 
 # Operational Plotting & Animation Routines
@@ -848,7 +838,7 @@ def animate_surface_fronts(cat_ds, lat, lon, out_path):
 
 
 def plot_timeseries_stratification(ds_cat, today, out_dir):
-    """ds_cat is the same already-open detect_mhw_forecast output dataset -
+    """ds_cat is the same already-open products dataset -
     reads 'stratification' directly from it, no separate file needed."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -898,7 +888,7 @@ def _update_strat_frame(frame, data, time_data, mesh_obj, title_obj):
 
 
 def animate_stratification(ds_cat, lat, lon, out_path):
-    """ds_cat is the same already-open detect_mhw_forecast output dataset;
+    """ds_cat is the same already-open products dataset;
     lat/lon passed in already match plot_operational_mhw_mcs's own lat/lon
     arrays, so no separate lon_rho/lat_rho lookup needed here."""
     out_path = Path(out_path)
@@ -926,7 +916,7 @@ def animate_stratification(ds_cat, lat, lon, out_path):
 def plot_operational_mhw_mcs(forecast_file, cat_file, clim_file, thresh_file, out_dir, today, Yorig=2000):
     """
     Render the operational MHW/MCS figures and animations from the output of
-    detect_mhw_forecast().
+    the products file.
 
     'today' is the hindcast/forecast transition date used to split the
     time-series plots. The window shown in the flag map titles is taken from

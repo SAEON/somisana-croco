@@ -51,15 +51,11 @@ on:
         description: 'number of hindcast days (integer) from T0'
         required: true
         type: string
-      FDAYS:
-        description: 'number of forecast days (integer) from T0'
+      CLIM_FILE:
+        description: 'day-of-year climatology file, used for the daily anomalies and for detecting marine heatwaves / cold spells. Leave as an empty string to skip the products job for this domain'
         required: true
         type: string
-      MHW_CLIM_FILE:
-        description: 'day-of-year climatology file used for detecting marine heatwaves / cold spells. Leave as an empty string to skip the MHW/MCS processing for this domain'
-        required: true
-        type: string
-      MHW_THRESH_FILE:
+      THRESH_FILE:
         description: 'day-of-year percentile threshold file (threshold_90/threshold_10) used for detecting marine heatwaves / cold spells'
         required: true
         type: string
@@ -239,40 +235,82 @@ jobs:
         run: |
           chmod -R 775 ${{ env.RUN_DIR }}
 
-# detect and visualize Marine Heatwaves / Marine Cold Spells, and the daily
-# anomalies that come out of the same day-of-year climatology
+# build the daily averaged products file: MHW/MCS categories, anomalies,
+# SST fronts and stratification, plus the plots and animations made from them
 # (only runs for domains which have a day-of-year climatology)
-  mhw_mcs:
-    if: ${{ inputs.MHW_CLIM_FILE != '' }}
+#
+# The steps below each append to the same products file, so the ones which
+# produce data deliberately do NOT set continue-on-error: if one of them fails
+# the job must stop, rather than letting the next step run against a file that
+# is missing or half-written. Only the terminal plotting steps tolerate
+# failure, so that a broken figure does not throw away netcdf products which
+# were written successfully and are about to be archived.
+  products:
+    if: ${{ inputs.CLIM_FILE != '' }}
     runs-on: ${{ inputs.RUNNER_NAME }}
     steps:
-      - name: detect MHW/MCS events
-        continue-on-error: true
+      - name: make the daily averaged products file
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
-              detect_mhw_forecast \
-                --temp_file ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --clim_file ${{ inputs.MHW_CLIM_FILE }} \
-                --thresh_file ${{ inputs.MHW_THRESH_FILE }} \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
-                --temp_var temp \
+              make_products_base \
+                --fname_in ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --Yorig 2000
+
+      - name: add daily temperature and sea level anomalies
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              add_anomalies \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --clim_file ${{ inputs.CLIM_FILE }} \
+                --Yorig 2000
+
+      - name: add MHW/MCS event categories
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              add_mhw_mcs \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --clim_file ${{ inputs.CLIM_FILE }} \
+                --thresh_file ${{ inputs.THRESH_FILE }} \
                 --Yorig 2000 \
                 --batch_size 5
 
-      - name: regrid MHW/MCS categories to tier 2
-        continue-on-error: true
+      - name: add surface thermal fronts
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              add_sst_front \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --Yorig 2000
+
+      - name: add stratification
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              add_stratification \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --target_depth 5 \
+                --Yorig 2000
+
+      - name: regrid the products to tier 2
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               regrid_tier2 \
-                --fname ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --dir_out ${{ env.RUN_DIR }}/postprocess/ \
                 --Yorig 2000 \
                 --depths 0,-5,-10,-20,-50,-100,-200,-500,-1000 \
-                --varList category,temp_anom,zeta_anom,sst_front
+                --varList category,temp_anom,zeta_anom,sst_front,stratification
 
       - name: generate MHW/MCS plots and animations
         continue-on-error: true
@@ -287,9 +325,9 @@ jobs:
           python /home/somisana/code/somisana-croco/cli.py \
               plot_mhw_forecast \
                 --forecast_file ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --cat_file ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
-                --clim_file ${{ inputs.MHW_CLIM_FILE }} \
-                --thresh_file ${{ inputs.MHW_THRESH_FILE }} \
+                --cat_file ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --clim_file ${{ inputs.CLIM_FILE }} \
+                --thresh_file ${{ inputs.THRESH_FILE }} \
                 --out_dir ${{ env.RUN_DIR }}/postprocess/mhw_plots \
                 --today $base_date \
                 --Yorig 2000
@@ -304,7 +342,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
                 --var temp_anom \
                 --add_vectors False \
@@ -316,7 +354,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --level 0 \
                 --var temp_anom \
                 --add_vectors False \
@@ -329,7 +367,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/mhw_mcs_categories.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --level -100 \
                 --var temp_anom \
                 --add_vectors False \
@@ -342,7 +380,7 @@ jobs:
 
   # copy data over to where it will be archived
   archive:
-    needs: [postprocess,plotting,mhw_mcs]
+    needs: [postprocess,plotting,products]
     runs-on: ${{ inputs.RUNNER_NAME }}
     # only archive if we are on the main branch
     if: ${{ always() && inputs.BRANCH_REF == 'main' }}
