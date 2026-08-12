@@ -15,7 +15,7 @@ from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_a
 from crocotools_py.postprocess import get_ts_multivar, compute_anomaly, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
-from crocotools_py.marineheatwaves import detect_mhw_forecast, plot_operational_mhw_mcs
+from crocotools_py.products import detect_mhw_forecast, plot_operational_mhw_mcs
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
