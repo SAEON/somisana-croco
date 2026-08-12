@@ -151,8 +151,27 @@ jobs:
                 --dir_out ${{ env.RUN_DIR }}/postprocess/ \
                 --spacing 0.02
         
-      # here we can add the extraction of time-series 
-      # for this there needs to be an ascii file for each config_dir with the coordinates and names of the time-series locations
+      # extract time-series at the sites listed for this domain, for downstream
+      # users who want the model output at a point rather than a whole grid.
+      # The sites live in configs/<domain>/timeseries_coords.csv, so adding a
+      # domain is a matter of adding that file - nothing here changes.
+      - name: extract time-series
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          coords=/home/somisana/code/somisana-croco/configs/${{ inputs.DOMAIN }}/timeseries_coords.csv
+          if [ ! -f "$coords" ]; then
+            echo "no $coords for this domain - skipping the time-series extraction"
+            exit 0
+          fi
+          python /home/somisana/code/somisana-croco/cli.py \
+              get_ts_multivar \
+                --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
+                --coords_file $coords \
+                --varList temp,salt,u,v \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_ts.nc \
+                --Yorig 2000
 
   # make plots/animations of the outout
   plotting:
@@ -298,6 +317,25 @@ jobs:
               add_stratification \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --target_depth 5 \
+                --Yorig 2000
+
+      # the same time-series extraction as the postprocess job, but of the
+      # daily products rather than the raw hourly output
+      - name: extract product time-series
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          coords=/home/somisana/code/somisana-croco/configs/${{ inputs.DOMAIN }}/timeseries_coords.csv
+          if [ ! -f "$coords" ]; then
+            echo "no $coords for this domain - skipping the time-series extraction"
+            exit 0
+          fi
+          python /home/somisana/code/somisana-croco/cli.py \
+              get_ts_multivar \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --coords_file $coords \
+                --varList temp,salt,category,temp_anom,zeta_anom,sst_front,stratification \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc \
                 --Yorig 2000
 
       - name: regrid the products to tier 2

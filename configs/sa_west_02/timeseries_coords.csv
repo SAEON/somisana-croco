@@ -1,0 +1,25 @@
+# Time-series extraction sites for the sa_west_02 domain.
+# One site per line as: name,lon,lat
+# Blank lines and lines starting with '#' are ignored.
+# Site names may contain spaces but not commas.
+#
+# These were previously hard-coded as TARGETS in the MHW plotting code.
+#
+# name,           lon,      lat
+Kleinsee,         17.0304, -29.6806
+Hondeklipbaai,    17.2525, -30.3153
+Doringbaai,       18.2136, -31.8145
+Elandsbaai,       18.3016, -32.3123
+Laaiplek,         18.1254, -32.7420
+Paternoster,      17.8703, -32.7776
+Saldanha,         17.9299, -33.0748
+Yzerfontein,      18.1338, -33.3619
+Bloubergstrand,   18.4439, -33.8039
+Oudekraal,        18.3425, -33.9801
+Cape Point,       18.4602, -34.3583
+Simonstown,       18.4423, -34.1765
+Strand,           18.8102, -34.1206
+Hangklip,         18.8039, -34.3747
+Kleinmond,        19.0266, -34.3559
+Hermanus,         19.2570, -34.4260
+Gansbaai,         19.3234, -34.5770

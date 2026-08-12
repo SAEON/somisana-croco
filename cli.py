@@ -12,7 +12,8 @@ import sys, os
 from datetime import datetime, timedelta
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
-from crocotools_py.postprocess import get_ts_multivar, croco_srf_2_ww3
+from crocotools_py.postprocess import (get_ts_multivar, croco_srf_2_ww3,
+                                        read_timeseries_coords)
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
 from crocotools_py.products import (make_products_base, add_anomalies, add_mhw_mcs,
@@ -201,26 +202,35 @@ def main():
     # ----------------
     # get_ts_multivar
     # ----------------
-    parser_get_ts_multivar = subparsers.add_parser('get_ts_multivar', help='extract a time-series or a profile through time from a croco file')
-    parser_get_ts_multivar.add_argument('--fname', required=True, type=str, help='input CROCO filename')
-    parser_get_ts_multivar.add_argument('--lon', required=True, type=float, help='Longitude of data extraction')
-    parser_get_ts_multivar.add_argument('--lat', required=True, type=float, help='Latitude of data extraction')
-    parser_get_ts_multivar.add_argument('--Yorig', type=parse_int, 
-                        default=2000, 
+    parser_get_ts_multivar = subparsers.add_parser('get_ts_multivar',
+            help='extract time-series (or profiles through time) of several variables at one or many sites, into a single netcdf file with a site dimension')
+    parser_get_ts_multivar.add_argument('--fname', required=True, type=str,
+            help='input CROCO filename - can include wildcards (*) to extract across multiple files')
+    parser_get_ts_multivar.add_argument('--coords_file', required=False, type=str, default=None,
+            help="csv text file of the sites to extract, one per line as 'name,lon,lat' (see configs/<domain>/timeseries_coords.csv). Use this, or --lon/--lat for a single unnamed site")
+    parser_get_ts_multivar.add_argument('--lon', required=False, type=float, default=None,
+            help='longitude of a single extraction site, if --coords_file is not used')
+    parser_get_ts_multivar.add_argument('--lat', required=False, type=float, default=None,
+            help='latitude of a single extraction site, if --coords_file is not used')
+    parser_get_ts_multivar.add_argument('--varList', required=False, type=parse_list_str,
+                        default=['temp','salt','u','v'],
+                        help="comma separated list of CROCO variable names e.g. 'temp,salt,u,v'. u/v type variables can only be rotated to east/north components as a pair, so naming either component extracts both")
+    parser_get_ts_multivar.add_argument('--Yorig', type=parse_int,
+                        default=2000,
                         help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
-    parser_get_ts_multivar.add_argument('--vars', type=parse_list, 
-                        default=['temp', 'salt'],
-                        help='optional list of CROCO variable names')
-    parser_get_ts_multivar.add_argument('--depths',required=False, type=parse_list,
-                        default=[0,-5,-10,-20,-50,-100,-200,-500,-1000,-99999],
-                        help='Depths for time-series extraction (see get_ts_multivar() for description of input)')
     parser_get_ts_multivar.add_argument('--fname_out', required=True, help='output filename')
     def get_ts_multivar_handler(args):
-        get_ts_multivar(args.fname, args.lon, args.lat, Yorig=args.Yorig, 
-               vars = args.vars, 
-               depths = args.depths,
-               write_nc=True, # default behaviour in the cli is to write a file
-               fname_nc=args.fname_out)
+        if args.coords_file is not None:
+            site_names, lon, lat = read_timeseries_coords(args.coords_file)
+        elif args.lon is not None and args.lat is not None:
+            site_names, lon, lat = None, args.lon, args.lat
+        else:
+            raise SystemExit('get_ts_multivar needs either --coords_file, or both --lon and --lat')
+        get_ts_multivar(args.fname, lon, lat,
+               Yorig=args.Yorig,
+               varList=args.varList,
+               site_names=site_names,
+               nc_out=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
     
     # ----------------

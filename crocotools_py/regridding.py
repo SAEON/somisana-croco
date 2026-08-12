@@ -15,39 +15,11 @@ import dask
 #import dask.array as da
 import re
 
-# Known vector pairs in CROCO output (u-component, v-component)
-# When both components are in varList, get_uv() is used to extract and rotate them
-# When only one component is present, get_var() extracts it grid-aligned (no rotation)
-VECTOR_PAIRS = [
-    ('u', 'v'),
-    ('ubar', 'vbar'),
-    ('sustr', 'svstr'),
-    ('bustr', 'bvstr'),
-]
-
 # Discrete/categorical variables that must use nearest-neighbor vertical
 # interpolation instead of linear - linear interpolation of a category flag
 # (e.g. MHW/MCS category) produces meaningless fractional values and can
 # blend fill values into valid data near mask boundaries.
 CATEGORICAL_VARS = {'category'}
-
-def _partition_vars(varList):
-    """
-    Split varList into scalar variables and vector pairs.
-    Returns (scalars, pairs) where:
-      - scalars: list of variable names to extract with get_var()
-      - pairs: list of (var_u, var_v) tuples to extract with get_uv()
-    """
-    remaining = set(varList)
-    pairs = []
-    for var_u, var_v in VECTOR_PAIRS:
-        if var_u in remaining and var_v in remaining:
-            pairs.append((var_u, var_v))
-            remaining.discard(var_u)
-            remaining.discard(var_v)
-    # preserve original ordering for scalars
-    scalars = [v for v in varList if v in remaining]
-    return scalars, pairs
 
 def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
                  varList=['temp','salt','u','v']):
@@ -90,7 +62,7 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         print('Opening: ', file)
         print("Extracting the model output variables we need")
     
-        scalars, pairs = _partition_vars(varList)
+        scalars, pairs = post.partition_vars(varList)
         datasets = []
         for var in scalars:
             datasets.append(post.get_var(file, var, grdname=grdname, Yorig=Yorig))
@@ -179,7 +151,7 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         print(f'Opening: {file}')
         print("Extracting the model output variables we need")
 
-        scalars, pairs = _partition_vars(varList)
+        scalars, pairs = post.partition_vars(varList)
         datasets = []
         for var in scalars:
             interp_method = 'nearest' if var in CATEGORICAL_VARS else 'linear'

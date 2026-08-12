@@ -7,6 +7,51 @@ from crocotools_py.define_attrs import apply_attrs
 import re
 import time
 
+# Known vector pairs in CROCO output (u-component, v-component).
+# These can only be rotated from grid-aligned to east/north components as a
+# pair, so anything working from a varList has to know which names go together.
+VECTOR_PAIRS = [
+    ('u', 'v'),
+    ('ubar', 'vbar'),
+    ('sustr', 'svstr'),
+    ('bustr', 'bvstr'),
+]
+
+def partition_vars(varList, pair_singletons=False):
+    """
+    Split varList into scalar variables and vector pairs.
+
+    Parameters
+    ----------
+    varList         : list of CROCO variable names
+    pair_singletons : what to do when only one component of a pair is asked for.
+                      False (default) leaves it as a scalar, to be extracted
+                      grid-aligned with get_var(). True promotes it to a pair,
+                      which is what the time-series extraction needs because
+                      get_ts_uv() can only work on both components at once.
+
+    Returns (scalars, pairs) where:
+      - scalars : variable names to extract with get_var()/get_ts()
+      - pairs   : (var_u, var_v) tuples to extract with get_uv()/get_ts_uv()
+    Ordering follows varList in both cases.
+    """
+    lookup = {}
+    for var_u, var_v in VECTOR_PAIRS:
+        lookup[var_u] = (var_u, var_v)
+        lookup[var_v] = (var_u, var_v)
+
+    pairs = []
+    for var in varList:
+        pair = lookup.get(var)
+        if pair is None or pair in pairs:
+            continue
+        if pair_singletons or all(component in varList for component in pair):
+            pairs.append(pair)
+
+    paired = {component for pair in pairs for component in pair}
+    scalars = [v for v in varList if v not in paired]
+    return scalars, pairs
+
 def change_attrs(da, var_str, rotated=False):
     """Backwards-compatible wrapper around apply_attrs."""
     return apply_attrs(da, var_str, rotated=rotated)
@@ -1209,53 +1254,160 @@ def find_fractional_eta_xi(grdname,lons,lats):
     return eta_fracs, xi_fracs
 
 
-def get_ts_multivar(fname, lon, lat, 
-                Yorig=None, 
+def read_timeseries_coords(fname):
+    '''
+    Read the time-series extraction sites for a domain from a csv text file.
+
+    One site per line as 'name,lon,lat'. Blank lines and lines starting with
+    '#' are ignored and whitespace around the fields is stripped, so the file
+    can be laid out readably:
+
+        # name,       lon,     lat
+        Hermanus,     19.257, -34.426
+        Cape Point,   18.497, -34.357
+
+    Site names may contain spaces but not commas.
+
+    Returns (names, lons, lats), ready to hand to get_ts_multivar().
+    '''
+    names, lons, lats = [], [], []
+    with open(fname) as f:
+        for n_line, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            fields = line.split(',')
+            if len(fields) < 3:
+                raise ValueError(
+                    f"{fname} line {n_line}: expected 'name,lon,lat', got '{line}'")
+            names.append(fields[0].strip())
+            lons.append(float(fields[1]))
+            lats.append(float(fields[2]))
+
+    if not names:
+        raise ValueError(f'no sites found in {fname}')
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    if duplicates:
+        raise ValueError(f'duplicate site name(s) in {fname}: {", ".join(duplicates)}')
+
+    print(f'  read {len(names)} time-series sites from {fname}')
+    return names, np.array(lons), np.array(lats)
+
+def sites_to_indices(grdname, lon, lat, i_shift=0, j_shift=0, Bottom=None):
+    '''
+    Resolve one or many (lon,lat) site coordinates to rho grid indices.
+
+    lon/lat can be scalars or sequences. i_shift/j_shift/Bottom can each be a
+    single value applied to every site, or a per-site sequence.
+
+    Returns (js, is_, is_multi), where js,is_ are integer arrays of eta,xi
+    indices and is_multi records whether more than one site was asked for, so
+    the caller knows whether to add a 'site' dimension.
+    '''
+    is_multi = np.ndim(lon) > 0
+    lons = np.atleast_1d(lon).astype(float)
+    lats = np.atleast_1d(lat).astype(float)
+    if len(lons) != len(lats):
+        raise ValueError(f'got {len(lons)} longitudes but {len(lats)} latitudes')
+
+    n_sites = len(lons)
+    i_shifts = np.broadcast_to(np.atleast_1d(i_shift), (n_sites,))
+    j_shifts = np.broadcast_to(np.atleast_1d(j_shift), (n_sites,))
+    bottoms = Bottom if np.ndim(Bottom) > 0 else [Bottom] * n_sites
+
+    # Read the grid once and hand the open dataset to find_nearest_point, which
+    # accepts one via get_grd_var(). Called with a filename it would re-open the
+    # file four times per site (lon_rho, lat_rho, h, mask_rho), which adds up
+    # quickly over many sites - and painfully so when the file is on a network
+    # mount.
+    ds_grd = grdname if isinstance(grdname, (xr.Dataset, xr.DataArray)) else get_ds(grdname)
+
+    js, is_ = [], []
+    for k in range(n_sites):
+        # find_nearest_point() excludes land, and water shallower than Bottom
+        j, i = find_nearest_point(ds_grd, lons[k], lats[k], bottoms[k])
+        js.append(j + j_shifts[k])
+        is_.append(i + i_shifts[k])
+
+    return np.array(js, dtype=int), np.array(is_, dtype=int), is_multi
+
+def stack_sites(per_site, site_names, lons, lats):
+    '''
+    Concatenate per-site datasets along a new 'site' dimension labelled by site
+    name, keeping the coordinates that were asked for alongside the grid cell
+    actually used (lon_rho/lat_rho, which come through from get_var()).
+    '''
+    ds = xr.concat(per_site, dim='site')
+    if site_names is None:
+        site_names = [f'site_{k:02d}' for k in range(len(per_site))]
+    ds = ds.assign_coords(site=('site', np.array(site_names, dtype=str)))
+    ds['site'].attrs = {'long_name': 'site name'}
+    ds['lon_site'] = ('site', np.asarray(lons, dtype=float))
+    ds['lat_site'] = ('site', np.asarray(lats, dtype=float))
+    ds['lon_site'].attrs = {'long_name': 'requested site longitude',
+                            'units': 'degrees_east'}
+    ds['lat_site'].attrs = {'long_name': 'requested site latitude',
+                            'units': 'degrees_north'}
+    return ds
+
+def get_ts_multivar(fname, lon, lat,
+                Yorig=None,
                 grdname=None,
-                vars = ['temp','salt'],
-                i_shift=0, j_shift=0, 
+                varList = ['temp','salt','u','v'],
+                i_shift=0, j_shift=0,
                 time=slice(None),
                 level=slice(None),
-                nc_out=None
+                nc_out=None,
+                Bottom=None,
+                site_names=None
                 ):
     """
-    Convenience function to get multiple variables of interest into a single xarray dataset/ nc file.
-    By default zeta, temp, salt, u and v are extracted, but you can add 'rho' variables to the 'vars' input if you like
-                   
+    Extract time-series (or profiles) of several variables, at one or many
+    sites, into a single xarray dataset / netcdf file.
+
     Parameters:
-    - see get_ts() for a description of the inputs - they're the same
-            
+    - see get_ts() for a description of the inputs - they're the same, plus:
+    - varList : the variables to extract. u/v type variables can only be
+                rotated to east/north components as a pair, so naming either
+                component gets you both (see partition_vars). Nothing is added
+                that you did not ask for - if you want velocities, ask for them.
+
     Returns:
-    - ds, an xarray dataset containing the time-series or profile data
+    - ds, an xarray dataset containing the time-series or profile data. If lon
+      and lat are sequences the data carry a 'site' dimension, labelled by site
+      name where site_names is given.
     """
-    
-    # Initialize an empty list to store datasets
+    scalars, pairs = partition_vars(varList, pair_singletons=True)
+
     all_datasets = []
-    for var in vars:
-        ds_var = get_ts(fname, var, lon, lat, 
-                        Yorig=Yorig, 
-                        grdname=grdname,
-                        i_shift=i_shift, j_shift=j_shift, 
-                        time=time,
-                        level=level)
-        all_datasets.append(ds_var)
-    # add u,v
-    ds_uv = get_ts_uv(fname, lon, lat,  
-                    Yorig=Yorig, 
-                    grdname=grdname,
-                    i_shift=i_shift, j_shift=j_shift, 
-                    time=time,
-                    level=level)
-    all_datasets.append(ds_uv)
-    
+    for var in scalars:
+        all_datasets.append(get_ts(fname, var, lon, lat,
+                                   Yorig=Yorig,
+                                   grdname=grdname,
+                                   i_shift=i_shift, j_shift=j_shift,
+                                   time=time,
+                                   level=level,
+                                   Bottom=Bottom,
+                                   site_names=site_names))
+    for var_u, var_v in pairs:
+        all_datasets.append(get_ts_uv(fname, lon, lat,
+                                      Yorig=Yorig,
+                                      grdname=grdname,
+                                      i_shift=i_shift, j_shift=j_shift,
+                                      time=time,
+                                      level=level,
+                                      var_u=var_u, var_v=var_v,
+                                      Bottom=Bottom,
+                                      site_names=site_names))
+
     # merge into a single dataset
     ds_all = xr.merge(all_datasets)
-    
+
     if nc_out is not None:
         print('')
         print(f'  writing the netcdf file: {nc_out}')
         ds_all.to_netcdf(nc_out)
-    
+
     return ds_all
 
 def get_ts(fname, var_str, lon, lat, 
@@ -1265,15 +1417,21 @@ def get_ts(fname, var_str, lon, lat,
                 time=slice(None),
                 level=slice(None),
                 nc_out=None,
-                Bottom=None
+                Bottom=None,
+                site_names=None
                 ):
     """
            Extract a ts from the model:
                    
             Parameters:
             see get_var() for a description of the common inputs. This function has a few additional ones:
-            - lat               :latitude of time-series
-            - lon               :longitude of time-series
+            - lat               :latitude(s) of the time-series site(s)
+            - lon               :longitude(s) of the time-series site(s)
+                                 scalars extract a single site, as before.
+                                 sequences extract several sites at once and
+                                 add a 'site' dimension to the output
+            - site_names        :optional list of names labelling the sites,
+                                 used as the 'site' coordinate
             - i_shift           :number of grid cells to shift along the xi axis, useful if input lon,lat is on land mask or if input depth is deeper than model depth 
             - j_shift           :number of grid cells to shift along the eta axis, (similar utility to i_shift)
             - Bottom (positive value): if the model bathy is slightly different. This Option to find nearest
@@ -1286,25 +1444,33 @@ def get_ts(fname, var_str, lon, lat,
     if var_str in ['u','sustr','bustr','ubar'] or var_str in ['v','svstr','bvstr','vbar']:
         print('WARNING: this function will return grid aligned vector components for '+var_str)
         print('rather use get_ts_uv() for extracting a time-series of u/v data which represents east/north components')
-    
+
     #find_nearest_point finds the nearest point in the model to the model grid lon, lat extracted from the model grid input.
     if grdname is None:
         grdname = fname
-    j, i = find_nearest_point(grdname, lon, lat, Bottom) 
-    
-    # apply the shifts along the xi and eta axis
-    i = i+i_shift
-    j = j+j_shift
-    
-    ds = get_var(fname, var_str,
-                          grdname=grdname,
-                          time=time,
-                          level=level,
-                          eta_rho=j,
-                          xi_rho=i,
-                          Yorig=Yorig,
-                          nc_out=nc_out)
-        
+    js, is_, is_multi = sites_to_indices(grdname, lon, lat,
+                                         i_shift=i_shift, j_shift=j_shift, Bottom=Bottom)
+
+    per_site = []
+    for j, i in zip(js, is_):
+        per_site.append(get_var(fname, var_str,
+                                grdname=grdname,
+                                time=time,
+                                level=level,
+                                eta_rho=j,
+                                xi_rho=i,
+                                Yorig=Yorig))
+
+    if is_multi:
+        ds = stack_sites(per_site, site_names, np.atleast_1d(lon), np.atleast_1d(lat))
+    else:
+        ds = per_site[0]
+
+    if nc_out is not None:
+        print('')
+        print(f'  writing the netcdf file: {nc_out}')
+        ds.to_netcdf(nc_out)
+
     return ds
 
 def get_ts_uv(fname, lon, lat, 
@@ -1317,7 +1483,8 @@ def get_ts_uv(fname, lon, lat,
                 var_u='u', # could also be sustr, bustr, ubar
                 var_v='v', # could also be svstr, bvstr, vbar
                 nc_out=None,
-                Bottom=None
+                Bottom=None,
+                site_names=None
                 ):
     """
            Extract a time-series or profile of u,v from the model
@@ -1337,44 +1504,48 @@ def get_ts_uv(fname, lon, lat,
     # finds the rho grid indices nearest to the input lon, lat
     if grdname is None:
         grdname = fname
-    j, i = find_nearest_point(grdname, lon, lat,Bottom) 
-    
-    # apply the shifts along the xi and eta axis
-    i = i+i_shift
-    j = j+j_shift
-    
-    # j,i are the eta,xi indices of the rho grid for our time-series extraction
-    # extracting u and v at this location is kind of complicated by the u, and v grids
-    # to get around this, let's consider a 3x3 block of rho grid points 
-    # with j,i in the centre. Then let's define the indices we'll need to extract
-    # for the rho grid, u grid and v grid within this 3x3 block of rho grid cells    
-    i_rho=slice(i-1,i+2) # 3 indices for the xi_rho axis, with i in the middle
-    j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
-    i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
-    j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j 
-            
-    ds = get_uv(fname,
-                grdname=grdname,
-                time=time,
-                level=level,
-                eta_rho=j_rho,
-                xi_rho=i_rho,
-                eta_v=j_v,
-                xi_u=i_u,
-                var_u=var_u,
-                var_v=var_v,
-                Yorig=Yorig
-                )
-    
-    # pull out the middle data point from our 3x3 block of rho grid points
-    # this is by definition the grid cell we are interested in
-    ds = ds.isel(eta_rho=1,xi_rho=1).squeeze()
-    
+    js, is_, is_multi = sites_to_indices(grdname, lon, lat,
+                                         i_shift=i_shift, j_shift=j_shift, Bottom=Bottom)
+
+    per_site = []
+    for j, i in zip(js, is_):
+        # j,i are the eta,xi indices of the rho grid for our time-series extraction
+        # extracting u and v at this location is kind of complicated by the u, and v grids
+        # to get around this, let's consider a 3x3 block of rho grid points
+        # with j,i in the centre. Then let's define the indices we'll need to extract
+        # for the rho grid, u grid and v grid within this 3x3 block of rho grid cells
+        i_rho=slice(i-1,i+2) # 3 indices for the xi_rho axis, with i in the middle
+        j_rho=slice(j-1,j+2) # 3 indices for the eta_rho axis, with j in the middle
+        i_u=slice(i-1,i+1) # 2 indices for the xi_u axis, either side of i
+        j_v=slice(j-1,j+1) # 2 incidces for the eta_v axis, either side of j
+
+        ds_site = get_uv(fname,
+                    grdname=grdname,
+                    time=time,
+                    level=level,
+                    eta_rho=j_rho,
+                    xi_rho=i_rho,
+                    eta_v=j_v,
+                    xi_u=i_u,
+                    var_u=var_u,
+                    var_v=var_v,
+                    Yorig=Yorig
+                    )
+
+        # pull out the middle data point from our 3x3 block of rho grid points
+        # this is by definition the grid cell we are interested in
+        per_site.append(ds_site.isel(eta_rho=1,xi_rho=1).squeeze())
+
+    if is_multi:
+        ds = stack_sites(per_site, site_names, np.atleast_1d(lon), np.atleast_1d(lat))
+    else:
+        ds = per_site[0]
+
     if nc_out is not None:
         print('')
         print(f'writing the netcdf file: {nc_out}')
         ds.to_netcdf(nc_out)
-    
+
     return ds
 
 def get_section_coords(lon0, lat0, lon1, lat1, dgc, R=6367442.76):
