@@ -18,7 +18,8 @@ from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
 from crocotools_py.products import (make_products_base, add_anomalies, add_mhw_mcs,
                                     add_sst_front, add_stratification)
-from crocotools_py.plotting_products import plot_operational_mhw_mcs
+from crocotools_py.plotting_products import (plot_coastal_flags, plot_timeseries_mhw,
+                                             plot_timeseries_stratification)
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
@@ -536,29 +537,72 @@ def main():
     parser_add_strat.set_defaults(func=add_stratification_handler)
 
     # ----------------------
-    # plot_mhw_forecast
+    # plot_coastal_flags
     # ----------------------
-    parser_plot_mhw = subparsers.add_parser('plot_mhw_forecast',
-            help='Generate the operational MHW/MCS plots and animations from a products file (see make_products_base and the add_* commands)')
-    parser_plot_mhw.add_argument('--forecast_file', required=True, type=str,
-            help='input native CROCO filename (the raw model output the products file was built from)')
-    parser_plot_mhw.add_argument('--cat_file', required=True, type=str,
-            help='the products file, as written by make_products_base and add_mhw_mcs')
-    parser_plot_mhw.add_argument('--clim_file', required=True, type=str,
+    parser_flags = subparsers.add_parser('plot_coastal_flags',
+            help='Map the worst MHW/MCS category reached at each site over the forecast window, as coloured flags along the coast')
+    parser_flags.add_argument('--ts_file', required=True, type=str,
+            help='time-series file written by get_ts_multivar, containing the category variable')
+    parser_flags.add_argument('--out_path', required=True, type=str,
+            help='output png filename')
+    parser_flags.add_argument('--level', required=False, type=parse_int, default=-1,
+            help='sigma level to summarise: -1 (default) is the surface, 0 is the bottom')
+    parser_flags.add_argument('--depth_name', required=False, type=str, default='Surface',
+            help="label for the level, used in the title e.g. 'Surface' or 'Bottom'")
+    parser_flags.add_argument('--title', required=False, type=str, default=None,
+            help="first line of the plot title e.g. 'SA West Coast  ·  MHW / MCS Flag Map'")
+    parser_flags.add_argument('--extent', required=False, type=parse_list, default=None,
+            help='map extent as lon0,lon1,lat0,lat1. Derived from the site coordinates if not given')
+    def plot_coastal_flags_handler(args):
+        plot_coastal_flags(args.ts_file, args.out_path,
+                           level=args.level,
+                           depth_name=args.depth_name,
+                           title=args.title,
+                           extent=args.extent)
+    parser_flags.set_defaults(func=plot_coastal_flags_handler)
+
+    # ----------------------
+    # plot_timeseries_mhw
+    # ----------------------
+    parser_ts_mhw = subparsers.add_parser('plot_timeseries_mhw',
+            help='Plot per-site temperature time-series against the day-of-year climatology and the MHW/MCS thresholds')
+    parser_ts_mhw.add_argument('--ts_file', required=True, type=str,
+            help='time-series file written by get_ts_multivar, containing the temp variable')
+    parser_ts_mhw.add_argument('--clim_file', required=True, type=str,
             help='pre-built day-of-year climatology file (as used as input to add_mhw_mcs)')
-    parser_plot_mhw.add_argument('--thresh_file', required=True, type=str,
+    parser_ts_mhw.add_argument('--thresh_file', required=True, type=str,
             help='pre-built day-of-year percentile threshold file (as used as input to add_mhw_mcs)')
-    parser_plot_mhw.add_argument('--out_dir', required=True, type=str,
-            help='directory where the figures and animations get written')
-    parser_plot_mhw.add_argument('--today', required=True, type=str,
-            help='the hindcast/forecast transition date, in format "YYYY-MM-DD". The forecast window shown in the plot labels is read from cat_file, so it does not need to be provided')
-    parser_plot_mhw.add_argument('--Yorig', required=False, type=parse_int, default=2000,
-            help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
-    def plot_mhw_forecast_handler(args):
-        plot_operational_mhw_mcs(args.forecast_file, args.cat_file, args.clim_file,
-                                 args.thresh_file, args.out_dir,
-                                 args.today, args.Yorig)
-    parser_plot_mhw.set_defaults(func=plot_mhw_forecast_handler)
+    parser_ts_mhw.add_argument('--out_dir', required=True, type=str,
+            help='directory to write one figure per site into')
+    parser_ts_mhw.add_argument('--today', required=True, type=str,
+            help='the hindcast/forecast transition date, in format "YYYY-MM-DD"')
+    parser_ts_mhw.add_argument('--level', required=False, type=parse_int, default=-1,
+            help='sigma level to plot: -1 (default) is the surface, 0 is the bottom')
+    parser_ts_mhw.add_argument('--depth_name', required=False, type=str, default='Surface',
+            help="label for the level, used in the titles and file names e.g. 'Surface' or 'Bottom'")
+    def plot_timeseries_mhw_handler(args):
+        plot_timeseries_mhw(args.ts_file, args.clim_file, args.thresh_file,
+                            args.out_dir, args.today,
+                            level=args.level, depth_name=args.depth_name)
+    parser_ts_mhw.set_defaults(func=plot_timeseries_mhw_handler)
+
+    # ------------------------------
+    # plot_timeseries_stratification
+    # ------------------------------
+    parser_ts_strat = subparsers.add_parser('plot_timeseries_stratification',
+            help='Plot per-site stratification time-series (bottom minus target-depth density)')
+    parser_ts_strat.add_argument('--ts_file', required=True, type=str,
+            help='time-series file written by get_ts_multivar, containing the stratification variable')
+    parser_ts_strat.add_argument('--out_dir', required=True, type=str,
+            help='directory to write one figure per site into')
+    parser_ts_strat.add_argument('--today', required=True, type=str,
+            help='the hindcast/forecast transition date, in format "YYYY-MM-DD"')
+    parser_ts_strat.add_argument('--target_depth', required=False, type=float, default=None,
+            help='the depth (in metres, positive down) the stratification was computed against, as passed to add_stratification. Only used to label the y axis')
+    def plot_timeseries_stratification_handler(args):
+        plot_timeseries_stratification(args.ts_file, args.out_dir, args.today,
+                                       target_depth=args.target_depth)
+    parser_ts_strat.set_defaults(func=plot_timeseries_stratification_handler)
 
     # ----------------
     # make_clm_inter

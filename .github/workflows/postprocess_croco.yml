@@ -350,25 +350,66 @@ jobs:
                 --depths 0,-5,-10,-20,-50,-100,-200,-500,-1000 \
                 --varList category,temp_anom,zeta_anom,sst_front,stratification
 
-      - name: generate MHW/MCS plots and animations
+      # The figures below are all made from the product time-series file
+      # extracted above, so the sites they cover are whatever is listed in the
+      # domain's timeseries_coords.csv. --today is the hindcast/forecast
+      # transition i.e. T0 of the run; the window shown in the labels is read
+      # from the data, so it cannot disagree with it.
+      - name: plot the coastal MHW/MCS flag maps
         continue-on-error: true
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
-          # --today is the hindcast/forecast transition i.e. T0 of the run. The
-          # window shown in the plot labels is read from the categories file
-          # itself, so it always matches the data
+          ts=${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc
+          [ -f "$ts" ] || { echo "no $ts - skipping"; exit 0; }
+          for spec in "Surface:-1" "Bottom:0"; do
+            name=${spec%%:*}; lev=${spec##*:}
+            python /home/somisana/code/somisana-croco/cli.py \
+                plot_coastal_flags \
+                  --ts_file $ts \
+                  --out_path ${{ env.RUN_DIR }}/postprocess/mhw_plots/FlagMap_${name}.png \
+                  --level $lev \
+                  --depth_name $name \
+                  --title '${{ inputs.DOMAIN }}  ·  MHW / MCS Flag Map'
+          done
+
+      - name: plot the per-site MHW/MCS time-series
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          ts=${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc
+          [ -f "$ts" ] || { echo "no $ts - skipping"; exit 0; }
+          run_date=${{ inputs.RUN_DATE }}
+          base_date="${run_date:0:4}-${run_date:4:2}-${run_date:6:2}"
+          for spec in "Surface:-1" "Bottom:0"; do
+            name=${spec%%:*}; lev=${spec##*:}
+            python /home/somisana/code/somisana-croco/cli.py \
+                plot_timeseries_mhw \
+                  --ts_file $ts \
+                  --clim_file ${{ inputs.CLIM_FILE }} \
+                  --thresh_file ${{ inputs.THRESH_FILE }} \
+                  --out_dir ${{ env.RUN_DIR }}/postprocess/mhw_plots/${name} \
+                  --today $base_date \
+                  --level $lev \
+                  --depth_name $name
+          done
+
+      - name: plot the per-site stratification time-series
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          ts=${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc
+          [ -f "$ts" ] || { echo "no $ts - skipping"; exit 0; }
           run_date=${{ inputs.RUN_DATE }}
           base_date="${run_date:0:4}-${run_date:4:2}-${run_date:6:2}"
           python /home/somisana/code/somisana-croco/cli.py \
-              plot_mhw_forecast \
-                --forecast_file ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --cat_file ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
-                --clim_file ${{ inputs.CLIM_FILE }} \
-                --thresh_file ${{ inputs.THRESH_FILE }} \
+              plot_timeseries_stratification \
+                --ts_file $ts \
                 --out_dir ${{ env.RUN_DIR }}/postprocess/mhw_plots \
                 --today $base_date \
-                --Yorig 2000
+                --target_depth 5
 
       # The spatial animations below are all plain map animations of a single
       # variable in the products file, so they are made with crocplot rather
