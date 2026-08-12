@@ -531,13 +531,44 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
                                               'chunksizes': (T_daily, 1, n_eta, n_xi)}})
 
 
+def _masked_diff(field, axis):
+    """
+    Difference `field` along `axis` in index space, using only valid (non-NaN)
+    neighbours: a centred difference where both neighbours are valid, a
+    one-sided difference where only one is, and NaN where neither is.
+
+    np.gradient cannot be used directly here because CROCO writes 0.0 over land
+    rather than a fill value, and differencing sea against land would put an
+    ~18 degC step across a single cell.
+    """
+    fwd = np.full(field.shape, np.nan)
+    bwd = np.full(field.shape, np.nan)
+    lo = [slice(None)] * field.ndim
+    hi = [slice(None)] * field.ndim
+    lo[axis] = slice(None, -1)
+    hi[axis] = slice(1, None)
+    diff = field[tuple(hi)] - field[tuple(lo)]
+    fwd[tuple(lo)] = diff
+    bwd[tuple(hi)] = diff
+    both = np.isfinite(fwd) & np.isfinite(bwd)
+    return np.where(both, (fwd + bwd) / 2,
+                    np.where(np.isfinite(fwd), fwd, bwd))
+
+
 def add_sst_front(fname_out, fname_in=None, Yorig=2000):
     """
     Add the daily surface thermal front magnitude to the products file.
 
     This is the horizontal gradient magnitude of the daily mean sea surface
-    temperature, in degC/km, using the grid metrics pm/pn to convert the
-    per-cell differences to physical distances.
+    temperature, in degC/km, using the 2D grid metrics pm (1/dx, along xi) and
+    pn (1/dy, along eta) to convert the per-cell differences to physical
+    distances.
+
+    Land is excluded before differencing, and the cells against it use a
+    one-sided difference. Without that the coastal cells difference sea surface
+    temperature against the 0.0 CROCO writes over land, which put a spurious
+    front of ~6 degC/km along the whole coast - 200x the open-ocean value, on
+    exactly the cells an upwelling product is about.
 
     Parameters
     ----------
@@ -553,15 +584,24 @@ def add_sst_front(fname_out, fname_in=None, Yorig=2000):
     mask_rho_2d = _mask_2d(ds_prod)
 
     print('Calculating daily surface thermal fronts (SST fronts)')
-    sst = ds_prod['temp'].isel(s_rho=-1).values  # s_rho -1 = surface in CROCO
-    pm = ds_prod['pm'].values if 'pm' in ds_prod else np.ones((n_eta, n_xi))
-    pn = ds_prod['pn'].values if 'pn' in ds_prod else np.ones((n_eta, n_xi))
+    sst = ds_prod['temp'].isel(s_rho=-1).values.astype('float64')
+    if 'pm' not in ds_prod or 'pn' not in ds_prod:
+        raise ValueError(
+            f'{fname_out} has no pm/pn grid metrics, so the temperature gradient '
+            'cannot be converted to degC/km. Re-run make_products_base, which '
+            'carries them through from the raw CROCO output.')
+    pm = ds_prod['pm'].values  # 1/dx, along xi  (eta_rho, xi_rho)
+    pn = ds_prod['pn'].values  # 1/dy, along eta (eta_rho, xi_rho)
     if pm.ndim > 2:
         pm, pn = pm[0], pn[0]
 
+    # blank out land before differencing - see _masked_diff()
+    sst = np.where(mask_rho_2d[np.newaxis, :, :] == 1, sst, np.nan)
+
     out_sst_front = np.zeros((T_daily, n_eta, n_xi), dtype='float32')
     for t_idx in range(T_daily):
-        d_eta, d_xi = np.gradient(sst[t_idx])
+        d_eta = _masked_diff(sst[t_idx], axis=0)
+        d_xi = _masked_diff(sst[t_idx], axis=1)
         out_sst_front[t_idx] = np.hypot(d_xi * pm, d_eta * pn) * 1000.0
     out_sst_front = np.where(mask_rho_2d[np.newaxis, :, :] == 1, out_sst_front, np.nan)
 
