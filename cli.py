@@ -15,9 +15,9 @@ from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_a
 from crocotools_py.postprocess import get_ts_multivar, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
-from crocotools_py.products import (plot_operational_mhw_mcs, make_products_base,
-                                    add_anomalies, add_mhw_mcs, add_sst_front,
-                                    add_stratification)
+from crocotools_py.products import (make_products_base, add_anomalies, add_mhw_mcs,
+                                    add_sst_front, add_stratification)
+from crocotools_py.plotting_products import plot_operational_mhw_mcs
 
 # functions to help parsing string input to object types needed by python functions
 def parse_datetime(value):
@@ -103,6 +103,8 @@ def main():
                          default=None, 
                          help='contour ticks to use in plotting the variable')
     parser_crocplot.add_argument('--cbar_label', required=False, default=r'temperature ($\degree$C)', type=str, help='the label used for the colorbar')
+    parser_crocplot.add_argument('--cmap', required=False, default='Spectral_r', type=str,
+            help="the matplotlib colormap to use. 'mhw_mcs' is registered by crocotools_py.plotting for marine heatwave / cold spell categories - use it with --ticks -4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 to get one colour band per category")
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
                          help='the isobaths to add to the figure')
@@ -123,7 +125,7 @@ def main():
                       time=slice(None),
                       level=args.level,
                       ticks = args.ticks,
-                      cmap = 'Spectral_r',
+                      cmap = args.cmap,
                       extents = None,
                       Yorig = args.Yorig,
                       cbar_label=args.cbar_label,

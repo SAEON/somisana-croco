@@ -332,9 +332,71 @@ jobs:
                 --today $base_date \
                 --Yorig 2000
 
-      # the anomalies are daily fields in the file produced above, so these
-      # animate 10 daily frames rather than the hourly ones they used to
-      # (hence no --skip_time)
+      # The spatial animations below are all plain map animations of a single
+      # variable in the products file, so they are made with crocplot rather
+      # than with bespoke animation code. They animate 10 daily frames rather
+      # than the hourly ones the anomalies used to, hence no --skip_time.
+      - name: animate MHW/MCS categories at the surface
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --var category \
+                --cmap mhw_mcs \
+                --ticks -4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
+                --cbar_label 'MHW / MCS category' \
+                --add_vectors False \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_mhw_mcs_surf.mp4 \
+                --Yorig 2000
+      - name: animate MHW/MCS categories at the bottom
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --var category \
+                --level 0 \
+                --cmap mhw_mcs \
+                --ticks -4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
+                --cbar_label 'MHW / MCS category' \
+                --add_vectors False \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_mhw_mcs_bot.mp4 \
+                --Yorig 2000
+      - name: animate surface thermal fronts
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --var sst_front \
+                --cmap inferno \
+                --ticks 0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5 \
+                --cbar_label 'SST gradient ($\degree$C / km)' \
+                --add_vectors False \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_fronts_surf.mp4 \
+                --Yorig 2000
+      - name: animate stratification
+        continue-on-error: true
+        run: |
+          source /home/somisana/miniforge3/etc/profile.d/conda.sh
+          conda activate somisana_croco
+          python /home/somisana/code/somisana-croco/cli.py \
+              crocplot \
+                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --var stratification \
+                --cmap viridis \
+                --ticks 0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0 \
+                --cbar_label 'stratification (kg m$^{-3}$)' \
+                --add_vectors False \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_stratification.mp4 \
+                --Yorig 2000
       - name: animate surface temperature anomalies
         continue-on-error: true
         run: |
@@ -345,6 +407,9 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
                 --var temp_anom \
+                --cmap RdBu_r \
+                --ticks -3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
+                --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
                 --Yorig 2000
       - name: animate bottom temperature anomalies
@@ -357,6 +422,9 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --level 0 \
                 --var temp_anom \
+                --cmap RdBu_r \
+                --ticks -3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
+                --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 \
                 --Yorig 2000
@@ -370,6 +438,9 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --level -100 \
                 --var temp_anom \
+                --cmap RdBu_r \
+                --ticks -3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
+                --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
                 --Yorig 2000

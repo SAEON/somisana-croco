@@ -14,6 +14,28 @@ import xarray as xr
 import sys
 import crocotools_py.postprocess as post
 
+# Marine heatwave / cold spell category colours, registered as a named colormap
+# so that plot() can be asked for it by name (cmap='mhw_mcs'). Blues are cold
+# spells and oranges are heatwaves, deepening with category, with white for no
+# event - the same colours the flag maps use for their legend.
+# Pair it with ticks=[-4.5,-3.5,...,4.5] to get one band per category.
+MHW_MCS_COLOURS = mplc.ListedColormap(
+    ["#103c68", "#2074a3", "#5da6c9", "#a6d3e8",   # MCS: extreme -> moderate
+     "#ffffff",                                     # no event
+     "#ffc73e", "#f77819", "#bf460c", "#4e1909"],   # MHW: moderate -> extreme
+    name='mhw_mcs')
+MHW_MCS_COLOURS.set_bad('white')
+try:
+    cm.register_cmap(cmap=MHW_MCS_COLOURS)
+except (AttributeError, ValueError):
+    # newer matplotlib moved registration, and re-importing must not fail
+    try:
+        import matplotlib
+        matplotlib.colormaps.register(MHW_MCS_COLOURS)
+    except ValueError:
+        pass
+
+
 class LandmaskFeature(cfeature.GSHHSFeature):
     """from the OpenDrift code"""
     def __init__(self, scale='auto', globe=None, **kwargs):
@@ -90,10 +112,16 @@ def plot_var(ax,var_data,lon,lat,
     if len(ticks)==0:
         ticks = np.linspace(min(np.ravel(var_data)),max(np.ravel(var_data)),num=20)
     # n_levels = len(ticks)
-    #vmin = min(ticks) 
+    #vmin = min(ticks)
     #vmax = max(ticks)
     levs = np.array(ticks)
-    cmap_norm = mplc.BoundaryNorm(boundaries=levs, ncolors=256)
+    # the norm has to be told how many colours the colormap actually has, not a
+    # hard-coded 256: a discrete colormap (e.g. the 9-colour 'mhw_mcs' one) has
+    # fewer, and spreading the levels over 256 indices makes everything past
+    # the 9th clamp to the last colour. Continuous colormaps like the default
+    # 'Spectral_r' have N=256, so this leaves them unchanged.
+    ncolors = plt.get_cmap(cmap).N if isinstance(cmap, str) else cmap.N
+    cmap_norm = mplc.BoundaryNorm(boundaries=levs, ncolors=ncolors)
     
     # plot the data
     var_plt = ax.pcolormesh(lon,
