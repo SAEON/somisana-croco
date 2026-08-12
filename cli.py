@@ -12,7 +12,7 @@ import sys, os
 from datetime import datetime, timedelta
 import calendar
 from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
-from crocotools_py.postprocess import get_ts_multivar, compute_anomaly, croco_srf_2_ww3
+from crocotools_py.postprocess import get_ts_multivar, croco_srf_2_ww3
 from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
 from crocotools_py.products import (detect_mhw_forecast, plot_operational_mhw_mcs,
@@ -221,28 +221,6 @@ def main():
                fname_nc=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
     
-    # ----------------
-    # compute_anomaly
-    # ----------------
-    parser_compute_anomaly=subparsers.add_parser('compute_anomaly', help='Compute anomalies by subtracting monthly climatology from high-frequency CROCO output.')
-    parser_compute_anomaly.add_argument('--fname_clim', required=True, type=str, help='input climatology file')
-    parser_compute_anomaly.add_argument('--fname_in', required=True, type=str, help='input high frequency (forecast) file')
-    parser_compute_anomaly.add_argument('--fname_out', required=True, type=str, help='output directory')
-    parser_compute_anomaly.add_argument('--Yorig', type=parse_int, 
-                        default=2000, 
-                        help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
-    parser_compute_anomaly.add_argument('--varlist', type=parse_list_str, 
-                        default=['temp','u','v', 'salt','zeta'],
-                        help='optional list of CROCO variable names')
-    parser_compute_anomaly.add_argument('--use_constant_clim', type=parse_bool, 
-                       default='False',
-                       help='If True, subtract a constant value from fname_in, computed as the climatology at the midpoint of the time axis of fname_in')
-    def compute_anomaly_handler(args):
-        compute_anomaly(args.fname_clim, args.fname_in, args.fname_out, 
-                        args.Yorig, varlist=args.varlist,
-                        use_constant_clim=args.use_constant_clim)
-    parser_compute_anomaly.set_defaults(func=compute_anomaly_handler)
-
     # ----------------
     # make_tides_fcst
     # ----------------
