@@ -1167,7 +1167,13 @@ def find_nearest_point(grdname, Longi, Latit, Bottom=None):
 
     # Apply mask: invalid points get infinity so they cannot win
     distance_mask = np.where(valid_mask, distance, np.inf)
-    
+
+    # If nothing is valid then every distance is inf, and argmin() below would
+    # quietly return the (0,0) corner of the domain rather than failing
+    if not valid_mask.any():
+        why = ('there is no water in this domain' if Bottom is None
+               else f'there is no water at least {Bottom} m deep in this domain')
+        raise ValueError(f'no grid cell found for lon={Longi}, lat={Latit}: {why}')
 
     # Find the indices of the minimum distance
     # unravel_index method Converts a flat index or array of flat indices into a tuple of coordinate 

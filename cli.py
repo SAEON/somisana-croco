@@ -227,6 +227,8 @@ def main():
     parser_get_ts_multivar.add_argument('--varList', required=False, type=parse_list_str,
                         default=['temp','salt','u','v'],
                         help="comma separated list of CROCO variable names e.g. 'temp,salt,u,v'. u/v type variables can only be rotated to east/north components as a pair, so naming either component extracts both")
+    parser_get_ts_multivar.add_argument('--min_depth', required=False, type=float, default=None,
+            help="minimum water depth (a positive value, in m) of the grid cell used for each site. The nearest cell with bathymetry at least this deep is used, which stops sites falling into cells which are unrealistically shallow where the model bathymetry differs from reality. Default behaviour is the nearest wet cell, whatever its depth. Passed to the 'Bottom' argument of get_ts()")
     parser_get_ts_multivar.add_argument('--Yorig', type=parse_int,
                         default=2000,
                         help='Origin year used in setting up CROCO time i.e. CROCO time will be in seconds since Yorig-01-01')
@@ -242,6 +244,7 @@ def main():
                Yorig=args.Yorig,
                varList=args.varList,
                site_names=site_names,
+               Bottom=args.min_depth,
                nc_out=args.fname_out)
     parser_get_ts_multivar.set_defaults(func=get_ts_multivar_handler)
     

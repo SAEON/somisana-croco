@@ -170,6 +170,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --coords_file $coords \
                 --varList temp,salt,u,v \
+                --min_depth 20 \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_ts.nc \
                 --Yorig 2000
 
@@ -335,6 +336,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --coords_file $coords \
                 --varList temp,salt,category,temp_anom,zeta_anom,sst_front,stratification \
+                --min_depth 20 \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc \
                 --Yorig 2000
 
