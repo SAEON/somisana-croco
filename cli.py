@@ -39,6 +39,17 @@ def parse_int(value):
 def parse_list(value):
     return [float(x) for x in value.split(',')]
 
+# argparse reads any token starting with '-' as the start of another option,
+# unless it is a plain number like -5 or -5.5. A comma separated list which
+# starts with a negative number (e.g. -3,-2,-1) is not a plain number, so it
+# gets read as an option and the parser fails with 'expected one argument'.
+# Quoting does not help - the shell strips the quotes before argparse sees the
+# value. The fix is to pass the list with '=' e.g. --depths=-5,-10,-20.
+# Append this to the help of every parse_list argument so the caveat is
+# documented wherever it can bite.
+NEG_LIST_HELP = (" If the list starts with a negative number it must be passed "
+                 "with '=' e.g. --{0}=-3,-2,-1")
+
 def parse_list_str(value):
     if value is None or value == 'None':
         return None
@@ -102,14 +113,14 @@ def main():
     parser_crocplot.add_argument('--mp4_out', required=False, type=str, help='the output mp4 filename')
     parser_crocplot.add_argument('--level', required=False, default=None, type=parse_int, help='level to plot. If >=0, then a sigma level is plotted. If <0 then a z level (in m) is plotted. Default behaviour will plot the surface layer')
     parser_crocplot.add_argument('--ticks', required=False, type=parse_list,
-                         default=None, 
-                         help='contour ticks to use in plotting the variable')
+                         default=None,
+                         help='contour ticks to use in plotting the variable.' + NEG_LIST_HELP.format('ticks'))
     parser_crocplot.add_argument('--cbar_label', required=False, default=r'temperature ($\degree$C)', type=str, help='the label used for the colorbar')
     parser_crocplot.add_argument('--cmap', required=False, default='Spectral_r', type=str,
-            help="the matplotlib colormap to use. 'mhw_mcs' is registered by crocotools_py.plotting for marine heatwave / cold spell categories - use it with --ticks -4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 to get one colour band per category")
+            help="the matplotlib colormap to use. 'mhw_mcs' is registered by crocotools_py.plotting for marine heatwave / cold spell categories - use it with --ticks=-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 to get one colour band per category")
     parser_crocplot.add_argument('--isobaths', required=False, type=parse_list,
                          default=[100,500],
-                         help='the isobaths to add to the figure')
+                         help='the isobaths to add to the figure.' + NEG_LIST_HELP.format('isobaths'))
     parser_crocplot.add_argument('--add_vectors', type=parse_bool, 
                        default='True',
                        help='If True, current vectors are added to the plot')
@@ -171,7 +182,7 @@ def main():
     parser_regrid_tier2.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
     parser_regrid_tier2.add_argument('--depths', required=False, type=parse_list,
                          default=[0,-5,-10,-20,-50,-100,-200,-500,-1000],
-                         help='list of depths to extract (in metres, negative down)')
+                         help='list of depths to extract (in metres, negative down).' + NEG_LIST_HELP.format('depths'))
     parser_regrid_tier2.add_argument('--varList', required=False, type=parse_list_str,
                          default=['temp','salt','u','v'],
                          help='comma separated list of variables to regrid e.g. temp,salt,u,v')
@@ -552,7 +563,7 @@ def main():
     parser_flags.add_argument('--title', required=False, type=str, default=None,
             help="first line of the plot title e.g. 'SA West Coast  ·  MHW / MCS Flag Map'")
     parser_flags.add_argument('--extent', required=False, type=parse_list, default=None,
-            help='map extent as lon0,lon1,lat0,lat1. Derived from the site coordinates if not given')
+            help='map extent as lon0,lon1,lat0,lat1. Derived from the site coordinates if not given.' + NEG_LIST_HELP.format('extent'))
     def plot_coastal_flags_handler(args):
         plot_coastal_flags(args.ts_file, args.out_path,
                            level=args.level,

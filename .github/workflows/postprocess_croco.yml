@@ -120,14 +120,14 @@ jobs:
           #    regrid_tier2 \
           #      --fname /tmp/output/croco_avg.nc \
           #      --dir_out /tmp/postprocess/ \
-          #      --depths 0,-5,-10,-50,-100,-500,-1000
+          #      --depths=0,-5,-10,-50,-100,-500,-1000
           source /home/somisana/miniforge3/etc/profile.d/conda.sh          
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               regrid_tier2 \
                 --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --dir_out ${{ env.RUN_DIR }}/postprocess/ \
-                --depths 0,-5,-10,-50,-100,-500,-1000
+                --depths=0,-5,-10,-50,-100,-500,-1000
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
         continue-on-error: true
@@ -347,7 +347,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --dir_out ${{ env.RUN_DIR }}/postprocess/ \
                 --Yorig 2000 \
-                --depths 0,-5,-10,-20,-50,-100,-200,-500,-1000 \
+                --depths=0,-5,-10,-20,-50,-100,-200,-500,-1000 \
                 --varList category,temp_anom,zeta_anom,sst_front,stratification
 
       # The figures below are all made from the product time-series file
@@ -425,7 +425,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --var category \
                 --cmap mhw_mcs \
-                --ticks -4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
+                --ticks=-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
                 --cbar_label 'MHW / MCS category' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_mhw_mcs_surf.mp4 \
@@ -441,7 +441,7 @@ jobs:
                 --var category \
                 --level 0 \
                 --cmap mhw_mcs \
-                --ticks -4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
+                --ticks=-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
                 --cbar_label 'MHW / MCS category' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_mhw_mcs_bot.mp4 \
@@ -456,7 +456,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --var sst_front \
                 --cmap inferno \
-                --ticks 0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5 \
+                --ticks=0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5 \
                 --cbar_label 'SST gradient ($\degree$C / km)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_fronts_surf.mp4 \
@@ -471,7 +471,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --var stratification \
                 --cmap viridis \
-                --ticks 0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0 \
+                --ticks=0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0 \
                 --cbar_label 'stratification (kg m$^{-3}$)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_stratification.mp4 \
@@ -487,7 +487,7 @@ jobs:
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
                 --var temp_anom \
                 --cmap RdBu_r \
-                --ticks -3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
+                --ticks=-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
                 --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
                 --Yorig 2000
@@ -502,7 +502,7 @@ jobs:
                 --level 0 \
                 --var temp_anom \
                 --cmap RdBu_r \
-                --ticks -3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
+                --ticks=-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
                 --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 \
@@ -518,7 +518,7 @@ jobs:
                 --level -100 \
                 --var temp_anom \
                 --cmap RdBu_r \
-                --ticks -3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
+                --ticks=-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
                 --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
