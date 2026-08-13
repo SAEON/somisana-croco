@@ -41,7 +41,7 @@ def empty_event_dict():
 
 
 def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t_dates=None,
-                                    stats=True):
+                                    stats=True, min_duration=5):
     """
     Detect MHW/MCS events using pre-computed climatology.
 
@@ -75,6 +75,21 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
             'categories' output is identical either way - the statistics are
             computed in an 'if stats:' block *after* the category assignment,
             so both settings run the same category code path.
+
+    min_duration : number of days an exceedance must last before it counts as an
+            event, default 5 as per Hobday et al. (2016).
+
+            Note that the duration tested here is the duration *within the array
+            passed in*. On an operational forecast that array is the run window,
+            not the full history of the ocean, so an event which started before
+            the window is truncated to however much of it the window contains,
+            and one which starts near the end of the window cannot reach 5 days
+            no matter how long it actually runs. That makes the detection
+            sensitive to the window length: a 10 day GFS forced run and a ~7 day
+            SAWS forced run will flag different things from the same ocean
+            state. Setting min_duration=1 removes that sensitivity - every
+            threshold exceedance becomes an event - at the cost of no longer
+            being a Hobday standard MHW/MCS.
     """
     n_time     = len(temp_data)
     categories = np.zeros(n_time, dtype='int8')
@@ -113,7 +128,6 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         temp_work       = temp_clean
 
     cat_names = ['Moderate', 'Strong', 'Severe', 'Extreme']
-    min_duration = 5
 
     for ev in range(1, n_events + 1):
         event_idx  = np.where(events == ev)[0]
@@ -275,7 +289,7 @@ def load_daily_baselines(ds_clim, temp_time,
 
 
 def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates,
-                         stats=True):
+                         stats=True, min_duration=5):
     """
     Detect MHW/MCS events for a (time, eta, xi) slab.
 
@@ -284,6 +298,7 @@ def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold,
             and returned as before. With stats=False they are not computed at
             all and the second return value is None - the 'categories' output
             is unaffected either way.
+    min_duration : passed through to detect_events_with_climatology().
     """
     n_time, n_eta, n_xi = temp_slice.shape
     categories = np.zeros((n_time, n_eta, n_xi), dtype='int8')
@@ -301,7 +316,8 @@ def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold,
                 continue
 
             mhw_ev, cats           = detect_events_with_climatology(
-                temp_ts, clim_seas_ts, clim_thresh_ts, is_cold, t_dates, stats=stats
+                temp_ts, clim_seas_ts, clim_thresh_ts, is_cold, t_dates, stats=stats,
+                min_duration=min_duration
             )
             categories[:, i, j]   = cats
             if stats:
@@ -309,7 +325,8 @@ def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold,
     return categories, mhw_dicts
 
 def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thresh_level,
-                          is_cold, t_dates, batch_size, cat_slice, stats=False):
+                          is_cold, t_dates, batch_size, cat_slice, stats=False,
+                          min_duration=5):
     """
     Detect MHW/MCS events for one vertical plane and store inside the in-memory array tracker.
 
@@ -323,6 +340,10 @@ def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thre
     writes categories into cat_slice, so collecting the per-grid-cell event
     statistics would be pure overhead - and it is the dominant cost of the
     operational run.
+
+    min_duration is passed through to detect_events_with_climatology() - see
+    there for what it means and why the operational runs do not use the
+    Hobday default.
     """
     n_eta = temp_level.shape[1]
 
@@ -334,7 +355,8 @@ def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thre
         categories, _ = process_level_batch(temp_level[:, i:end_i, :],
                                             clim_seas_level[:, i:end_i, :],
                                             clim_thresh_level[:, i:end_i, :],
-                                            is_cold, t_dates, stats=stats)
+                                            is_cold, t_dates, stats=stats,
+                                            min_duration=min_duration)
 
         if is_cold:
             categories = -np.abs(categories).astype('int8')

@@ -515,9 +515,12 @@ def main():
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_add_mhw.add_argument('--batch_size', required=False, type=parse_int, default=5,
             help='number of eta_rho rows processed at a time (trade-off between memory use and speed)')
+    parser_add_mhw.add_argument('--min_duration', required=False, type=parse_int, default=5,
+            help='number of days a threshold exceedance must last to count as an event. Default is 5, as per Hobday et al. (2016). Note that the duration is measured within the run window and not against the real history of the ocean, so the default makes the result depend on how long the run is - a 10 day GFS forced run and a ~7 day SAWS forced run flag different things from the same ocean state. Use 1 to make every exceedance an event, which removes that dependence at the cost of no longer being a Hobday standard MHW/MCS')
     def add_mhw_mcs_handler(args):
         add_mhw_mcs(args.fname_out, args.clim_file, args.thresh_file,
-                    fname_in=args.fname_in, Yorig=args.Yorig, batch_size=args.batch_size)
+                    fname_in=args.fname_in, Yorig=args.Yorig, batch_size=args.batch_size,
+                    min_duration=args.min_duration)
     parser_add_mhw.set_defaults(func=add_mhw_mcs_handler)
 
     # ----------------------

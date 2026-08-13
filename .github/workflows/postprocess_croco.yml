@@ -289,6 +289,14 @@ jobs:
                 --clim_file ${{ inputs.CLIM_FILE }} \
                 --Yorig 2000
 
+      # --min_duration 1 rather than the Hobday et al. (2016) 5 days. The event
+      # duration is only ever measured within the run window, since the detection
+      # has no memory of previous runs, so with the Hobday value a 10 day GFS
+      # forced run and a ~7 day SAWS forced run flag different things from the
+      # same ocean state - and a genuine event can appear and disappear between
+      # consecutive daily runs as the window slides over it. Using 1 makes every
+      # threshold exceedance an event, which is not a Hobday standard MHW/MCS but
+      # is at least consistent across the domains and across successive runs.
       - name: add MHW/MCS event categories
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
@@ -299,7 +307,8 @@ jobs:
                 --clim_file ${{ inputs.CLIM_FILE }} \
                 --thresh_file ${{ inputs.THRESH_FILE }} \
                 --Yorig 2000 \
-                --batch_size 5
+                --batch_size 5 \
+                --min_duration 1
 
       - name: add surface thermal fronts
         run: |

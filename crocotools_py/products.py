@@ -516,7 +516,8 @@ def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
     append_to_products(ds_new, fname_out, Yorig=Yorig)
 
 
-def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, batch_size=5):
+def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, batch_size=5,
+                min_duration=5):
     """
     Add signed Marine Heatwave / Marine Cold Spell event categories to the
     products file.
@@ -534,6 +535,12 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
                   fname_out, and is used to create it if it is not there yet
     Yorig       : origin year of the CROCO time axis
     batch_size  : number of eta_rho rows detected at a time (memory vs speed)
+    min_duration : days an exceedance must last to count as an event, default 5
+                  as per Hobday et al. (2016). The duration is measured within
+                  the run window, so this default makes the result depend on how
+                  long the run is - see marineheatwaves.detect_events_with_
+                  climatology(). The value used is recorded on the 'category'
+                  variable so a file can be read back without guessing.
     """
     ds_prod = open_products(fname_out, fname_in, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file, thresh_file)
@@ -561,12 +568,12 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
         mhw_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
         mhw.process_single_level(k, num_levels, temp_level, clim_level,
                                  thresh90_daily[:, k, :, :], False, t_dates,
-                                 batch_size, mhw_layer)
+                                 batch_size, mhw_layer, min_duration=min_duration)
 
         mcs_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
         mhw.process_single_level(k, num_levels, temp_level, clim_level,
                                  thresh10_daily[:, k, :, :], True, t_dates,
-                                 batch_size, mcs_layer)
+                                 batch_size, mcs_layer, min_duration=min_duration)
 
         combined = mhw_layer.copy()
         combined[combined == 0] = mcs_layer[combined == 0]
@@ -581,9 +588,16 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
         'long_name': 'MHW_MCS Combined Event Categories',
         'description': 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral',
         'valid_range': np.array([-4, 4], dtype='int8'),
+        'min_duration_days': np.int32(min_duration),
         'reference': ('Hobday et al. (2016), categories 1-4 = '
                       'Moderate/Strong/Severe/Extreme, where Extreme is >= 4x '
                       'the climatology-to-threshold difference')}
+    if min_duration != 5:
+        ds_new['category'].attrs['comment'] = (
+            f'Events shorter than {min_duration} day(s) are discarded, rather than the '
+            '5 days of Hobday et al. (2016). Duration is measured within the run '
+            'window, so the Hobday value makes the result depend on the length of '
+            'the run and is not comparable between runs of different length.')
 
     ds_prod.close()
     ds_clim.close()
