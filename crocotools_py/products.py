@@ -10,6 +10,30 @@ which is kept free of any operational plumbing so it can be imported on its own
 for hindcast analysis. The figures made from the products live in
 crocotools_py.plotting_products, so this module is computation only and does
 not pull in matplotlib or cartopy.
+
+Land in the products file
+-------------------------
+The variables carried through from the raw output (temp, salt, zeta, u, v) are
+left exactly as CROCO writes them, which means 0 over land, because the products
+file is meant to stay a valid CROCO file that postprocess.py can read. Be aware
+that 0 degC is a perfectly plausible temperature, so anything differencing
+neighbouring cells has to mask land first - see _masked_diff() in add_sst_front.
+
+Every variable *derived* here marks land as no-data instead, so that a land cell
+is never mistaken for a real value:
+
+  float variables (temp_anom, zeta_anom, sst_front, stratification)
+      NaN, declared as _FillValue by default_encoding()
+  category (int8, which has no NaN)
+      -127, the netCDF default fill for a byte (NC_FILL_BYTE), declared as
+      _FillValue and outside the variable's valid_range of [-4, 4]
+
+Both are declared as _FillValue, so a CF-aware reader masks land without needing
+to know the values. Note the consequence for 'category': xarray decodes the fill
+to NaN on read, which promotes the array from int8 to float64. Code that wants
+the raw integers back (and 8x less memory) should open with mask_and_scale=False
+and test for -127; code that opens normally should test for non-finite values
+rather than for -127, which will not be there.
 """
 
 import os
@@ -486,13 +510,18 @@ def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
     """
     ds_prod = open_products(fname_out, fname_in, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file)
+    mask_rho_2d = _mask_2d(ds_prod)
 
     print('Computing daily temperature anomalies')
     clim_daily, = mhw.load_daily_baselines(ds_clim, ds_prod.time.values,
                                            variables=('climatology',))
+    temp_anom = (ds_prod['temp'].values - clim_daily).astype('float32')
+    # CROCO writes 0 over land and so does the climatology, so the difference is
+    # a clean 0 there - which reads as 'no anomaly' rather than 'no data'. Blank
+    # it so land is NaN, as it is for every other derived variable in this file.
+    temp_anom[:, :, mask_rho_2d == 0] = np.nan
     ds_new = xr.Dataset(
-        {'temp_anom': (['time', 's_rho', 'eta_rho', 'xi_rho'],
-                       (ds_prod['temp'].values - clim_daily).astype('float32'))},
+        {'temp_anom': (['time', 's_rho', 'eta_rho', 'xi_rho'], temp_anom)},
         coords={'time': ds_prod.time.values})
     ds_new['temp_anom'].attrs = {'long_name': 'Sea Water Temperature Daily Anomaly',
                                  'units': 'degC'}
@@ -506,8 +535,9 @@ def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
         zeta_clim = ds_clim['zeta'].isel(dayofyear=idx).values.astype('float32')
         if not valid.all():
             zeta_clim[~valid, ...] = np.nan
-        ds_new['zeta_anom'] = (['time', 'eta_rho', 'xi_rho'],
-                               (ds_prod['zeta'].values - zeta_clim).astype('float32'))
+        zeta_anom = (ds_prod['zeta'].values - zeta_clim).astype('float32')
+        zeta_anom[:, mask_rho_2d == 0] = np.nan
+        ds_new['zeta_anom'] = (['time', 'eta_rho', 'xi_rho'], zeta_anom)
         ds_new['zeta_anom'].attrs = {'long_name': 'Sea Surface Elevation Daily Anomaly',
                                      'units': 'm'}
 
@@ -594,10 +624,11 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
                       'the climatology-to-threshold difference')}
     if min_duration != 5:
         ds_new['category'].attrs['comment'] = (
-            f'Events shorter than {min_duration} day(s) are discarded, rather than the '
-            '5 days of Hobday et al. (2016). Duration is measured within the run '
-            'window, so the Hobday value makes the result depend on the length of '
-            'the run and is not comparable between runs of different length.')
+            f'A threshold exceedance must last at least {min_duration} day(s) to count '
+            'as an event, rather than the 5 days of Hobday et al. (2016), so these are '
+            'not Hobday standard MHW/MCS categories. Duration is only ever measured '
+            'within the run window, so the Hobday value makes the result depend on how '
+            'long the run is and is not comparable between runs of different length.')
 
     ds_prod.close()
     ds_clim.close()
