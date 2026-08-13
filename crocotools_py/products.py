@@ -128,7 +128,46 @@ def get_grid_vars(ds_raw):
     return ds_grid
 
 
-def make_products_base(fname_in, fname_out, Yorig=2000, varList=None):
+def _drop_partial_days(ds_raw, ds_daily, min_day_frac):
+    """
+    Drop the daily means which were computed from less than min_day_frac of a
+    day's worth of raw records.
+
+    The expected number of records per day is taken from the median spacing of
+    the raw time axis, so this works for hourly output or any other interval,
+    rather than assuming 24 records a day.
+    """
+    if min_day_frac <= 0:
+        return ds_daily
+
+    times = ds_raw['time'].values
+    if len(times) < 2:
+        return ds_daily
+    dt = np.median(np.diff(times)) / np.timedelta64(1, 's')
+    n_expected = 86400.0 / dt
+
+    counts = xr.DataArray(np.ones(len(times), dtype=int),
+                          coords={'time': ds_raw['time']},
+                          dims='time').resample(time='1D').sum()
+    counts = counts.reindex(time=ds_daily['time'], fill_value=0)
+
+    keep = (counts.values / n_expected) >= min_day_frac
+    if keep.all():
+        return ds_daily
+
+    for t, n in zip(ds_daily['time'].values[~keep], counts.values[~keep]):
+        print(f'  dropping {np.datetime_as_string(t, unit="D")}: only {n} of the '
+              f'{n_expected:.0f} records expected for a full day')
+    if not keep.any():
+        raise ValueError(
+            f'every daily bin covers less than {min_day_frac:.0%} of a day, so '
+            'there is nothing to write - check the raw output, or lower '
+            'min_day_frac to keep the partial days')
+    return ds_daily.isel(time=keep)
+
+
+def make_products_base(fname_in, fname_out, Yorig=2000, varList=None,
+                       min_day_frac=1.0):
     """
     Create the products file: a daily average of the raw CROCO output, carrying
     through the full grid so that the result is itself a valid CROCO file.
@@ -141,6 +180,9 @@ def make_products_base(fname_in, fname_out, Yorig=2000, varList=None):
     varList   : variables to daily-average, default ['temp','salt']. 'zeta' is
                 always included whether or not it is asked for, because
                 get_depths() needs it.
+    min_day_frac : fraction of a full day which must be present for a daily mean
+                to be kept, default 1.0 i.e. complete days only. Set to 0 to keep
+                every bin regardless of how little of the day it covers.
 
     Any existing fname_out is overwritten - this is the step that creates the
     file, and the add_* steps then append to it.
@@ -166,6 +208,18 @@ def make_products_base(fname_in, fname_out, Yorig=2000, varList=None):
     # a real gap rather than showing it as missing).
     print(f'Computing daily means of: {", ".join(varList)}')
     ds_out = ds_raw[varList].resample(time='1D').mean().compute()
+
+    # A run which does not end on a day boundary leaves a final bin covering only
+    # part of that day - the SAWS forced runs use FDAYS=2.45, so their last bin is
+    # a morning-only mean. resample() writes it out looking like any other daily
+    # mean, which then propagates at full weight into the anomalies, the MHW/MCS
+    # categories, the fronts and the stratification, and makes the last date in
+    # the file look like a day that was fully covered. Drop those bins rather
+    # than NaN them, so that the time axis says exactly which days the products
+    # cover - a NaN day would still be animated as a blank frame, and would put a
+    # gap in the middle of the record that the MHW/MCS event detection would have
+    # to interpret.
+    ds_out = _drop_partial_days(ds_raw, ds_out, min_day_frac)
 
     print('Carrying through the grid variables')
     ds_grid = get_grid_vars(ds_raw)

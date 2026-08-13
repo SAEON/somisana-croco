@@ -472,10 +472,13 @@ def main():
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_products_base.add_argument('--varList', required=False, type=parse_list_str, default=None,
             help="comma separated list of variables to daily-average. Default is 'temp,salt,u,v'. 'zeta' is always included on top of whatever is asked for, as it is needed to compute the depths of the sigma levels. u/v are kept grid-aligned on their staggered grids, as CROCO writes them, so that get_ts_uv/regrid_tier* rotate them to east/north exactly as they do for the raw output")
+    parser_products_base.add_argument('--min_day_frac', required=False, type=float, default=1.0,
+            help='fraction of a full day which must be present in the raw output for that daily mean to be kept. Default is 1.0 i.e. complete days only, which drops the part-day at the end of a run that does not finish on a day boundary (e.g. the SAWS forced runs, which use FDAYS=2.45). Set to 0 to keep every bin however little of the day it covers')
     def make_products_base_handler(args):
         make_products_base(args.fname_in, args.fname_out,
                            Yorig=args.Yorig,
-                           varList=args.varList)
+                           varList=args.varList,
+                           min_day_frac=args.min_day_frac)
     parser_products_base.set_defaults(func=make_products_base_handler)
 
     # ----------------------
