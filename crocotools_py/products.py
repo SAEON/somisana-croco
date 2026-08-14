@@ -418,16 +418,28 @@ def eos80_density(temp, salt, pressure):
 
 
 def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
-                       temp_var='temp', salt_var='salt'):
+                       deep_depth=50.0, temp_var='temp', salt_var='salt'):
     """
-    Add daily bottom density, density at target_depth, and the difference
-    between them (the stratification) to the products file.
+    Add the daily deep and near-surface densities, and the difference between
+    them (the stratification), to the products file.
 
-    Density is in-situ EOS-80 density; the bottom is the bottom-most sigma
-    layer (s_rho index 0 in CROCO), and the value at target_depth comes from
-    the repo's own sigma-to-z interpolation (postprocess.hlev_xarray, the same
-    routine get_var uses for level=-N). Cells where the seabed is shallower
-    than target_depth come out as NaN rather than being extrapolated.
+    Density is in-situ EOS-80 density. Both levels come from the repo's own
+    sigma-to-z interpolation (postprocess.hlev_xarray, the same routine get_var
+    uses for level=-N): the shallow one at target_depth, the deep one at
+    deep_depth. Where the water column does not reach deep_depth the bottom-most
+    sigma layer (s_rho index 0 in CROCO) is used instead, so the deep reference
+    is always defined on the shelf.
+
+    Taking the deep reference at a fixed depth rather than at the seabed keeps
+    the stratification comparable across the domain. Against the seabed it is
+    not: an offshore cell integrates the density difference over a kilometre or
+    more of water column and a shelf cell over a few tens of metres, so the same
+    number means quite different things in the two places, and the offshore
+    value is dominated by the deep stratification rather than by the surface
+    mixing an upwelling product is about.
+
+    Cells where the seabed is shallower than target_depth come out as NaN rather
+    than being extrapolated.
 
     Parameters
     ----------
@@ -435,8 +447,9 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
     fname_in     : CROCO file(s) to read the daily fields from; defaults to
                    fname_out, and is used to create it if it is not there yet
     Yorig        : origin year of the CROCO time axis
-    target_depth : depth in metres (positive down) whose density is compared
-                   against the bottom density
+    target_depth : shallow reference depth in metres (positive down)
+    deep_depth   : deep reference depth in metres (positive down); the seabed is
+                   used where the water column is shallower than this
     """
     ds_prod = open_products(fname_out, fname_in, Yorig)
 
@@ -445,42 +458,59 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
             f"'{salt_var}' is not in {fname_out}, so the stratification cannot be "
             'computed. Re-run make_products_base including salinity in --varList.')
 
-    print(f'Computing stratification (bottom vs {target_depth}m density)')
+    print(f'Computing stratification ({deep_depth}m or seabed vs {target_depth}m density)')
     z = post.get_depths(ds_prod)  # (time, s_rho, eta_rho, xi_rho), negative down
+    mask_rho_2d = _mask_2d(ds_prod)
 
-    # Bottom: CROCO convention s_rho index 0 = bottom-most sigma layer
-    density_bottom = eos80_density(ds_prod[temp_var].isel(s_rho=0),
-                                   ds_prod[salt_var].isel(s_rho=0),
-                                   -z.isel(s_rho=0))
+    # hlev_xarray drops the depth dimension itself for a single depth, and
+    # returns NaN wherever the requested depth is below the deepest sigma layer
+    # centre - which is exactly the cells whose deep reference has to fall back
+    # to the seabed. CROCO convention: s_rho index 0 = bottom-most sigma layer.
+    deep_z = -abs(deep_depth)
+    temp_deep = post.hlev_xarray(ds_prod[temp_var], z, deep_z).values
+    salt_deep = post.hlev_xarray(ds_prod[salt_var], z, deep_z).values
+    use_seabed = ~np.isfinite(temp_deep)
+    temp_deep = np.where(use_seabed, ds_prod[temp_var].isel(s_rho=0).values, temp_deep)
+    salt_deep = np.where(use_seabed, ds_prod[salt_var].isel(s_rho=0).values, salt_deep)
+    pressure_deep = np.where(use_seabed, -z.isel(s_rho=0).values, abs(deep_depth))
+    density_deep = eos80_density(temp_deep, salt_deep, pressure_deep)
 
-    # hlev_xarray drops the depth dimension itself for a single depth
+    n_wet = (mask_rho_2d == 1).sum()
+    n_seabed = (use_seabed[0] & (mask_rho_2d == 1)).sum()
+    print(f'  {n_seabed} of {n_wet} sea cells ({100.0 * n_seabed / n_wet:.1f}%) do not '
+          f'reach {deep_depth}m, so they use the seabed as the deep reference')
+
     target_z = -abs(target_depth)
     density_target = eos80_density(post.hlev_xarray(ds_prod[temp_var], z, target_z),
                                    post.hlev_xarray(ds_prod[salt_var], z, target_z),
                                    abs(target_depth))
 
-    density_bottom = density_bottom.astype('float32')
+    density_deep = density_deep.astype('float32')
     density_target = density_target.astype('float32')
-    stratification = density_bottom - density_target
+    stratification = density_deep - density_target
 
-    mask_rho_2d = _mask_2d(ds_prod)
-    for arr in (density_bottom, density_target, stratification):
+    for arr in (density_deep, density_target, stratification):
         arr[:, mask_rho_2d == 0] = np.nan
 
     dims = ['time', 'eta_rho', 'xi_rho']
-    ds_new = xr.Dataset({'density_bottom': (dims, density_bottom),
+    ds_new = xr.Dataset({'density_deep': (dims, density_deep),
                          'density_target_depth': (dims, density_target),
                          'stratification': (dims, stratification)},
                         coords={'time': ds_prod.time.values})
-    ds_new['density_bottom'].attrs = {'long_name': 'Bottom in-situ density',
-                                      'units': 'kg m-3'}
+    ds_new['density_deep'].attrs = {
+        'long_name': f'In-situ density at {deep_depth} m depth, or at the seabed '
+                     'where the water column is shallower than that',
+        'units': 'kg m-3',
+        'deep_depth_m': deep_depth}
     ds_new['density_target_depth'].attrs = {
         'long_name': f'In-situ density at {target_depth} m depth', 'units': 'kg m-3'}
     ds_new['stratification'].attrs = {
-        'long_name': 'Water column stratification (bottom density minus density at target depth)',
+        'long_name': f'Water column stratification (density at {deep_depth} m, or at '
+                     f'the seabed where shallower, minus density at {target_depth} m)',
         'units': 'kg m-3',
         'description': 'Positive = stably stratified, near-zero/negative = well-mixed',
-        'target_depth_m': target_depth}
+        'target_depth_m': target_depth,
+        'deep_depth_m': deep_depth}
 
     ds_prod.close()
     append_to_products(ds_new, fname_out, Yorig=Yorig)

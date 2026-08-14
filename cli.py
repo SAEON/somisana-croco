@@ -542,7 +542,7 @@ def main():
     # add_stratification
     # ----------------------
     parser_add_strat = subparsers.add_parser('add_stratification',
-            help='Add the daily bottom density, the density at target_depth, and the difference between them (the stratification) to the products file')
+            help='Add the daily density at deep_depth, the density at target_depth, and the difference between them (the stratification) to the products file')
     parser_add_strat.add_argument('--fname_out', required=True, type=str,
             help='the products file to add to, as created by make_products_base. If it does not exist it gets created first, in which case --fname is needed')
     parser_add_strat.add_argument('--fname_in', required=False, type=str, default=None,
@@ -550,10 +550,12 @@ def main():
     parser_add_strat.add_argument('--Yorig', required=False, type=parse_int, default=2000,
             help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_add_strat.add_argument('--target_depth', required=False, type=float, default=5.0,
-            help='depth (in metres, positive down) whose density is compared against the bottom density to get the stratification')
+            help='the shallow reference depth (in metres, positive down), whose density is subtracted from the density at deep_depth to get the stratification')
+    parser_add_strat.add_argument('--deep_depth', required=False, type=float, default=50.0,
+            help='the deep reference depth (in metres, positive down). Cells where the water column does not reach this depth use the seabed instead, so the deep reference is always defined on the shelf')
     def add_stratification_handler(args):
         add_stratification(args.fname_out, fname_in=args.fname_in, Yorig=args.Yorig,
-                           target_depth=args.target_depth)
+                           target_depth=args.target_depth, deep_depth=args.deep_depth)
     parser_add_strat.set_defaults(func=add_stratification_handler)
 
     # ----------------------
@@ -610,7 +612,7 @@ def main():
     # plot_timeseries_stratification
     # ------------------------------
     parser_ts_strat = subparsers.add_parser('plot_timeseries_stratification',
-            help='Plot per-site stratification time-series (bottom minus target-depth density)')
+            help='Plot per-site stratification time-series (deep minus target-depth density)')
     parser_ts_strat.add_argument('--ts_file', required=True, type=str,
             help='time-series file written by get_ts_multivar, containing the stratification variable')
     parser_ts_strat.add_argument('--out_dir', required=True, type=str,
@@ -618,10 +620,13 @@ def main():
     parser_ts_strat.add_argument('--today', required=True, type=str,
             help='the hindcast/forecast transition date, in format "YYYY-MM-DD"')
     parser_ts_strat.add_argument('--target_depth', required=False, type=float, default=None,
-            help='the depth (in metres, positive down) the stratification was computed against, as passed to add_stratification. Only used to label the y axis')
+            help='the shallow reference depth (in metres, positive down) the stratification was computed against, as passed to add_stratification. Only used to label the y axis')
+    parser_ts_strat.add_argument('--deep_depth', required=False, type=float, default=None,
+            help='the deep reference depth (in metres, positive down) the stratification was computed against, as passed to add_stratification. Only used to label the y axis')
     def plot_timeseries_stratification_handler(args):
         plot_timeseries_stratification(args.ts_file, args.out_dir, args.today,
-                                       target_depth=args.target_depth)
+                                       target_depth=args.target_depth,
+                                       deep_depth=args.deep_depth)
     parser_ts_strat.set_defaults(func=plot_timeseries_stratification_handler)
 
     # ----------------

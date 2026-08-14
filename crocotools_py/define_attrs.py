@@ -38,7 +38,7 @@ ATTRS = {
     'w':         VarAttrs('Upward seawater velocity', 'm s-1', 'averaged vertical momentum component'),
     'category':  VarAttrs('MHW_MCS Combined Event Category (Positive=Heatwave, Negative=Cold Spell, 0=Neutral)', '1', 'status_flag'),
     'sst_front': VarAttrs('Sea Surface Temperature Horizontal Front Magnitude', 'degC km-1', 'sea_surface_temperature_gradient_magnitude'),
-    'density_bottom':       VarAttrs('Bottom in-situ density', 'kg m-3', 'sea_water_density'),
+    'density_deep':         VarAttrs('In-situ density at the deep reference depth, or at the seabed where shallower', 'kg m-3', 'sea_water_density'),
     'density_target_depth': VarAttrs('In-situ density at the target depth', 'kg m-3', 'sea_water_density'),
     'stratification':       VarAttrs('Water column stratification (bottom density minus density at the target depth)', 'kg m-3', 'sea_water_density_difference'),
 }

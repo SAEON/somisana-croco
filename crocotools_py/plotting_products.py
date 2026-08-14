@@ -339,14 +339,16 @@ def plot_timeseries_mhw(ts_file, clim_file, thresh_file, out_dir, today,
     print(f'  wrote {len(ds["site"])} {depth_name} time-series to {out_dir}')
 
 
-def plot_timeseries_stratification(ts_file, out_dir, today, target_depth=None):
+def plot_timeseries_stratification(ts_file, out_dir, today, target_depth=None,
+                                   deep_depth=None):
     """
-    Per-site stratification time-series (bottom minus target-depth density),
-    split into hindcast and forecast at 'today'.
+    Per-site stratification time-series (deep minus target-depth density), split
+    into hindcast and forecast at 'today'.
 
-    target_depth is only used to label the y axis. The depth the stratification
-    was actually computed against is set by add_stratification, so pass the same
-    value here if you want it named rather than described generically.
+    target_depth and deep_depth are only used to label the y axis. The depths the
+    stratification was actually computed against are set by add_stratification,
+    so pass the same values here if you want them named rather than described
+    generically.
     """
     ds = open_ts(ts_file)
     if 'stratification' not in ds:
@@ -357,8 +359,9 @@ def plot_timeseries_stratification(ts_file, out_dir, today, target_depth=None):
 
     dates = pd.to_datetime(ds['time'].values)
     obs_m, fct_m = dates <= today, dates >= today
-    against = f'{target_depth:g}m' if target_depth is not None else 'target depth'
-    ylabel = f'Stratification (bottom − {against} density) [kg m$^{{-3}}$]'
+    shallow = f'{target_depth:g}m' if target_depth is not None else 'target depth'
+    deep = f'{deep_depth:g}m' if deep_depth is not None else 'deep'
+    ylabel = f'Stratification ({deep} − {shallow} density) [kg m$^{{-3}}$]'
 
     for site in ds['site'].values:
         name = str(site)

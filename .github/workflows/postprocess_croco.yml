@@ -327,6 +327,7 @@ jobs:
               add_stratification \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --target_depth 5 \
+                --deep_depth 50 \
                 --Yorig 2000
 
       # the same time-series extraction as the postprocess job, but of the
@@ -403,7 +404,7 @@ jobs:
       #            --ts_file $ts \
       #            --clim_file ${{ inputs.CLIM_FILE }} \
       #            --thresh_file ${{ inputs.THRESH_FILE }} \
-      #            --out_dir ${{ env.RUN_DIR }}/postprocess/mhw_plots/${name} \
+      #            --out_dir ${{ env.RUN_DIR }}/postprocess/${name} \
       #            --today $base_date \
       #            --level $lev \
       #            --depth_name $name
@@ -421,9 +422,10 @@ jobs:
       #    python /home/somisana/code/somisana-croco/cli.py \
       #        plot_timeseries_stratification \
       #          --ts_file $ts \
-      #          --out_dir ${{ env.RUN_DIR }}/postprocess/mhw_plots \
+      #          --out_dir ${{ env.RUN_DIR }}/postprocess \
       #          --today $base_date \
-      #          --target_depth 5
+      #          --target_depth 5 \
+      #          --deep_depth 50
 
       # The spatial animations below are all plain map animations of a single
       # variable in the products file, so they are made with crocplot rather
@@ -475,6 +477,15 @@ jobs:
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_fronts_surf.mp4 \
                 --Yorig 2000
+      # The ticks below are uneven on purpose - crocplot builds a BoundaryNorm
+      # from them, so uneven ticks give a non-linear colour scale. Stratification
+      # has a ~4x seasonal swing (median 0.23 kg/m3 in August against 0.90 in
+      # February, from the GLORYS-ERA5 hindcast), which no evenly spaced scale
+      # covers: 0-2 in steps of 0.2 puts 96% of a winter domain in the first
+      # band. They start at 0.2 rather than 0 because in-situ density carries a
+      # ~0.20 kg/m3 compression offset between 5 and 50 dbar, so a perfectly
+      # mixed water column reads 0.20, not 0. Anything under 0.2 is well mixed
+      # (or unstable) and gets the bottom colour.
       - name: animate stratification
         continue-on-error: true
         run: |
@@ -485,7 +496,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --var stratification \
                 --cmap viridis \
-                --ticks=0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0 \
+                --ticks=0.2,0.25,0.3,0.35,0.45,0.6,0.8,1.0,1.3,1.7,2.1 \
                 --cbar_label 'stratification (kg m$^{-3}$)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_stratification.mp4 \
