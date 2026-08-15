@@ -51,18 +51,6 @@ def open_ts(ts_file):
     return ds
 
 
-def site_grid_indices(ds_ts):
-    """
-    The 0-based eta,xi indices of the grid cells the time-series were taken
-    from, for indexing another field on the same grid (a climatology, say).
-
-    CROCO's eta_rho/xi_rho coordinates are 1-based, so the index is the
-    coordinate value minus one - see find_nearest_point().
-    """
-    return (ds_ts['eta_rho'].values.astype(int) - 1,
-            ds_ts['xi_rho'].values.astype(int) - 1)
-
-
 def site_flags(ds_ts, level=-1):
     """
     Summarise each site's worst event over the window.
