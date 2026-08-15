@@ -15,11 +15,85 @@ import dask
 #import dask.array as da
 import re
 
+import crocotools_py.define_attrs as cf_attrs
+
 # Discrete/categorical variables that must use nearest-neighbor vertical
 # interpolation instead of linear - linear interpolation of a category flag
 # (e.g. MHW/MCS category) produces meaningless fractional values and can
 # blend fill values into valid data near mask boundaries.
 CATEGORICAL_VARS = {'category'}
+
+
+# Global attributes of the regridded output
+#
+# All three tiers describe themselves with define_attrs.global_attrs(), the same
+# builder the products file uses, so a tier file carries the same descriptive
+# header whether it was regridded from raw CROCO output or from a products file.
+#
+# The one thing that has to travel from the input is 'history': a products file
+# records the climatology it was compared against, the MHW/MCS persistence
+# criterion, the stratification depths and so on, and without chaining that
+# forward a tier file cannot say where its variables came from. Coverage is not
+# carried - global_attrs() derives it from the dataset being written, which is
+# what keeps tier 3 honest after it builds its own regular grid.
+#
+# Anything specific to a single variable stays on that variable. get_var() and
+# get_uv() carry those attributes through the interpolation, so the summaries
+# below are deliberately about the file, not about its contents.
+TIER_TITLES = {
+    1: 'SOMISANA CROCO output regridded to the rho grid (tier 1)',
+    2: 'SOMISANA CROCO output on constant depth levels (tier 2)',
+    3: 'SOMISANA CROCO output on a regular horizontal grid (tier 3)',
+}
+
+TIER_SUMMARIES = {
+    1: ('CROCO output with u and v regridded from the staggered velocity grids '
+        'onto the density (rho) grid and rotated from grid-aligned to '
+        'east/north components, and with a depth variable giving the depth of '
+        'every sigma level at every time step. The vertical grid is still the '
+        "model's native sigma grid and the horizontal grid is still the model's "
+        'native curvilinear grid, so no interpolation of the values themselves '
+        'has been done.'),
+    2: ('As tier 1, but interpolated vertically from the sigma grid onto '
+        'constant depth levels, which become a depth dimension. The horizontal '
+        "grid is still the model's native curvilinear grid. Discrete variables "
+        'are interpolated with nearest neighbour rather than linearly, so that '
+        'flag values are not blended into meaningless intermediates.'),
+    3: ('As tier 2, but interpolated horizontally onto a regular '
+        'longitude/latitude grid, so the curvilinear grid is replaced by '
+        'rectilinear longitude and latitude dimensions. Intended for '
+        'visualisation. Use tier 1 or tier 2 for analysis - this grid can be at '
+        'a very different resolution to the native model grid.'),
+}
+
+
+def source_global_attrs(file):
+    """
+    The global attributes of an input file, for global_attrs() to carry forward.
+
+    Reads the header only, and tolerates anything unreadable by returning an
+    empty dict - the provenance chain is worth having but never worth failing a
+    regrid over.
+
+    In a raw CROCO file the 'title' attribute is the domain name (e.g.
+    'SW Cape'), so it is mapped onto 'domain' to be carried forward, the same
+    way make_products_base does. Files this repo wrote always carry a 'summary',
+    and their 'title' says which product they are rather than which domain, so
+    that mapping is applied only when there is no summary - otherwise a tier 2
+    file regridded to tier 3 would end up with 'tier 2' as its domain.
+    """
+    try:
+        with xr.open_dataset(file, decode_times=False) as ds_src:
+            attrs = dict(ds_src.attrs)
+    except Exception as err:
+        print(f'  could not read the global attributes of {file} ({err}) - '
+              'the output will not carry its provenance')
+        return {}
+
+    if 'domain' not in attrs and 'summary' not in attrs:
+        if str(attrs.get('title', '')).strip():
+            attrs['domain'] = str(attrs['title']).strip()
+    return attrs
 
 def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
                  varList=['temp','salt','u','v']):
@@ -70,12 +144,11 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
             datasets.append(post.get_uv(file, grdname=grdname, Yorig=Yorig, var_u=var_u, var_v=var_v))
         ds_all = xr.merge(datasets, compat='override')
         
-        ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier1 function"
-        ds_all.attrs["source"] = file
-        ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-        ds_all.attrs["conventions"] = "CF-1.8"
-        ds_all.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
-        if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
+        ds_all.attrs = cf_attrs.global_attrs(
+            title=TIER_TITLES[1], summary=TIER_SUMMARIES[1], source=file,
+            ds=ds_all, src_attrs=source_global_attrs(file), doi_link=doi_link,
+            action=f'regrid_tier1: u/v regridded to the rho grid and rotated to '
+                   f'east/north, sigma level depths added, from {file}')
 
         # build encoding dynamically based on variables present in ds_all
         encoding = {}
@@ -160,13 +233,11 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
             datasets.append(post.get_uv(file, grdname=grdname, Yorig=Yorig, level=depths, var_u=var_u, var_v=var_v))
         ds_all = xr.merge(datasets, compat='override')
 
-        ds_all.attrs["title"] = "Regridded CROCO output created by the regrid_tier2 function"
-        ds_all.attrs["source"] = file
-        ds_all.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-        ds_all.attrs["conventions"] = "CF-1.8"
-        ds_all.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
-
-        if doi_link is not None: ds_all.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
+        ds_all.attrs = cf_attrs.global_attrs(
+            title=TIER_TITLES[2], summary=TIER_SUMMARIES[2], source=file,
+            ds=ds_all, src_attrs=source_global_attrs(file), doi_link=doi_link,
+            action=f'regrid_tier2: interpolated to depth levels '
+                   f'{", ".join(str(d) for d in depths)} m, from {file}')
 
         # build encoding dynamically based on variables present in ds_all
         encoding = {}
@@ -453,12 +524,13 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
 
         data_out = xr.Dataset(data_vars=data_vars, coords=coords)
 
-        data_out.attrs["title"] = "Regridded CROCO output created by the regrid_tier3 function"
-        data_out.attrs["source"] = file
-        data_out.attrs["history"] = "Created on " + datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
-        data_out.attrs["conventions"] = "CF-1.8"
-        data_out.attrs['references'] = 'Project: Sustainable Ocean Modelling Initiative: a South AfricaN Approach (SOMISANA; https://somisana.ac.za/); Tools: Regridding Code (https://github.com/SAEON/somisana-croco)'
-        if doi_link is not None: data_out.attrs.update({"doi" :f"https://doi.org/{doi_link}"})
+        # source_global_attrs() rather than the already-open ds.attrs, so that
+        # all three tiers treat their input's header identically
+        data_out.attrs = cf_attrs.global_attrs(
+            title=TIER_TITLES[3], summary=TIER_SUMMARIES[3], source=file,
+            ds=data_out, src_attrs=source_global_attrs(file), doi_link=doi_link,
+            action=f'regrid_tier3: interpolated onto a regular {spacing} degree '
+                   f'grid using {method} interpolation, from {file}')
 
         # Explicitly set chunk sizes of some dimensions.
         # NetCDF default: time=full, depth=1 (good for point-timeseries analysis).

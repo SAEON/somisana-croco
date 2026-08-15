@@ -1,9 +1,11 @@
 """
-Operational derived products from CROCO output.
+Derived products from CROCO output.
 
-This module assembles the daily-averaged 'products' file that accompanies each
-operational forecast: MHW/MCS event categories, temperature/sea-level
-anomalies, SST fronts and stratification.
+This module assembles the daily-averaged 'products' file: MHW/MCS event
+categories, temperature/sea-level anomalies, SST fronts and stratification. It
+is built the same way from a hindcast as from an operational forecast - the
+steps only care that the input is CROCO output and that a matching day-of-year
+climatology exists, not what the simulation was for.
 
 The MHW/MCS detection algorithm itself lives in crocotools_py.marineheatwaves,
 which is kept free of any operational plumbing so it can be imported on its own
@@ -46,11 +48,13 @@ import xarray as xr
 # Internal Dependencies
 import crocotools_py.postprocess as post
 import crocotools_py.marineheatwaves as mhw
+import crocotools_py.define_attrs as da_attrs
+from crocotools_py.define_attrs import extend_history, history_line
 
 
 # The products file
 #
-# All the operational products land in a single netcdf file (conventionally
+# All the products land in a single netcdf file (conventionally
 # croco_avg_products.nc) which is itself a valid CROCO output file, just daily
 # averaged rather than hourly. Keeping it in CROCO format means everything in
 # postprocess.py (get_var, get_depths, regrid_tier*, ...) works on it directly,
@@ -83,6 +87,74 @@ GRID_VARS = ['s_rho', 's_w', 'sc_r', 'sc_w', 'Cs_r', 'Cs_w',
 # components and then rotating gives the same answer as rotating each hour and
 # then averaging, since both steps are linear.
 BASE_VARS = ['temp', 'salt', 'u', 'v']
+
+
+# Global attributes
+#
+# The raw CROCO header is not carried through wholesale. Most of it describes
+# how the model was run (SRCS, the timestep and mixing parameters, the rst/his/
+# avg/grd file names) and belongs with the raw output, which is archived
+# alongside this file; repeating it here says nothing about the products and
+# buries the attributes that do. Two groups are kept:
+#
+#   - the vertical-coordinate parameters, because postprocess.get_depths()
+#     reads theta_s/theta_b/hc/Vtransform from the global attributes when they
+#     are not present as variables. Dropping them would stop the products file
+#     being a valid CROCO file that the rest of the repo can interpolate.
+#   - CPP-options and rho0, as a compact record of the model configuration the
+#     products were derived from.
+#
+# Everything else is replaced by the descriptive set built in global_attrs(),
+# following ACDD/CF: what the file is, where it came from, what it covers and
+# what was done to it.
+CROCO_ATTRS_KEPT = ['VertCoordType', 'Vtransform', 'theta_s', 'theta_b',
+                    'Tcline', 'hc', 'rho0', 'CPP-options']
+
+TITLE = 'SOMISANA daily-averaged CROCO output and derived ocean products'
+
+SUMMARY = (
+    'Daily means of a CROCO simulation, together with the ocean products derived '
+    'from them: marine heatwave / marine cold spell event categories, temperature '
+    'and sea-level anomalies against a day-of-year climatology, sea surface '
+    'temperature front magnitude, and water column stratification. The file is '
+    'itself a valid CROCO output file, just daily averaged rather than at the '
+    'model output interval, so it can be read by the same tools as the raw '
+    'output. The same products are built the same way whether the underlying '
+    'simulation is a hindcast or an operational forecast; the period covered is '
+    'given by time_coverage_start/end, and the simulation the daily means came '
+    'from by source. Which products are present depends on which steps were run '
+    '- see the per-variable attributes for how each one is defined.')
+
+def global_attrs(ds_raw, ds_out, fname_in):
+    """
+    Build the global attributes of the products file.
+
+    ds_raw   : the raw CROCO dataset the daily means were computed from, read
+               for the model-configuration attributes worth keeping
+    ds_out   : the daily-averaged dataset about to be written, read for the
+               geospatial and temporal coverage
+    fname_in : the raw input, recorded as the source
+
+    The descriptive set is built by define_attrs.global_attrs(), which the
+    regridding tiers use too, so the products file and every file derived from
+    it describe themselves the same way. See CROCO_ATTRS_KEPT above for what is
+    carried over from the raw CROCO header on top of that, and why the rest of
+    it is dropped.
+    """
+    # the raw CROCO 'title' is the domain name (e.g. 'SW Cape'), which is worth
+    # keeping but not under a key that now means something else
+    src_attrs = {'domain': str(ds_raw.attrs.get('title', '')).strip()}
+
+    extra = {attr: ds_raw.attrs[attr] for attr in CROCO_ATTRS_KEPT
+             if attr in ds_raw.attrs}
+    extra['time_coverage_resolution'] = 'P1D'
+
+    return da_attrs.global_attrs(
+        title=TITLE, summary=SUMMARY,
+        source=f'Daily means of CROCO output: {fname_in}',
+        ds=ds_out, src_attrs=src_attrs, extra=extra,
+        action=f'daily means of {fname_in} written by '
+               'crocotools_py.products.make_products_base')
 
 
 def time_encoding(Yorig):
@@ -248,11 +320,15 @@ def make_products_base(fname_in, fname_out, Yorig=2000, varList=None,
     print('Carrying through the grid variables')
     ds_grid = get_grid_vars(ds_raw)
     ds_out = ds_out.merge(ds_grid)
-    ds_out.attrs.update(ds_grid.attrs)
 
     # resample() drops the variable attributes, so put them back
     for var in varList:
         ds_out[var].attrs = dict(ds_raw[var].attrs)
+
+    # replace the inherited raw CROCO header rather than adding to it - see
+    # CROCO_ATTRS_KEPT for what survives and why
+    ds_out.attrs = global_attrs(ds_raw, ds_out, fname_in)
+    ds_out.attrs.update(ds_grid.attrs)
 
     encoding = default_encoding(ds_out)
     encoding['time'] = time_encoding(Yorig)
@@ -306,13 +382,16 @@ def open_products(fname_out, fname_in=None, Yorig=2000):
     return ds
 
 
-def append_to_products(ds_new, fname_out, Yorig=2000, encoding=None):
+def append_to_products(ds_new, fname_out, Yorig=2000, encoding=None, action=None):
     """
     Add the variables in ds_new to an existing products file (see
     open_products, which is what creates it if it is not there yet).
 
     Appending is done in place, so it costs the size of ds_new rather than the
     size of the file. Re-running a step overwrites its own variables.
+
+    action : short description of what this step did, appended to the file's
+             'history' attribute. Defaults to naming the variables written.
     """
     os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
     out_file = Path(fname_out)
@@ -327,6 +406,7 @@ def append_to_products(ds_new, fname_out, Yorig=2000, encoding=None):
     ds_existing = xr.open_dataset(fname_out, decode_times=False)
     existing_vars = set(ds_existing.data_vars)
     existing_time = np.asarray(post.handle_time(ds_existing, Yorig=Yorig).time.values)
+    existing_history = str(ds_existing.attrs.get('history', ''))
     ds_existing.close()
 
     if 'time' in ds_new.dims:
@@ -351,6 +431,14 @@ def append_to_products(ds_new, fname_out, Yorig=2000, encoding=None):
     overwriting = sorted(set(ds_new.data_vars) & existing_vars)
     if overwriting:
         print(f'Overwriting existing variable(s): {", ".join(overwriting)}')
+
+    # In append mode xarray writes ds_new.attrs over the file's global
+    # attributes rather than clearing them, so carrying the existing history
+    # forward with this step's line added is enough to extend it in place. Any
+    # attribute not named here is left as make_products_base wrote it.
+    if action is None:
+        action = f'added {", ".join(ds_new.data_vars)}'
+    ds_new.attrs = {'history': extend_history(existing_history, action)}
 
     ds_new.to_netcdf(fname_out, mode='a', encoding=enc)
     print(f'Appended to {fname_out}: {", ".join(ds_new.data_vars)}')
@@ -537,7 +625,10 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
         'deep_depth_m': deep_depth}
 
     ds_prod.close()
-    append_to_products(ds_new, fname_out, Yorig=Yorig)
+    append_to_products(ds_new, fname_out, Yorig=Yorig,
+                       action=f'add_stratification: potential density at {deep_depth} m '
+                              f'(or the seabed where shallower) and at {target_depth} m, '
+                              'and the difference between them')
 
 
 def _mask_2d(ds_prod):
@@ -597,7 +688,9 @@ def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
 
     ds_prod.close()
     ds_clim.close()
-    append_to_products(ds_new, fname_out, Yorig=Yorig)
+    append_to_products(ds_new, fname_out, Yorig=Yorig,
+                       action=f'add_anomalies: daily anomalies against the day-of-year '
+                              f'climatology {clim_file}')
 
 
 def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, batch_size=5,
@@ -607,8 +700,14 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
     products file.
 
     'category' is +1..+4 for a heatwave, -1..-4 for a cold spell and 0 for
-    neither, following Hobday et al. (2016). Where a cell is in neither state
-    the MCS category is used, so the two never overlap. Land is set to -127.
+    neither, following Hobday et al. (2016). A cell cannot be above the 90th and
+    below the 10th percentile at once, so the MHW and MCS layers never overlap
+    and are simply merged. Land is set to -127, the variable's _FillValue, so
+    that it is distinguishable from 0 (= in neither state).
+
+    The full definition of the categories is written onto the variable by
+    marineheatwaves.category_attrs(), which is shared with the hindcast so that
+    both describe the same thing in the same words.
 
     Parameters
     ----------
@@ -668,28 +767,19 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
     ds_new = xr.Dataset(
         {'category': (['time', 's_rho', 'eta_rho', 'xi_rho'], out_category)},
         coords={'time': ds_prod.time.values})
-    ds_new['category'].attrs = {
-        'long_name': 'MHW_MCS Combined Event Categories',
-        'description': 'Positive = Heatwave, Negative = Cold Spell, 0 = Neutral',
-        'valid_range': np.array([-4, 4], dtype='int8'),
-        'min_duration_days': np.int32(min_duration),
-        'reference': ('Hobday et al. (2016), categories 1-4 = '
-                      'Moderate/Strong/Severe/Extreme, where Extreme is >= 4x '
-                      'the climatology-to-threshold difference')}
-    if min_duration != 5:
-        ds_new['category'].attrs['comment'] = (
-            f'A threshold exceedance must last at least {min_duration} day(s) to count '
-            'as an event, rather than the 5 days of Hobday et al. (2016), so these are '
-            'not Hobday standard MHW/MCS categories. Duration is only ever measured '
-            'within the run window, so the Hobday value makes the result depend on how '
-            'long the run is and is not comparable between runs of different length.')
+    # The category metadata lives in marineheatwaves.category_attrs() so that a
+    # hindcast product file written from that module on its own describes the
+    # categories in exactly the same terms as this products file does.
+    ds_new['category'].attrs = mhw.category_attrs(min_duration)
 
     ds_prod.close()
     ds_clim.close()
     append_to_products(ds_new, fname_out, Yorig=Yorig,
                        encoding={'category': {'zlib': True, 'complevel': 2,
                                               '_FillValue': -127,
-                                              'chunksizes': (T_daily, 1, n_eta, n_xi)}})
+                                              'chunksizes': (T_daily, 1, n_eta, n_xi)}},
+                       action=f'add_mhw_mcs: MHW/MCS categories against {clim_file} and '
+                              f'{thresh_file}, min_duration={min_duration} day(s)')
 
 
 def _masked_diff(field, axis):
@@ -774,7 +864,8 @@ def add_sst_front(fname_out, fname_in=None, Yorig=2000):
         'units': 'degC / km'}
 
     ds_prod.close()
-    append_to_products(ds_new, fname_out, Yorig=Yorig)
+    append_to_products(ds_new, fname_out, Yorig=Yorig,
+                       action='add_sst_front: magnitude of the horizontal SST gradient')
 
 
 

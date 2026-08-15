@@ -17,6 +17,82 @@ import pandas as pd
 import xarray as xr
 import scipy.ndimage as ndimage
 
+# Two separate exceedances no more than this many days apart are joined into a
+# single event, as per Hobday et al. (2016). Kept as a constant so that the
+# detection code and the metadata written by category_attrs() cannot drift.
+MAX_GAP_DAYS = 2
+
+# Hobday category names, indexed by category number - 1
+CATEGORY_NAMES = ['Moderate', 'Strong', 'Severe', 'Extreme']
+
+
+def category_attrs(min_duration=5, max_gap=MAX_GAP_DAYS):
+    """
+    The netcdf attributes describing the signed MHW/MCS 'category' variable.
+
+    This is the single definition of that metadata, so that the operational
+    products file and any hindcast product file written from this module
+    describe the categories the same way. Pass the min_duration actually used
+    for the run - it is recorded in the attributes, so a file can be read back
+    without guessing which persistence criterion produced it.
+
+    Returns a dict suitable for assigning straight onto DataArray.attrs.
+    """
+    attrs = {
+        'long_name': 'MHW/MCS combined event category',
+        'standard_name': 'status_flag',
+        'units': '1',
+        'flag_values': np.arange(-4, 5, dtype='int8'),
+        'flag_meanings': ('marine_cold_spell_extreme marine_cold_spell_severe '
+                          'marine_cold_spell_strong marine_cold_spell_moderate none '
+                          'marine_heatwave_moderate marine_heatwave_strong '
+                          'marine_heatwave_severe marine_heatwave_extreme'),
+        'valid_range': np.array([-4, 4], dtype='int8'),
+        'description': (
+            'Sign: positive = marine heatwave (MHW, above the 90th percentile), '
+            'negative = marine cold spell (MCS, below the 10th percentile), '
+            "0 = neither. Land is set to the variable's _FillValue, never 0 "
+            '(-127 where the variable is stored as int8, NaN once regridding '
+            'has promoted it to float).\n'
+            'Magnitude: the Hobday et al. (2016) category. With clim the day-of-year '
+            'climatological mean, thresh the day-of-year 90th (MHW) or 10th (MCS) '
+            'percentile and dT = |thresh - clim|, a day is category '
+            'min(floor(|T - clim| / dT), 4):\n'
+            '  1 Moderate: |T - clim| is 1x to 2x dT, i.e. from the threshold itself '
+            'to 1x dT beyond it\n'
+            '  2 Strong:   2x to 3x dT\n'
+            '  3 Severe:   3x to 4x dT\n'
+            '  4 Extreme:  4x dT or more (open-ended top bucket - there is no '
+            'category 5 in the scheme)\n'
+            'dT is the climatology-to-threshold difference, NOT a standard deviation.'),
+        'event_definition': (
+            f'A run of days beyond the threshold counts as an event only if it lasts at '
+            f'least {min_duration} day(s); exceedances separated by a gap of no more than '
+            f'{max_gap} day(s) are joined into a single event, and the bridging days take '
+            f'the minimum category of 1. Days outside an event are 0.'),
+        'min_duration_days': np.int32(min_duration),
+        'max_gap_days': np.int32(max_gap),
+        'depth_caveat': (
+            'The category is a multiple of dT, so it assumes dT is physically '
+            'meaningful. That holds for near-surface water, which has a substantial '
+            'seasonal cycle, but in deep water with almost no seasonal signal dT '
+            'collapses towards zero and a trivial temperature wobble normalises up '
+            'into a high category. Categories at depth in low-variability cells should '
+            'be read with that in mind.'),
+        'reference': ('Hobday et al. (2016), Progress in Oceanography 141, 227-238, '
+                      'doi:10.1016/j.pocean.2015.12.014'),
+    }
+    if min_duration != 5:
+        attrs['comment'] = (
+            f'A threshold exceedance must last at least {min_duration} day(s) to count '
+            'as an event, rather than the 5 days of Hobday et al. (2016), so these are '
+            'not Hobday standard MHW/MCS categories. Duration is only ever measured '
+            'within the time window of this file, so the Hobday value makes the result '
+            'depend on how long that window is and is not comparable between windows of '
+            'different length - which is why short operational forecasts use 1.')
+    return attrs
+
+
 # Core Heatwave Algorithms
 def empty_event_dict():
     """
@@ -113,7 +189,7 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     if len(true_indices) > 0:
         for i in range(len(true_indices) - 1):
             gap = true_indices[i+1] - true_indices[i] - 1
-            if 1 <= gap <= 2:
+            if 1 <= gap <= MAX_GAP_DAYS:
                 exceed_mask[true_indices[i]+1 : true_indices[i+1]] = True
 
     events, n_events = ndimage.label(exceed_mask) 
@@ -127,7 +203,7 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         clim_thresh_use = clim_thresh
         temp_work       = temp_clean
 
-    cat_names = ['Moderate', 'Strong', 'Severe', 'Extreme']
+    cat_names = CATEGORY_NAMES
 
     for ev in range(1, n_events + 1):
         event_idx  = np.where(events == ev)[0]

@@ -56,6 +56,25 @@ def change_attrs(da, var_str, rotated=False):
     """Backwards-compatible wrapper around apply_attrs."""
     return apply_attrs(da, var_str, rotated=rotated)
 
+
+# CF requires these attributes to have the same type as the variable they
+# describe. Masking multiplies by NaN, which promotes an integer variable to
+# float, so they have to be re-typed to match or a categorical variable ends up
+# float with int8 flag_values.
+TYPED_ATTRS = ('flag_values', 'valid_range', 'valid_min', 'valid_max')
+
+
+def _retyped_attrs(attrs, dtype):
+    """Copy of attrs with the type-sensitive entries cast to dtype."""
+    out = dict(attrs)
+    for key in TYPED_ATTRS:
+        if key in out:
+            try:
+                out[key] = np.asarray(out[key]).astype(dtype)
+            except (TypeError, ValueError):
+                pass  # leave anything that will not cast rather than fail here
+    return out
+
 def u2rho(u):
     """
     regrid the croco u-velocity from it's native u grid to the rho grid
@@ -881,7 +900,16 @@ def get_var(fname,var_str,
     print('    applying the mask...')
     mask = ds.mask_rho
     mask_nan = mask.where(mask != 0, np.nan)
+    # xarray drops attributes on arithmetic, so multiplying by the mask would
+    # otherwise throw away everything the variable carried - not just the CF
+    # fields apply_attrs() puts back below, but the run-specific metadata that
+    # only the code which computed the variable knows (the MHW/MCS category's
+    # flag_values and min_duration_days, the stratification's reference
+    # pressure and depths, ...). Hold them across the multiply so they reach
+    # the output file.
+    var_attrs = dict(da.attrs)
     da = da.squeeze() * mask_nan
+    da.attrs = _retyped_attrs(var_attrs, da.dtype)
     zeta = zeta.squeeze() * mask_nan
     h = h.squeeze() * mask_nan
 
@@ -989,6 +1017,11 @@ def get_uv(fname,
     # although 'angle' is 2D, numpy and xarray are clever enough for this to work even if u_rho and v_rho are 3D or 4D
     u_out = u_da*cos_a - v_da*sin_a
     v_out = v_da*cos_a + u_da*sin_a
+
+    # the rotation is arithmetic, so it drops the attributes - see the same
+    # point at the masking step in get_var()
+    u_out.attrs = dict(u_da.attrs)
+    v_out.attrs = dict(v_da.attrs)
 
     apply_attrs(u_out, var_u, rotated=True)
     apply_attrs(v_out, var_v, rotated=True)
