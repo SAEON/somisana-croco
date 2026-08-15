@@ -694,10 +694,10 @@ def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
 
 
 def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, batch_size=5,
-                min_duration=5):
+                min_duration=5, add_baselines=True):
     """
     Add signed Marine Heatwave / Marine Cold Spell event categories to the
-    products file.
+    products file, and optionally the baselines they were detected against.
 
     'category' is +1..+4 for a heatwave, -1..-4 for a cold spell and 0 for
     neither, following Hobday et al. (2016). A cell cannot be above the 90th and
@@ -708,6 +708,16 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
     The full definition of the categories is written onto the variable by
     marineheatwaves.category_attrs(), which is shared with the hindcast so that
     both describe the same thing in the same words.
+
+    With add_baselines (the default) the day-of-year climatology and the two
+    percentile thresholds are also written out, sampled onto the products file's
+    own time axis as temp_clim, temp_thresh_90 and temp_thresh_10. They are read
+    anyway to do the detection, so writing them costs nothing but the disk
+    space, and it means a plot of temperature against the climatology and the
+    thresholds - the standard way of showing a marine heatwave - can be drawn
+    from this one file without opening the day-of-year files and repeating the
+    day alignment. temp_clim is the same baseline add_anomalies subtracts, so
+    temp_clim + temp_anom = temp exactly.
 
     Parameters
     ----------
@@ -724,6 +734,14 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
                   long the run is - see marineheatwaves.detect_events_with_
                   climatology(). The value used is recorded on the 'category'
                   variable so a file can be read back without guessing.
+    add_baselines : also write temp_clim, temp_thresh_90 and temp_thresh_10,
+                  default True. They are three more 4D float fields, so they
+                  cost roughly three times what the daily temperature does. That
+                  is a fair trade on an operational run of a few days, which is
+                  where the plots are wanted, but not on a multi-decade hindcast
+                  - and there the baselines are far smaller as the day-of-year
+                  files they came from, since a hindcast repeats the same 365
+                  days of climatology over and over. Pass False in that case.
     """
     ds_prod = open_products(fname_out, fname_in, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file, thresh_file)
@@ -772,14 +790,50 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
     # categories in exactly the same terms as this products file does.
     ds_new['category'].attrs = mhw.category_attrs(min_duration)
 
+    action = (f'add_mhw_mcs: MHW/MCS categories against {clim_file} and '
+              f'{thresh_file}, min_duration={min_duration} day(s)')
+
+    if add_baselines:
+        print('Carrying the climatology and thresholds onto the products time axis')
+        dims4 = ['time', 's_rho', 'eta_rho', 'xi_rho']
+        baselines = (
+            ('temp_clim', clim_daily,
+             'Day-of-year climatological mean sea water temperature',
+             'The baseline the anomalies and the MHW/MCS categories are both '
+             'measured against, so temp_clim + temp_anom = temp'),
+            ('temp_thresh_90', thresh90_daily,
+             'Day-of-year 90th percentile sea water temperature',
+             'Marine heatwave threshold: temperature above this is an exceedance'),
+            ('temp_thresh_10', thresh10_daily,
+             'Day-of-year 10th percentile sea water temperature',
+             'Marine cold spell threshold: temperature below this is an exceedance'),
+        )
+        for name, arr, long_name, comment in baselines:
+            # copy before masking - these arrays are the ones the detection ran
+            # on, and load_daily_baselines hands out its own, but not copying
+            # would still make the masking look like a side effect
+            values = arr.astype('float32').copy()
+            values[:, :, mask_rho_2d == 0] = np.nan
+            ds_new[name] = (dims4, values)
+            ds_new[name].attrs = {
+                'long_name': long_name,
+                'units': 'degC',
+                'comment': comment,
+                'source': clim_file if name == 'temp_clim' else thresh_file,
+                'cell_methods': 'time: mean over years (day of year)'}
+        action += (', with the climatology and thresholds carried through as '
+                   'temp_clim, temp_thresh_90 and temp_thresh_10')
+
+    # the baselines are ordinary float fields, so default_encoding covers them;
+    # only category needs the byte fill value and its own chunking
+    encoding = default_encoding(ds_new)
+    encoding['category'] = {'zlib': True, 'complevel': 2, '_FillValue': -127,
+                            'chunksizes': (T_daily, 1, n_eta, n_xi)}
+
     ds_prod.close()
     ds_clim.close()
-    append_to_products(ds_new, fname_out, Yorig=Yorig,
-                       encoding={'category': {'zlib': True, 'complevel': 2,
-                                              '_FillValue': -127,
-                                              'chunksizes': (T_daily, 1, n_eta, n_xi)}},
-                       action=f'add_mhw_mcs: MHW/MCS categories against {clim_file} and '
-                              f'{thresh_file}, min_duration={min_duration} day(s)')
+    append_to_products(ds_new, fname_out, Yorig=Yorig, encoding=encoding,
+                       action=action)
 
 
 def _masked_diff(field, axis):

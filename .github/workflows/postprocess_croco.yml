@@ -297,6 +297,13 @@ jobs:
       # consecutive daily runs as the window slides over it. Using 1 makes every
       # threshold exceedance an event, which is not a Hobday standard MHW/MCS but
       # is at least consistent across the domains and across successive runs.
+      #
+      # --add_baselines True also writes the climatology and the two percentile
+      # thresholds onto the products time axis, so temperature can be plotted
+      # against them without opening the day-of-year files and repeating the day
+      # alignment. They are read anyway to do the detection. A long hindcast
+      # should pass False - three extra 4D fields over decades is not worth it,
+      # and the day-of-year files already hold the same information compactly.
       - name: add MHW/MCS event categories
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
@@ -308,7 +315,8 @@ jobs:
                 --thresh_file ${{ inputs.THRESH_FILE }} \
                 --Yorig 2000 \
                 --batch_size 5 \
-                --min_duration 1
+                --min_duration 1 \
+                --add_baselines True
 
       - name: add surface thermal fronts
         run: |
@@ -345,7 +353,7 @@ jobs:
               get_ts_multivar \
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --coords_file $coords \
-                --varList temp,salt,category,temp_anom,zeta_anom,sst_front,stratification \
+                --varList temp,salt,category,temp_anom,zeta_anom,sst_front,stratification,temp_clim,temp_thresh_90,temp_thresh_10 \
                 --min_depth 20 \
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc \
                 --Yorig 2000
@@ -402,8 +410,6 @@ jobs:
       #      python /home/somisana/code/somisana-croco/cli.py \
       #          plot_timeseries_mhw \
       #            --ts_file $ts \
-      #            --clim_file ${{ inputs.CLIM_FILE }} \
-      #            --thresh_file ${{ inputs.THRESH_FILE }} \
       #            --out_dir ${{ env.RUN_DIR }}/postprocess/${name} \
       #            --today $base_date \
       #            --level $lev \

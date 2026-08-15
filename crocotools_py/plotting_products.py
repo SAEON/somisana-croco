@@ -25,8 +25,6 @@ from matplotlib.patches import FancyBboxPatch, Wedge
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
-import crocotools_py.marineheatwaves as mhw
-
 # Category colours, deepening with intensity. These match the 'mhw_mcs'
 # colormap registered in crocotools_py.plotting, which the spatial animations
 # use, so a category reads the same colour on a map as on a flag.
@@ -263,44 +261,61 @@ def _finish_timeseries_axes(fig, ax, dates, today, title, ylabel, ncol,
               ncol=ncol, fontsize=9, frameon=False)
 
 
-def plot_timeseries_mhw(ts_file, clim_file, thresh_file, out_dir, today,
-                        level=-1, depth_name='Surface'):
+# The baseline variables add_mhw_mcs writes onto the products file when it is
+# run with add_baselines=True, mapped to what this figure calls them.
+BASELINE_VARS = {'seas': 'temp_clim',
+                 'h_thr': 'temp_thresh_90',
+                 'c_thr': 'temp_thresh_10'}
+
+
+def plot_timeseries_mhw(ts_file, out_dir, today, level=-1, depth_name='Surface'):
     """
     Per-site temperature time-series against the day-of-year climatology and
     the MHW/MCS percentile thresholds, split into hindcast and forecast at
     'today'.
 
+    The climatology and thresholds are read from the time-series file, where
+    they are already on the right time axis and at the right sites. They get
+    there from add_mhw_mcs(add_baselines=True), which writes them onto the
+    products file alongside the categories, and from get_ts_multivar extracting
+    them with everything else. Reading them here rather than reaching back to
+    the day-of-year files means this figure cannot silently disagree with the
+    categories in the same file - it is drawn from the very numbers the
+    detection was run against.
+
     Parameters
     ----------
-    ts_file     : time-series file from get_ts_multivar, containing 'temp'
-    clim_file   : day-of-year climatology file
-    thresh_file : day-of-year percentile threshold file
+    ts_file     : time-series file from get_ts_multivar, containing 'temp' and
+                  the three baseline variables named in BASELINE_VARS
     out_dir     : directory to write one png per site into
     today       : hindcast/forecast transition date
     level       : s_rho index; -1 (default) is the surface, 0 the bottom
     depth_name  : label for that level, used in the titles and file names
     """
     ds = open_ts(ts_file)
+
+    missing = [v for v in BASELINE_VARS.values() if v not in ds]
+    if missing:
+        raise ValueError(
+            f'{ts_file} does not contain {", ".join(missing)}, so temperature '
+            'cannot be plotted against its climatology and thresholds.\n'
+            'Those come from add_mhw_mcs run with --add_baselines True, and '
+            'have to be listed in the --varList of the get_ts_multivar step '
+            'that built this file.')
+
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     today = pd.Timestamp(today).normalize()
 
-    ds_clim = mhw.load_and_harmonize_baselines(clim_file, thresh_file)
-    # the climatology is on the model grid, so the sites index straight into it
-    js, is_ = site_grid_indices(ds)
     dates = pd.to_datetime(ds['time'].values)
-    # positional day-of-year lookup, so a climatology without day 366 still works
-    doy_idx, _ = mhw.build_doy_alignment_index(ds['time'].values,
-                                               ds_clim['dayofyear'].values)
-
     obs_m, fct_m = dates <= today, dates >= today
 
-    for k, site in enumerate(ds['site'].values):
+    for site in ds['site'].values:
         name = str(site)
-        temp = ds['temp'].sel(site=site).isel(s_rho=level).values
-        at_site = dict(s_rho=level, eta_rho=js[k], xi_rho=is_[k])
-        seas  = ds_clim['climatology'].isel(**at_site).values[doy_idx]
-        h_thr = ds_clim['threshold_90'].isel(**at_site).values[doy_idx]
-        c_thr = ds_clim['threshold_10'].isel(**at_site).values[doy_idx]
+        at_site = dict(s_rho=level)
+        temp = ds['temp'].sel(site=site).isel(**at_site).values
+        seas  = ds[BASELINE_VARS['seas']].sel(site=site).isel(**at_site).values
+        h_thr = ds[BASELINE_VARS['h_thr']].sel(site=site).isel(**at_site).values
+        c_thr = ds[BASELINE_VARS['c_thr']].sel(site=site).isel(**at_site).values
 
         fig, ax = plt.subplots(figsize=(10, 8), dpi=150)
         ax.yaxis.grid(True, color='#cccccc', linewidth=0.7, zorder=0)
@@ -335,7 +350,6 @@ def plot_timeseries_mhw(ts_file, clim_file, thresh_file, out_dir, today,
                     dpi=150, bbox_inches='tight')
         plt.close()
 
-    ds_clim.close()
     print(f'  wrote {len(ds["site"])} {depth_name} time-series to {out_dir}')
 
 

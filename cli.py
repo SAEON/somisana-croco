@@ -517,10 +517,12 @@ def main():
             help='number of eta_rho rows processed at a time (trade-off between memory use and speed)')
     parser_add_mhw.add_argument('--min_duration', required=False, type=parse_int, default=5,
             help='number of days a threshold exceedance must last to count as an event. Default is 5, as per Hobday et al. (2016). Note that the duration is measured within the run window and not against the real history of the ocean, so the default makes the result depend on how long the run is - a 10 day GFS forced run and a ~7 day SAWS forced run flag different things from the same ocean state. Use 1 to make every exceedance an event, which removes that dependence at the cost of no longer being a Hobday standard MHW/MCS')
+    parser_add_mhw.add_argument('--add_baselines', required=False, type=parse_bool, default=True,
+            help='also write the day-of-year climatology and the 90th/10th percentile thresholds onto the products time axis, as temp_clim, temp_thresh_90 and temp_thresh_10 (default True). They are read anyway to do the detection, so this only costs disk space, and it lets temperature be plotted against its climatology and thresholds straight from the products file. Pass False for a long hindcast, where three extra 4D fields are not worth it and the day-of-year files are the more compact way to hold the same information')
     def add_mhw_mcs_handler(args):
         add_mhw_mcs(args.fname_out, args.clim_file, args.thresh_file,
                     fname_in=args.fname_in, Yorig=args.Yorig, batch_size=args.batch_size,
-                    min_duration=args.min_duration)
+                    min_duration=args.min_duration, add_baselines=args.add_baselines)
     parser_add_mhw.set_defaults(func=add_mhw_mcs_handler)
 
     # ----------------------
@@ -589,11 +591,7 @@ def main():
     parser_ts_mhw = subparsers.add_parser('plot_timeseries_mhw',
             help='Plot per-site temperature time-series against the day-of-year climatology and the MHW/MCS thresholds')
     parser_ts_mhw.add_argument('--ts_file', required=True, type=str,
-            help='time-series file written by get_ts_multivar, containing the temp variable')
-    parser_ts_mhw.add_argument('--clim_file', required=True, type=str,
-            help='pre-built day-of-year climatology file (as used as input to add_mhw_mcs)')
-    parser_ts_mhw.add_argument('--thresh_file', required=True, type=str,
-            help='pre-built day-of-year percentile threshold file (as used as input to add_mhw_mcs)')
+            help='time-series file written by get_ts_multivar, containing temp plus the climatology and thresholds (temp_clim, temp_thresh_90, temp_thresh_10). Those come from add_mhw_mcs run with --add_baselines True, and must be listed in the --varList of the get_ts_multivar step')
     parser_ts_mhw.add_argument('--out_dir', required=True, type=str,
             help='directory to write one figure per site into')
     parser_ts_mhw.add_argument('--today', required=True, type=str,
@@ -603,8 +601,7 @@ def main():
     parser_ts_mhw.add_argument('--depth_name', required=False, type=str, default='Surface',
             help="label for the level, used in the titles and file names e.g. 'Surface' or 'Bottom'")
     def plot_timeseries_mhw_handler(args):
-        plot_timeseries_mhw(args.ts_file, args.clim_file, args.thresh_file,
-                            args.out_dir, args.today,
+        plot_timeseries_mhw(args.ts_file, args.out_dir, args.today,
                             level=args.level, depth_name=args.depth_name)
     parser_ts_mhw.set_defaults(func=plot_timeseries_mhw_handler)
 
