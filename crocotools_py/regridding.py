@@ -154,6 +154,11 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         encoding = {}
         for var in ds_all.data_vars:
             encoding[var] = {"dtype": "float32"}
+            # the encoding sets the on-disk type, so flag_values and friends have
+            # to be re-typed to match it or a float32 variable ends up describing
+            # itself with attributes of whatever type it happened to have in
+            # memory - see postprocess.retype_attrs()
+            ds_all[var].attrs = post.retype_attrs(ds_all[var].attrs, 'float32')
         for var in ['h', 'mask', 'lon_rho', 'lat_rho']:
             if var in ds_all:
                 encoding[var] = {"dtype": "float32"}
@@ -243,6 +248,11 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         encoding = {}
         for var in ds_all.data_vars:
             encoding[var] = {"dtype": "float32"}
+            # the encoding sets the on-disk type, so flag_values and friends have
+            # to be re-typed to match it or a float32 variable ends up describing
+            # itself with attributes of whatever type it happened to have in
+            # memory - see postprocess.retype_attrs()
+            ds_all[var].attrs = post.retype_attrs(ds_all[var].attrs, 'float32')
         for var in ['h', 'mask', 'lon_rho', 'lat_rho']:
             if var in ds_all:
                 encoding[var] = {"dtype": "float32"}
@@ -548,6 +558,11 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
         # This is either the override specified in "chunksizes"
         # or the length of the dimension
         default_chunksizes = {dim: len(data_out[dim]) for dim in data_out.dims}
+
+        # everything below is written as float32, so the type-sensitive
+        # attributes have to say so too - see postprocess.retype_attrs()
+        for var in data_out.data_vars:
+            data_out[var].attrs = post.retype_attrs(data_out[var].attrs, 'float32')
 
         if output_format == 'zarr':
             from numcodecs import Blosc

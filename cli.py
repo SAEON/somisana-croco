@@ -163,8 +163,12 @@ def main():
                         default=2000, 
                         help='Origin year used in setting up CROCO time i.e. CROCO time will be seconds since Yorig-01-01')
     parser_regrid_tier1.add_argument('--doi_link', required=False, type=str, help='Doi link to where the data can be located.')
+    parser_regrid_tier1.add_argument('--varList', required=False, type=parse_list_str,
+                         default=['temp','salt','u','v'],
+                         help='comma separated list of variables to regrid e.g. temp,salt,u,v')
     def regrid_tier1_handler(args):
-        regrid_tier1(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link)
+        regrid_tier1(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link,
+                     varList = args.varList)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
     
     # --------------
@@ -206,9 +210,12 @@ def main():
     parser_regrid_tier3.add_argument('--method', type=str, default='nearest',
                          choices=['nearest', 'linear', 'cubic'],
                          help="interpolation method passed to scipy.interpolate.griddata (default='nearest')")
+    parser_regrid_tier3.add_argument('--varList', required=False, type=parse_list_str,
+                         default=['temp','salt','u','v'],
+                         help='comma separated list of variables to regrid, read from the tier 2 input file e.g. temp,salt,u,v')
     def regrid_tier3_handler(args):
         regrid_tier3(args.fname, args.dir_out, args.Yorig, args.doi_link,
-                     spacing=args.spacing, method=args.method)
+                     spacing=args.spacing, method=args.method, varList = args.varList)
     parser_regrid_tier3.set_defaults(func=regrid_tier3_handler)
     
     # ----------------

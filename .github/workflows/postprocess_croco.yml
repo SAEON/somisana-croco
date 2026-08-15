@@ -259,12 +259,17 @@ jobs:
 # SST fronts and stratification, plus the plots and animations made from them
 # (only runs for domains which have a day-of-year climatology)
 #
-# The steps below each append to the same products file, so the ones which
-# produce data deliberately do NOT set continue-on-error: if one of them fails
-# the job must stop, rather than letting the next step run against a file that
-# is missing or half-written. Only the terminal plotting steps tolerate
-# failure, so that a broken figure does not throw away netcdf products which
-# were written successfully and are about to be archived.
+# The add_* steps below each append to the same products file, so they
+# deliberately do NOT set continue-on-error: if one of them fails the job must
+# stop, rather than letting the next step run against a file that is missing or
+# half-written.
+#
+# The terminal steps do tolerate failure - the regridding, the time-series
+# extraction and the figures. None of those is appended to by anything that
+# follows: they read the products file and derive something new from it. Letting
+# one of them fail the job would throw away the netcdf products which were
+# written successfully and are about to be archived, which is the opposite of
+# what we want.
   products:
     if: ${{ inputs.CLIM_FILE != '' }}
     runs-on: ${{ inputs.RUNNER_NAME }}
@@ -358,17 +363,51 @@ jobs:
                 --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc \
                 --Yorig 2000
 
-      - name: regrid the products to tier 2
+      # The products are regridded through the same three tiers as the raw
+      # output, so that a user who takes the raw forecast at a given tier can
+      # take the products at that tier too, on an identical grid.
+      #
+      # PRODUCT_VARS is the same list at every tier, so the three files hold the
+      # same variables and only the grid differs. It is set once here rather
+      # than repeated three times, since a variable added to one tier and
+      # forgotten in another is exactly the kind of drift that goes unnoticed.
+      # zeta_anom and sst_front are 2D, so they appear at tier 1 and are carried
+      # through unchanged - the vertical regridding has nothing to do to them.
+      # continue-on-error because regridding is terminal, like the plotting
+      # steps: it derives new files from the products file rather than adding to
+      # it, so a failure here must not throw away the netcdf products that were
+      # written successfully and are about to be archived. This matches the raw
+      # output's tier 1/2/3 steps in the postprocess job above.
+      - name: regrid the products
+        continue-on-error: true
+        env:
+          PRODUCT_VARS: category,temp_anom,zeta_anom,sst_front,stratification
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
-          python /home/somisana/code/somisana-croco/cli.py \
+          cli=/home/somisana/code/somisana-croco/cli.py
+          post=${{ env.RUN_DIR }}/postprocess
+          python $cli \
+              regrid_tier1 \
+                --fname $post/croco_avg_products.nc \
+                --dir_out $post/ \
+                --Yorig 2000 \
+                --varList $PRODUCT_VARS
+          python $cli \
               regrid_tier2 \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
-                --dir_out ${{ env.RUN_DIR }}/postprocess/ \
+                --fname $post/croco_avg_products.nc \
+                --dir_out $post/ \
                 --Yorig 2000 \
                 --depths=0,-5,-10,-20,-50,-100,-200,-500,-1000 \
-                --varList category,temp_anom,zeta_anom,sst_front,stratification
+                --varList $PRODUCT_VARS
+          # tier 3 takes the tier 2 output as its input, not the products file
+          python $cli \
+              regrid_tier3 \
+                --fname $post/croco_avg_products_t2.nc \
+                --dir_out $post/ \
+                --Yorig 2000 \
+                --spacing 0.02 \
+                --varList $PRODUCT_VARS
 
       # The figures below are all made from the product time-series file
       # extracted above, so the sites they cover are whatever is listed in the

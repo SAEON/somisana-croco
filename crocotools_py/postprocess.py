@@ -64,7 +64,7 @@ def change_attrs(da, var_str, rotated=False):
 TYPED_ATTRS = ('flag_values', 'valid_range', 'valid_min', 'valid_max')
 
 
-def _retyped_attrs(attrs, dtype):
+def retype_attrs(attrs, dtype):
     """Copy of attrs with the type-sensitive entries cast to dtype."""
     out = dict(attrs)
     for key in TYPED_ATTRS:
@@ -909,7 +909,7 @@ def get_var(fname,var_str,
     # the output file.
     var_attrs = dict(da.attrs)
     da = da.squeeze() * mask_nan
-    da.attrs = _retyped_attrs(var_attrs, da.dtype)
+    da.attrs = retype_attrs(var_attrs, da.dtype)
     zeta = zeta.squeeze() * mask_nan
     h = h.squeeze() * mask_nan
 
