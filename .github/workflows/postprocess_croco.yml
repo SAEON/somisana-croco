@@ -478,14 +478,14 @@ jobs:
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_fronts_surf.mp4 \
                 --Yorig 2000
       # The ticks below are uneven on purpose - crocplot builds a BoundaryNorm
-      # from them, so uneven ticks give a non-linear colour scale. Stratification
-      # has a ~4x seasonal swing (median 0.23 kg/m3 in August against 0.90 in
-      # February, from the GLORYS-ERA5 hindcast), which no evenly spaced scale
-      # covers: 0-2 in steps of 0.2 puts 96% of a winter domain in the first
-      # band. They start at 0.2 rather than 0 because in-situ density carries a
-      # ~0.20 kg/m3 compression offset between 5 and 50 dbar, so a perfectly
-      # mixed water column reads 0.20, not 0. Anything under 0.2 is well mixed
-      # (or unstable) and gets the bottom colour.
+      # from them, so uneven ticks give a non-linear colour scale.
+      # Stratification is a potential density difference (both levels referenced
+      # to 0 dbar), so 0 means perfectly mixed and the scale starts there.
+      # It has a ~20x seasonal swing (median 0.04 kg/m3 in August against 0.71
+      # in February, from the GLORYS-ERA5 hindcast), which no evenly spaced
+      # scale covers: 0-1.9 in equal steps puts 86% of a winter domain in the
+      # first band. The fine bands at the bottom resolve the winter/upwelling
+      # end, the coarse ones at the top the summer maximum (hindcast max 1.9).
       - name: animate stratification
         continue-on-error: true
         run: |
@@ -496,7 +496,7 @@ jobs:
                 --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
                 --var stratification \
                 --cmap viridis \
-                --ticks=0.2,0.25,0.3,0.35,0.45,0.6,0.8,1.0,1.3,1.7,2.1 \
+                --ticks=0,0.05,0.1,0.15,0.25,0.4,0.6,0.8,1.1,1.5,1.9 \
                 --cbar_label 'stratification (kg m$^{-3}$)' \
                 --add_vectors False \
                 --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_stratification.mp4 \

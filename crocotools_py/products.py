@@ -361,8 +361,9 @@ def append_to_products(ds_new, fname_out, Yorig=2000, encoding=None):
 # Density is computed using the full UNESCO EOS-80 equation of state
 # (Millero & Poisson 1981 for density at 1 atm; Fofonoff & Millard 1983 for
 # the pressure/compressibility correction) - no external dependency beyond
-# numpy, and stays accurate at depth (important since "bottom" can be
-# hundreds of meters deep here, not just a few meters).
+# numpy. The pressure argument is kept general, but add_stratification passes
+# 0 dbar for both of its levels so that what it reports is potential density
+# referenced to the surface (see its docstring).
 
 def eos80_density(temp, salt, pressure):
     """
@@ -423,12 +424,20 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
     Add the daily deep and near-surface densities, and the difference between
     them (the stratification), to the products file.
 
-    Density is in-situ EOS-80 density. Both levels come from the repo's own
-    sigma-to-z interpolation (postprocess.hlev_xarray, the same routine get_var
-    uses for level=-N): the shallow one at target_depth, the deep one at
-    deep_depth. Where the water column does not reach deep_depth the bottom-most
-    sigma layer (s_rho index 0 in CROCO) is used instead, so the deep reference
-    is always defined on the shelf.
+    Density is EOS-80 potential density referenced to the surface: both levels
+    are evaluated at a pressure of 0 dbar, so the difference between them is due
+    to temperature and salinity alone and a perfectly mixed water column reads
+    0. Evaluating each level at its own in-situ pressure instead would leave a
+    compressibility offset of about 0.2 kg/m3 between 5 and 50 dbar, which has
+    nothing to do with stratification. CROCO's temp is potential temperature, so
+    rho(temp, salt, 0) is potential density in the usual sense.
+
+    Both levels come from the repo's own sigma-to-z interpolation
+    (postprocess.hlev_xarray, the same routine get_var uses for level=-N): the
+    shallow one at target_depth, the deep one at deep_depth. Where the water
+    column does not reach deep_depth the bottom-most sigma layer (s_rho index 0
+    in CROCO) is used instead, so the deep reference is always defined on the
+    shelf.
 
     Taking the deep reference at a fixed depth rather than at the seabed keeps
     the stratification comparable across the domain. Against the seabed it is
@@ -472,8 +481,8 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
     use_seabed = ~np.isfinite(temp_deep)
     temp_deep = np.where(use_seabed, ds_prod[temp_var].isel(s_rho=0).values, temp_deep)
     salt_deep = np.where(use_seabed, ds_prod[salt_var].isel(s_rho=0).values, salt_deep)
-    pressure_deep = np.where(use_seabed, -z.isel(s_rho=0).values, abs(deep_depth))
-    density_deep = eos80_density(temp_deep, salt_deep, pressure_deep)
+    # Potential density: both levels referenced to 0 dbar (see docstring)
+    density_deep = eos80_density(temp_deep, salt_deep, 0.0)
 
     n_wet = (mask_rho_2d == 1).sum()
     n_seabed = (use_seabed[0] & (mask_rho_2d == 1)).sum()
@@ -483,7 +492,7 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
     target_z = -abs(target_depth)
     density_target = eos80_density(post.hlev_xarray(ds_prod[temp_var], z, target_z),
                                    post.hlev_xarray(ds_prod[salt_var], z, target_z),
-                                   abs(target_depth))
+                                   0.0)
 
     density_deep = density_deep.astype('float32')
     density_target = density_target.astype('float32')
@@ -497,18 +506,33 @@ def add_stratification(fname_out, fname_in=None, Yorig=2000, target_depth=5.0,
                          'density_target_depth': (dims, density_target),
                          'stratification': (dims, stratification)},
                         coords={'time': ds_prod.time.values})
+    method = ('EOS-80 potential density referenced to the surface, i.e. '
+              'rho(temp, salt, p=0 dbar) with CROCO potential temperature. Both '
+              'levels use the same 0 dbar reference pressure, so the difference '
+              'between them carries no compressibility signal and a perfectly '
+              'mixed water column gives exactly 0.')
     ds_new['density_deep'].attrs = {
-        'long_name': f'In-situ density at {deep_depth} m depth, or at the seabed '
+        'long_name': f'Potential density at {deep_depth} m depth, or at the seabed '
                      'where the water column is shallower than that',
         'units': 'kg m-3',
+        'method': method,
+        'reference_pressure_dbar': 0.0,
         'deep_depth_m': deep_depth}
     ds_new['density_target_depth'].attrs = {
-        'long_name': f'In-situ density at {target_depth} m depth', 'units': 'kg m-3'}
-    ds_new['stratification'].attrs = {
-        'long_name': f'Water column stratification (density at {deep_depth} m, or at '
-                     f'the seabed where shallower, minus density at {target_depth} m)',
+        'long_name': f'Potential density at {target_depth} m depth',
         'units': 'kg m-3',
-        'description': 'Positive = stably stratified, near-zero/negative = well-mixed',
+        'method': method,
+        'reference_pressure_dbar': 0.0,
+        'target_depth_m': target_depth}
+    ds_new['stratification'].attrs = {
+        'long_name': f'Water column stratification (potential density at {deep_depth} m, '
+                     f'or at the seabed where shallower, minus potential density at '
+                     f'{target_depth} m)',
+        'units': 'kg m-3',
+        'method': method,
+        'reference_pressure_dbar': 0.0,
+        'description': 'Positive = stably stratified, 0 = perfectly mixed, '
+                       'negative = unstable',
         'target_depth_m': target_depth,
         'deep_depth_m': deep_depth}
 

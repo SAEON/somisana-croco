@@ -342,8 +342,9 @@ def plot_timeseries_mhw(ts_file, clim_file, thresh_file, out_dir, today,
 def plot_timeseries_stratification(ts_file, out_dir, today, target_depth=None,
                                    deep_depth=None):
     """
-    Per-site stratification time-series (deep minus target-depth density), split
-    into hindcast and forecast at 'today'.
+    Per-site stratification time-series (deep minus target-depth potential
+    density, both referenced to 0 dbar, so 0 = perfectly mixed), split into
+    hindcast and forecast at 'today'.
 
     target_depth and deep_depth are only used to label the y axis. The depths the
     stratification was actually computed against are set by add_stratification,
@@ -361,7 +362,7 @@ def plot_timeseries_stratification(ts_file, out_dir, today, target_depth=None,
     obs_m, fct_m = dates <= today, dates >= today
     shallow = f'{target_depth:g}m' if target_depth is not None else 'target depth'
     deep = f'{deep_depth:g}m' if deep_depth is not None else 'deep'
-    ylabel = f'Stratification ({deep} − {shallow} density) [kg m$^{{-3}}$]'
+    ylabel = f'Stratification ({deep} − {shallow} potential density) [kg m$^{{-3}}$]'
 
     for site in ds['site'].values:
         name = str(site)
