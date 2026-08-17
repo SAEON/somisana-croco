@@ -5,7 +5,7 @@
 #PBS -l walltime=24:00:00
 #PBS -o /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3/stdout 
 #PBS -e /home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3/stderr 
-#PBS -v START_DATE,END_DATE,RSTFLAG
+#PBS -v START_DATE,END_DATE,RSTFLAG,RUN_NAME
 
 #unalias cp
 #unalias mv
@@ -24,7 +24,12 @@ MK=/bin/mkdir
 # particularly the respective myenv_inter.sh files
 
 CONFIG_DIR=/home/gfearon/lustre/somisana-croco/configs/sa_west_02/croco_v2.1.1_cpl_ww3
-RUN_NAME=RUN_01
+
+# RUN_NAME is passed in by run_inter_chpc.bash via `qsub -v`, and falls back to
+# RUN_01 if the job is submitted by hand without it.
+# The #PBS -o/-e directives above are static and cannot interpolate $RUN_NAME,
+# so run_inter_chpc.bash overrides them per run on the qsub command line.
+RUN_NAME=${RUN_NAME:-RUN_01}
 
 RUN_DIR=$CONFIG_DIR/$RUN_NAME
 cd $RUN_DIR
