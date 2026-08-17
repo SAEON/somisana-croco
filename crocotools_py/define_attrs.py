@@ -16,11 +16,7 @@ apply_attrs(): applies CF attributes to a DataArray, with a warning if
 This registry is the CF baseline: the three fields every variable must have.
 It deliberately does not hold the richer, run-specific attributes some
 variables carry (the MHW/MCS category's flag_values and min_duration_days, the
-stratification's reference_pressure_dbar and target/deep depths, ...), because
-those depend on the settings a particular run was made with and so cannot live
-in a static dict. Those are written by whatever computes the variable and are
-carried through by postprocess.get_var(), which applies this registry on top of
-them rather than in place of them.
+stratification's reference_pressure_dbar and target/deep depths, ...)
 
 Global attributes
 -----------------
@@ -152,20 +148,16 @@ REFERENCES = ('Project: Sustainable Ocean Modelling Initiative: a South AfricaN 
 
 CONVENTIONS = 'CF-1.8, ACDD-1.3'
 
-# Global attributes carried forward from the file a step read its data from.
+# Nothing is copied wholesale from the header of the file a step read its data
+# from. A step can equally be run on raw CROCO output, whose header carries
+# SRCS, CPP-options, the rst/his/avg/grd filenames and the whole timestep and
+# mixing configuration, none of which describes the file being written; and the
+# geospatial/temporal coverage is derived by coverage_attrs() from the output
+# dataset, which stays correct even when a step changes the grid, as tier 3
+# regridding does.
 #
-# This is a whitelist, not a blanket copy, because a step can equally be run on
-# raw CROCO output - and a raw CROCO header carries SRCS, CPP-options, the
-# rst/his/avg/grd filenames and the whole timestep and mixing configuration,
-# none of which describes the file being written. A raw input simply has none
-# of the keys below, so it needs no special-casing: nothing is carried and the
-# output gets the descriptive set built from scratch.
-#
-# 'history' is handled separately (it is appended to, not replaced), and the
-# geospatial/temporal coverage is not carried at all - coverage_attrs() derives
-# it from the output dataset, which stays correct even when a step changes the
-# grid, as tier 3 regridding does.
-CARRIED_ATTRS = ['domain']
+# The one thing that does travel is 'history', which is appended to rather than
+# replaced, so a file records the chain of steps that produced it.
 
 
 def history_line(action):
@@ -219,42 +211,32 @@ def coverage_attrs(ds):
     return attrs
 
 
-def global_attrs(title, summary, source, ds, action, src_attrs=None,
+def global_attrs(title, source, ds, action, src_history=None,
                  doi_link=None, extra=None):
     """
     Build the global attributes for a file written by this repo.
 
     Parameters
     ----------
-    title     : short name for what this file is
-    summary   : one paragraph describing the file. File level only - anything
-                specific to a single variable belongs on that variable, not
-                here, so that it cannot go stale when the variable changes
-    source    : the file (or files) this one was built from
-    ds        : the dataset about to be written, read for its coverage
-    action    : what this step did, appended to 'history'
-    src_attrs : global attributes of the input file, if it had any. Only the
-                keys in CARRIED_ATTRS are taken, plus 'history', which is
-                extended rather than replaced - that chain is what carries the
-                provenance of a products file through the regridding tiers
-    doi_link  : bare DOI, written as a full https://doi.org/ URL
-    extra     : any further attributes to add, e.g. the vertical coordinate
-                parameters a CROCO format file has to keep
+    title       : short name for what this file is
+    source      : the file (or files) this one was built from
+    ds          : the dataset about to be written, read for its coverage
+    action      : what this step did, appended to 'history'
+    src_history : 'history' of the input file, if it had one. This step's line
+                  is appended to it rather than replacing it - that chain is
+                  what carries the provenance of a products file through the
+                  regridding tiers. Nothing else is taken from the input header
+    doi_link    : bare DOI, written as a full https://doi.org/ URL
+    extra       : any further attributes to add, e.g. the vertical coordinate
+                  parameters a CROCO format file has to keep
 
     Returns a dict ready to assign to Dataset.attrs.
     """
-    src_attrs = dict(src_attrs or {})
-
     attrs = {'title': title,
-             'summary': summary,
              'institution': INSTITUTION,
              'source': source,
              'references': REFERENCES,
              'Conventions': CONVENTIONS}
-
-    for key in CARRIED_ATTRS:
-        if str(src_attrs.get(key, '')).strip():
-            attrs[key] = src_attrs[key]
 
     attrs.update(coverage_attrs(ds))
 
@@ -264,5 +246,5 @@ def global_attrs(title, summary, source, ds, action, src_attrs=None,
         attrs['doi'] = f'https://doi.org/{doi_link}'
 
     attrs['date_created'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    attrs['history'] = extend_history(src_attrs.get('history'), action)
+    attrs['history'] = extend_history(src_history, action)
     return attrs

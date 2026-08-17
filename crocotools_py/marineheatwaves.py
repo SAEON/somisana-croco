@@ -25,7 +25,6 @@ MAX_GAP_DAYS = 2
 # Hobday category names, indexed by category number - 1
 CATEGORY_NAMES = ['Moderate', 'Strong', 'Severe', 'Extreme']
 
-
 def category_attrs(min_duration=5, max_gap=MAX_GAP_DAYS):
     """
     The netcdf attributes describing the signed MHW/MCS 'category' variable.
@@ -51,20 +50,14 @@ def category_attrs(min_duration=5, max_gap=MAX_GAP_DAYS):
         'description': (
             'Sign: positive = marine heatwave (MHW, above the 90th percentile), '
             'negative = marine cold spell (MCS, below the 10th percentile), '
-            "0 = neither. Land is set to the variable's _FillValue, never 0 "
-            '(-127 where the variable is stored as int8, NaN once regridding '
-            'has promoted it to float).\n'
-            'Magnitude: the Hobday et al. (2016) category. With clim the day-of-year '
-            'climatological mean, thresh the day-of-year 90th (MHW) or 10th (MCS) '
-            'percentile and dT = |thresh - clim|, a day is category '
-            'min(floor(|T - clim| / dT), 4):\n'
-            '  1 Moderate: |T - clim| is 1x to 2x dT, i.e. from the threshold itself '
-            'to 1x dT beyond it\n'
-            '  2 Strong:   2x to 3x dT\n'
-            '  3 Severe:   3x to 4x dT\n'
-            '  4 Extreme:  4x dT or more (open-ended top bucket - there is no '
-            'category 5 in the scheme)\n'
-            'dT is the climatology-to-threshold difference, NOT a standard deviation.'),
+            '0 = neither.\n '
+            'Magnitude: the Hobday et al. (2016) category, derived from the difference between the day-of-year '
+            'climatological mean (clim), and the day-of-year 90th (MHW) or 10th (MCS) percentile thresholds (thresh) \n'
+            ' dT = |threshold - clim|\n'
+            '  1 Moderate: |T - clim| is 1x to 2x dT\n'
+            '  2 Strong:   |T - clim| is 2x to 3x dT\n'
+            '  3 Severe:   |T - clim| is 3x to 4x dT\n'
+            '  4 Extreme:  |T - clim| is 4x dT or more \n'),
         'event_definition': (
             f'A run of days beyond the threshold counts as an event only if it lasts at '
             f'least {min_duration} day(s); exceedances separated by a gap of no more than '
@@ -72,24 +65,15 @@ def category_attrs(min_duration=5, max_gap=MAX_GAP_DAYS):
             f'the minimum category of 1. Days outside an event are 0.'),
         'min_duration_days': np.int32(min_duration),
         'max_gap_days': np.int32(max_gap),
-        'depth_caveat': (
-            'The category is a multiple of dT, so it assumes dT is physically '
-            'meaningful. That holds for near-surface water, which has a substantial '
-            'seasonal cycle, but in deep water with almost no seasonal signal dT '
-            'collapses towards zero and a trivial temperature wobble normalises up '
-            'into a high category. Categories at depth in low-variability cells should '
-            'be read with that in mind.'),
         'reference': ('Hobday et al. (2016), Progress in Oceanography 141, 227-238, '
                       'doi:10.1016/j.pocean.2015.12.014'),
     }
     if min_duration != 5:
         attrs['comment'] = (
-            f'A threshold exceedance must last at least {min_duration} day(s) to count '
-            'as an event, rather than the 5 days of Hobday et al. (2016), so these are '
-            'not Hobday standard MHW/MCS categories. Duration is only ever measured '
-            'within the time window of this file, so the Hobday value makes the result '
-            'depend on how long that window is and is not comparable between windows of '
-            'different length - which is why short operational forecasts use 1.')
+            f'Here we are using a time persistence of {min_duration} day(s) to count '
+            'as an event, rather than the 5 days of Hobday et al. (2016). This is useful '
+            'in the context of operational output, where an event can be flagged in '
+            'real time rather than waiting 5 days to flag retrospectively.')
     return attrs
 
 
@@ -132,16 +116,6 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     4 = Extreme. Category 4 is an open-ended top bucket (>= 4x dT) - there is
     no category 5 in the scheme.
 
-    Caveat when applying this through the water column: the category is a
-    multiple of dT, so it assumes dT is physically meaningful. That is safe for
-    SST, which always has a substantial seasonal cycle, but in deep water with
-    almost no seasonal signal dT collapses towards zero (values below 0.001
-    degC occur on the sa-west grid) and a trivial temperature wobble normalises
-    up into a high category. On a sa-west forecast this affects of order 0.1%
-    of ocean cell-levels, essentially all of them in the lower water column, so
-    it is left in rather than special-cased - but categories at depth in
-    low-variability cells should be read with that in mind.
-
     stats : if True (the default) the per-event statistics are computed, as
             they always have been - this is what you want for hindcast
             analysis. If False, only 'categories' is computed and the first
@@ -155,17 +129,6 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     min_duration : number of days an exceedance must last before it counts as an
             event, default 5 as per Hobday et al. (2016).
 
-            Note that the duration tested here is the duration *within the array
-            passed in*. On an operational forecast that array is the run window,
-            not the full history of the ocean, so an event which started before
-            the window is truncated to however much of it the window contains,
-            and one which starts near the end of the window cannot reach 5 days
-            no matter how long it actually runs. That makes the detection
-            sensitive to the window length: a 10 day GFS forced run and a ~7 day
-            SAWS forced run will flag different things from the same ocean
-            state. Setting min_duration=1 removes that sensitivity - every
-            threshold exceedance becomes an event - at the cost of no longer
-            being a Hobday standard MHW/MCS.
     """
     n_time     = len(temp_data)
     categories = np.zeros(n_time, dtype='int8')
@@ -332,16 +295,6 @@ def load_daily_baselines(ds_clim, temp_time,
     """
     Read the requested baseline fields ONCE, for only the days we actually
     need, across all vertical levels.
-
-    The day-of-year climatology files are chunked with s_rho spanning a full
-    chunk (e.g. 30 dayofyear x 30 s_rho x 5 eta_rho x 130 xi_rho, deflate 4),
-    so pulling out a single level with .isel(s_rho=k) has to inflate the whole
-    ~10 GB file - about 20-30 s per read, and that is decompression cost, not
-    disk, so the OS page cache doesn't help. Doing that once per level per
-    MHW/MCS pass was costing over an hour per run. A forecast only spans a
-    handful of days, so we gather those days up front instead and keep the
-    (n_time, s_rho, eta_rho, xi_rho) arrays in memory (~190 MB for a 9 day
-    forecast on the sa-west grid).
 
     Selection is positional (isel on a precomputed index) rather than
     label-based (sel) so we keep the Feb-29 fallback in

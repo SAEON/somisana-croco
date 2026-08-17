@@ -112,25 +112,14 @@ CROCO_ATTRS_KEPT = ['VertCoordType', 'Vtransform', 'theta_s', 'theta_b',
 
 TITLE = 'SOMISANA daily-averaged CROCO output and derived ocean products'
 
-SUMMARY = (
-    'Daily means of a CROCO simulation, together with the ocean products derived '
-    'from them: marine heatwave / marine cold spell event categories, temperature '
-    'and sea-level anomalies against a day-of-year climatology, sea surface '
-    'temperature front magnitude, and water column stratification. The file is '
-    'itself a valid CROCO output file, just daily averaged rather than at the '
-    'model output interval, so it can be read by the same tools as the raw '
-    'output. The same products are built the same way whether the underlying '
-    'simulation is a hindcast or an operational forecast; the period covered is '
-    'given by time_coverage_start/end, and the simulation the daily means came '
-    'from by source. Which products are present depends on which steps were run '
-    '- see the per-variable attributes for how each one is defined.')
 
 def global_attrs(ds_raw, ds_out, fname_in):
     """
     Build the global attributes of the products file.
 
     ds_raw   : the raw CROCO dataset the daily means were computed from, read
-               for the model-configuration attributes worth keeping
+               for the model-configuration attributes worth keeping and for its
+               'history', if it has one, to chain this step onto
     ds_out   : the daily-averaged dataset about to be written, read for the
                geospatial and temporal coverage
     fname_in : the raw input, recorded as the source
@@ -141,18 +130,15 @@ def global_attrs(ds_raw, ds_out, fname_in):
     carried over from the raw CROCO header on top of that, and why the rest of
     it is dropped.
     """
-    # the raw CROCO 'title' is the domain name (e.g. 'SW Cape'), which is worth
-    # keeping but not under a key that now means something else
-    src_attrs = {'domain': str(ds_raw.attrs.get('title', '')).strip()}
-
     extra = {attr: ds_raw.attrs[attr] for attr in CROCO_ATTRS_KEPT
              if attr in ds_raw.attrs}
     extra['time_coverage_resolution'] = 'P1D'
 
     return da_attrs.global_attrs(
-        title=TITLE, summary=SUMMARY,
+        title=TITLE,
         source=f'Daily means of CROCO output: {fname_in}',
-        ds=ds_out, src_attrs=src_attrs, extra=extra,
+        ds=ds_out, extra=extra,
+        src_history=str(ds_raw.attrs.get('history', '')),
         action=f'daily means of {fname_in} written by '
                'crocotools_py.products.make_products_base')
 
@@ -693,8 +679,134 @@ def add_anomalies(fname_out, clim_file, fname_in=None, Yorig=2000):
                               f'climatology {clim_file}')
 
 
+def detection_window(temp_target, target_time, context_files=None, Yorig=2000):
+    """
+    Build the daily temperature array the MHW/MCS detection runs over, and the
+    dates that go with it.
+
+    Without context_files this is just the target file's own temperature, which
+    is what an operational forecast wants: the run window is all there is.
+
+    With context_files it is that temperature extended by whatever days those
+    files add either side. This is what makes a Hobday standard min_duration of
+    5 days usable on a record which has been cut into pieces - typically a
+    hindcast stored one month per file. Event duration is only ever measured
+    within the array handed to detect_events_with_climatology(), so a month
+    processed on its own has any event crossing its boundary split into two
+    truncated runs, either of which can fall under min_duration and be thrown
+    away. Detecting over the padded window and writing back only the target
+    days gives exactly the answer a single pass over the whole record would.
+
+    How much padding is enough: if an event reaches past the edge of the window
+    then it occupies every one of the pad days at that end plus at least one
+    target day, so the detector sees at least (pad + 1) days and calls it an
+    event - correctly, since the true event is longer still. If it does not
+    reach the edge, the detector sees it whole. The only way to get a wrong
+    answer is a run which escapes the window while still showing fewer than
+    min_duration days inside it, which needs pad < min_duration - 1; allowing
+    for the two day gap bridging in marineheatwaves.MAX_GAP_DAYS as well, a pad
+    of min_duration - 1 + MAX_GAP_DAYS days is sufficient. A calendar month
+    either side is far more than that, which is why the driver simply passes
+    the neighbouring months rather than counting days.
+
+    At the ends of the record there is nothing to pad with, so those months get
+    one sided context and events running off the end stay truncated. That is
+    unavoidable - the data does not exist - and it is the same truncation any
+    single pass over the whole record would have at its own first and last day.
+
+    Parameters
+    ----------
+    temp_target   : the target file's daily temperature DataArray
+                    (time, s_rho, eta_rho, xi_rho)
+    target_time   : the target file's time axis - the days to be written
+    context_files : CROCO file(s) supplying the surrounding days. Anything
+                    postprocess.get_ds() accepts, so either products files or
+                    the raw model output; the daily resample below is a no-op
+                    on data which is already daily.
+
+                    They may overlap each other and they may overlap the target,
+                    which means a list can be assembled without first working out
+                    what covers what. Any day the target already has is taken
+                    from the target, and any day supplied twice is taken from the
+                    first file on the list that has it - so if two context files
+                    disagree about a day, list order decides. Days are matched
+                    whole, after the daily resample, so this is about calendar
+                    days rather than exact timestamps.
+    Yorig         : origin year of the CROCO time axis
+
+    Returns (temp, time) as plain numpy arrays sorted by time. Numpy rather
+    than xarray on purpose: the context comes from a different file whose
+    coordinates need not line up with the target's, and concatenating the
+    values sidesteps an alignment that has nothing to do with what we want.
+    """
+    target_time = np.asarray(target_time)
+    if not context_files:
+        return temp_target.values, target_time
+
+    context_files = list(context_files)
+    print(f'Reading detection context from: {", ".join(context_files)}')
+
+    # Read one file at a time rather than handing the whole list to
+    # open_mfdataset. That combines by coordinate and refuses any set of files
+    # whose time axes overlap ('Resulting object does not have monotonic global
+    # indexes along dimension time'), or repeat ('Could not find any dimension
+    # coordinates to use to order the datasets') - neither message says what is
+    # actually wrong, and both rule out inputs which are perfectly reasonable to
+    # want, such as a file already spanning several months passed alongside one
+    # of those months. Reading separately lets the overlap be resolved here.
+    ctx_times, ctx_temps = [], []
+    for f in context_files:
+        ds_one = post.handle_time(post.get_ds(f, 'temp'), Yorig=Yorig)
+        daily = ds_one['temp'].resample(time='1D').mean()
+        if daily.shape[1:] != temp_target.shape[1:]:
+            raise ValueError(
+                f'{f} has grid shape {daily.shape[1:]} but the products file has '
+                f'{temp_target.shape[1:]} - context has to be the same domain, on '
+                'the same grid, as the file being added to')
+        ctx_times.append(daily.time.values)
+        ctx_temps.append(daily.values)
+        ds_one.close()
+
+    ctx_time = np.concatenate(ctx_times)
+    ctx_temp = np.concatenate(ctx_temps, axis=0)
+    del ctx_times, ctx_temps
+
+    # The target file is authoritative for its own days, so drop any the context
+    # also covers. Then drop any day supplied more than once, keeping the first
+    # file on the list that had it. Both matter for the same reason: a repeated
+    # day would sit in the window twice and corrupt the length of every run
+    # passing through it, which is exactly what the padding exists to get right.
+    keep = ~np.isin(ctx_time, target_time)
+    _, first_occurrence = np.unique(ctx_time, return_index=True)
+    unique_only = np.zeros(len(ctx_time), dtype=bool)
+    unique_only[first_occurrence] = True
+    n_repeated = int((keep & ~unique_only).sum())
+    keep &= unique_only
+    if n_repeated:
+        print(f'  {n_repeated} day(s) were supplied by more than one context '
+              'file; keeping the first occurrence of each. Note that if the '
+              'files disagree on those days it is the earlier one on the list '
+              'that is used.')
+
+    ctx_time, ctx_temp = ctx_time[keep], ctx_temp[keep]
+
+    time_win = np.concatenate([ctx_time, target_time])
+    temp_win = np.concatenate([ctx_temp, temp_target.values], axis=0)
+    del ctx_time, ctx_temp
+    order = np.argsort(time_win)
+    time_win, temp_win = time_win[order], temp_win[order]
+
+    n_before = int((time_win < target_time[0]).sum())
+    n_after = int((time_win > target_time[-1]).sum())
+    print(f'  detecting over {len(time_win)} days '
+          f'({pd.Timestamp(time_win[0]).date()} to {pd.Timestamp(time_win[-1]).date()}): '
+          f'{n_before} day(s) before and {n_after} after the {len(target_time)} '
+          'day(s) which will be written')
+    return temp_win, time_win
+
+
 def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, batch_size=5,
-                min_duration=5, add_baselines=True):
+                min_duration=5, add_baselines=True, context_files=None):
     """
     Add signed Marine Heatwave / Marine Cold Spell event categories to the
     products file, and optionally the baselines they were detected against.
@@ -742,36 +854,54 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
                   - and there the baselines are far smaller as the day-of-year
                   files they came from, since a hindcast repeats the same 365
                   days of climatology over and over. Pass False in that case.
+    context_files : CROCO file(s) supplying days either side of this file, so
+                  that an event crossing its first or last day is not truncated
+                  by the file boundary. Default None, which is the operational
+                  case - a forecast has no 'next file' to read. A hindcast
+                  stored one month per file passes the neighbouring months here,
+                  which is what makes the Hobday min_duration of 5 days mean the
+                  same thing it would over the whole record. Only the days
+                  belonging to this file are ever written; see
+                  detection_window() for what is read and why the padding is
+                  sufficient.
     """
     ds_prod = open_products(fname_out, fname_in, Yorig)
     ds_clim = mhw.load_and_harmonize_baselines(clim_file, thresh_file)
 
     T_daily, num_levels = ds_prod.sizes['time'], ds_prod.sizes['s_rho']
     n_eta, n_xi = ds_prod.sizes['eta_rho'], ds_prod.sizes['xi_rho']
-    t_dates = np.array([d.toordinal() for d in pd.to_datetime(ds_prod.time.values)],
-                       dtype=int)
+    target_time = ds_prod.time.values
     mask_rho_2d = _mask_2d(ds_prod)
 
-    # Read the climatology/thresholds once, for the forecast days only, across
-    # all levels - see marineheatwaves.load_daily_baselines() for why this
-    # matters so much.
-    print('Loading climatology and thresholds for the forecast days')
-    clim_daily, thresh90_daily, thresh10_daily = mhw.load_daily_baselines(
-        ds_clim, ds_prod.time.values)
+    # The detection runs over target_time plus whatever context_files add either
+    # side; without them the window is just target_time and everything below is
+    # the operational path unchanged. 'keep' is what gets written back.
+    temp_win, win_time = detection_window(ds_prod['temp'], target_time,
+                                          context_files, Yorig)
+    T_win = len(win_time)
+    keep = np.isin(win_time, target_time)
+    t_dates = np.array([d.toordinal() for d in pd.to_datetime(win_time)], dtype=int)
 
-    out_category = np.zeros((T_daily, num_levels, n_eta, n_xi), dtype='int8')
+    # Read the climatology/thresholds once, for the days in the window only,
+    # across all levels - see marineheatwaves.load_daily_baselines() for why
+    # this matters so much.
+    print('Loading climatology and thresholds for the days being detected over')
+    clim_daily, thresh90_daily, thresh10_daily = mhw.load_daily_baselines(
+        ds_clim, win_time)
+
+    out_category = np.zeros((T_win, num_levels, n_eta, n_xi), dtype='int8')
 
     print('Processing vertical planes')
     for k in range(num_levels - 1, -1, -1):
-        temp_level = ds_prod['temp'].isel(s_rho=k).values
+        temp_level = temp_win[:, k, :, :]
         clim_level = clim_daily[:, k, :, :]
 
-        mhw_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
+        mhw_layer = np.zeros((T_win, n_eta, n_xi), dtype='int8')
         mhw.process_single_level(k, num_levels, temp_level, clim_level,
                                  thresh90_daily[:, k, :, :], False, t_dates,
                                  batch_size, mhw_layer, min_duration=min_duration)
 
-        mcs_layer = np.zeros((T_daily, n_eta, n_xi), dtype='int8')
+        mcs_layer = np.zeros((T_win, n_eta, n_xi), dtype='int8')
         mhw.process_single_level(k, num_levels, temp_level, clim_level,
                                  thresh10_daily[:, k, :, :], True, t_dates,
                                  batch_size, mcs_layer, min_duration=min_duration)
@@ -781,6 +911,16 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
         combined[:, mask_rho_2d == 0] = -127
         out_category[:, k, :, :] = combined
         gc.collect()
+
+    # back to this file's own days - the context was only ever there to stop
+    # the runs being cut short, and nothing outside target_time is written
+    if T_win != T_daily:
+        out_category = out_category[keep]
+        clim_daily = clim_daily[keep]
+        thresh90_daily = thresh90_daily[keep]
+        thresh10_daily = thresh10_daily[keep]
+    del temp_win
+    gc.collect()
 
     ds_new = xr.Dataset(
         {'category': (['time', 's_rho', 'eta_rho', 'xi_rho'], out_category)},
@@ -792,6 +932,26 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
 
     action = (f'add_mhw_mcs: MHW/MCS categories against {clim_file} and '
               f'{thresh_file}, min_duration={min_duration} day(s)')
+
+    if T_win != T_daily:
+        # Say on the variable itself that the file boundary is not an artefact
+        # of the detection. Without this a monthly file is indistinguishable
+        # from one processed in isolation, where every event is cut off at the
+        # first and last day and min_duration means something different.
+        span = (f'{pd.Timestamp(win_time[0]).date()} to '
+                f'{pd.Timestamp(win_time[-1]).date()}')
+        written = (f'{pd.Timestamp(target_time[0]).date()} to '
+                   f'{pd.Timestamp(target_time[-1]).date()}')
+        ds_new['category'].attrs['detection_window'] = (
+            f'Events were detected over {span} ({T_win} days) and the categories '
+            f'for {written} ({T_daily} days) written to this file. The extra days '
+            'either side come from the neighbouring files, and are read only so '
+            'that an event crossing the start or end of this file is measured at '
+            'its full length rather than being truncated at the boundary. The '
+            'categories here are therefore the same as a single pass over the '
+            'whole record would give.')
+        action += (f', detected over {span} using context from '
+                   f'{", ".join(context_files)}')
 
     if add_baselines:
         print('Carrying the climatology and thresholds onto the products time axis')

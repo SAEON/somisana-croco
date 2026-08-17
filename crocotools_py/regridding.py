@@ -38,65 +38,33 @@ CATEGORICAL_VARS = {'category'}
 # what keeps tier 3 honest after it builds its own regular grid.
 #
 # Anything specific to a single variable stays on that variable. get_var() and
-# get_uv() carry those attributes through the interpolation, so the summaries
-# below are deliberately about the file, not about its contents.
+# get_uv() carry those attributes through the interpolation, so the titles below
+# are deliberately about the file, not about its contents.
 TIER_TITLES = {
     1: 'SOMISANA CROCO output regridded to the rho grid (tier 1)',
     2: 'SOMISANA CROCO output on constant depth levels (tier 2)',
     3: 'SOMISANA CROCO output on a regular horizontal grid (tier 3)',
 }
 
-TIER_SUMMARIES = {
-    1: ('CROCO output with u and v regridded from the staggered velocity grids '
-        'onto the density (rho) grid and rotated from grid-aligned to '
-        'east/north components, and with a depth variable giving the depth of '
-        'every sigma level at every time step. The vertical grid is still the '
-        "model's native sigma grid and the horizontal grid is still the model's "
-        'native curvilinear grid, so no interpolation of the values themselves '
-        'has been done.'),
-    2: ('As tier 1, but interpolated vertically from the sigma grid onto '
-        'constant depth levels, which become a depth dimension. The horizontal '
-        "grid is still the model's native curvilinear grid. Discrete variables "
-        'are interpolated with nearest neighbour rather than linearly, so that '
-        'flag values are not blended into meaningless intermediates.'),
-    3: ('As tier 2, but interpolated horizontally onto a regular '
-        'longitude/latitude grid, so the curvilinear grid is replaced by '
-        'rectilinear longitude and latitude dimensions. Intended for '
-        'visualisation. Use tier 1 or tier 2 for analysis - this grid can be at '
-        'a very different resolution to the native model grid.'),
-}
-
-
-def source_global_attrs(file):
+def source_history(file):
     """
-    The global attributes of an input file, for global_attrs() to carry forward.
+    The 'history' of an input file, for global_attrs() to chain this step onto.
 
     Reads the header only, and tolerates anything unreadable by returning an
-    empty dict - the provenance chain is worth having but never worth failing a
-    regrid over.
-
-    In a raw CROCO file the 'title' attribute is the domain name (e.g.
-    'SW Cape'), so it is mapped onto 'domain' to be carried forward, the same
-    way make_products_base does. Files this repo wrote always carry a 'summary',
-    and their 'title' says which product they are rather than which domain, so
-    that mapping is applied only when there is no summary - otherwise a tier 2
-    file regridded to tier 3 would end up with 'tier 2' as its domain.
+    empty string - the provenance chain is worth having but never worth failing
+    a regrid over. Raw CROCO output has no 'history', so regridding it simply
+    starts one.
     """
     try:
         with xr.open_dataset(file, decode_times=False) as ds_src:
-            attrs = dict(ds_src.attrs)
+            return str(ds_src.attrs.get('history', ''))
     except Exception as err:
         print(f'  could not read the global attributes of {file} ({err}) - '
               'the output will not carry its provenance')
-        return {}
-
-    if 'domain' not in attrs and 'summary' not in attrs:
-        if str(attrs.get('title', '')).strip():
-            attrs['domain'] = str(attrs['title']).strip()
-    return attrs
+        return ''
 
 def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
-                 varList=['temp','salt','u','v']):
+                 varList=['temp','salt','u','v'], compress=False):
     '''
     tier 1 regridding of a raw CROCO output file(s):
         -> regrids u/v to the density (rho) grid so all parameters are on the same horizontal grid
@@ -114,8 +82,15 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
                 If both components of a vector pair (e.g. u/v, ubar/vbar, sustr/svstr, bustr/bvstr)
                 are present, they are extracted together via get_uv() and rotated to east/north components.
                 If only one component is present, it is extracted via get_var() and remains grid-aligned.
+    compress  : deflate the data variables (default False, i.e. as written up to now).
+                The file stays NETCDF4 either way - this only turns on the internal
+                HDF5 filter, so the values are unchanged and any reader, THREDDS
+                included, decompresses it transparently. Roughly halves the file at
+                a cost of a few tens of seconds per file, which is worth it for a
+                long hindcast being written across a network mount, and not worth
+                bothering with for a single operational forecast.
     '''
-    
+
     if type(fname_in) == str:
         if fname_in.find('*') < 0: 
             fname_in = [fname_in]
@@ -145,8 +120,8 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         ds_all = xr.merge(datasets, compat='override')
         
         ds_all.attrs = cf_attrs.global_attrs(
-            title=TIER_TITLES[1], summary=TIER_SUMMARIES[1], source=file,
-            ds=ds_all, src_attrs=source_global_attrs(file), doi_link=doi_link,
+            title=TIER_TITLES[1], source=file,
+            ds=ds_all, src_history=source_history(file), doi_link=doi_link,
             action=f'regrid_tier1: u/v regridded to the rho grid and rotated to '
                    f'east/north, sigma level depths added, from {file}')
 
@@ -164,10 +139,15 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
                 encoding[var] = {"dtype": "float32"}
         if 'depth' in ds_all.variables:  # allow for both cases where depth is or isn't in the dataset (e.g. if a surface file is used)
             encoding['depth'] = {"dtype": "float32"}
+        if compress:
+            # deflate everything already in the encoding dict - the time axis is
+            # added below and is far too small to be worth compressing
+            for enc in encoding.values():
+                enc.update({"zlib": True, "complevel": 2})
         encoding["time"] = {"units": f"seconds since {Yorig}-01-01 00:00:00",
                             "calendar": "standard",
                             "dtype": "i4"}
-      
+
         # robust way of getting the file extension, including CROCO child domains e.g. *nc.2, *.nc.2 etc
         basename = os.path.basename(file)
         match = re.search(r"(\.nc\.\d+)$|(\.nc)$", basename)
@@ -239,8 +219,8 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         ds_all = xr.merge(datasets, compat='override')
 
         ds_all.attrs = cf_attrs.global_attrs(
-            title=TIER_TITLES[2], summary=TIER_SUMMARIES[2], source=file,
-            ds=ds_all, src_attrs=source_global_attrs(file), doi_link=doi_link,
+            title=TIER_TITLES[2], source=file,
+            ds=ds_all, src_history=source_history(file), doi_link=doi_link,
             action=f'regrid_tier2: interpolated to depth levels '
                    f'{", ".join(str(d) for d in depths)} m, from {file}')
 
@@ -534,11 +514,11 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
 
         data_out = xr.Dataset(data_vars=data_vars, coords=coords)
 
-        # source_global_attrs() rather than the already-open ds.attrs, so that
-        # all three tiers treat their input's header identically
+        # source_history() rather than the already-open ds.attrs, so that all
+        # three tiers treat their input's header identically
         data_out.attrs = cf_attrs.global_attrs(
-            title=TIER_TITLES[3], summary=TIER_SUMMARIES[3], source=file,
-            ds=data_out, src_attrs=source_global_attrs(file), doi_link=doi_link,
+            title=TIER_TITLES[3], source=file,
+            ds=data_out, src_history=source_history(file), doi_link=doi_link,
             action=f'regrid_tier3: interpolated onto a regular {spacing} degree '
                    f'grid using {method} interpolation, from {file}')
 

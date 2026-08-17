@@ -166,9 +166,11 @@ def main():
     parser_regrid_tier1.add_argument('--varList', required=False, type=parse_list_str,
                          default=['temp','salt','u','v'],
                          help='comma separated list of variables to regrid e.g. temp,salt,u,v')
+    parser_regrid_tier1.add_argument('--compress', required=False, type=parse_bool, default=False,
+                         help='deflate the data variables (default False). The file stays NETCDF4 either way - this only turns on the internal HDF5 filter, so the values are unchanged and any reader, THREDDS included, decompresses it transparently. Roughly halves the file for a few tens of seconds per file, which is worth it when writing a long hindcast across a network mount')
     def regrid_tier1_handler(args):
         regrid_tier1(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link,
-                     varList = args.varList)
+                     varList = args.varList, compress = args.compress)
     parser_regrid_tier1.set_defaults(func=regrid_tier1_handler)
     
     # --------------
@@ -526,10 +528,13 @@ def main():
             help='number of days a threshold exceedance must last to count as an event. Default is 5, as per Hobday et al. (2016). Note that the duration is measured within the run window and not against the real history of the ocean, so the default makes the result depend on how long the run is - a 10 day GFS forced run and a ~7 day SAWS forced run flag different things from the same ocean state. Use 1 to make every exceedance an event, which removes that dependence at the cost of no longer being a Hobday standard MHW/MCS')
     parser_add_mhw.add_argument('--add_baselines', required=False, type=parse_bool, default=True,
             help='also write the day-of-year climatology and the 90th/10th percentile thresholds onto the products time axis, as temp_clim, temp_thresh_90 and temp_thresh_10 (default True). They are read anyway to do the detection, so this only costs disk space, and it lets temperature be plotted against its climatology and thresholds straight from the products file. Pass False for a long hindcast, where three extra 4D fields are not worth it and the day-of-year files are the more compact way to hold the same information')
+    parser_add_mhw.add_argument('--context_files', required=False, type=parse_list_str, default=None,
+            help='comma separated CROCO file(s) supplying days either side of fname_out, so that an event crossing its first or last day is measured at its full length instead of being truncated at the file boundary. Default is none, which is the operational case - a forecast has no next file to read. A hindcast held one month per file passes the neighbouring months here, which is what makes --min_duration 5 mean the same thing it would over the whole record. Only the days belonging to fname_out are ever written; the context is read for detection only, and can be either products files or raw CROCO output. The files may overlap each other and may overlap fname_out, and may be given in any order: a day fname_out already has is taken from fname_out, and a day supplied by more than one context file is taken from the first of them on the list')
     def add_mhw_mcs_handler(args):
         add_mhw_mcs(args.fname_out, args.clim_file, args.thresh_file,
                     fname_in=args.fname_in, Yorig=args.Yorig, batch_size=args.batch_size,
-                    min_duration=args.min_duration, add_baselines=args.add_baselines)
+                    min_duration=args.min_duration, add_baselines=args.add_baselines,
+                    context_files=args.context_files)
     parser_add_mhw.set_defaults(func=add_mhw_mcs_handler)
 
     # ----------------------
