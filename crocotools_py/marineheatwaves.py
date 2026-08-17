@@ -1,21 +1,36 @@
 """
-Marine Heatwave (MHW) and Marine Cold Spell (MCS) detection.
+Marine Heatwave (MHW) and Marine Cold Spell (MCS) detection and statistics.
 
-Event detection against a pre-built day-of-year climatology and percentile
-thresholds, following Hobday et al. (2016). This module holds the detection
-algorithm only, with no operational plumbing or plotting, so that it can be
-imported on its own for hindcast analysis.
+Two separate things, in that order:
 
-The operational forecast products built on top of it (the daily-averaged
-products file, anomalies, SST fronts, stratification, and the figures and
-animations) live in crocotools_py.products.
+  detection  - per day, per grid cell, against a pre-built day-of-year
+               climatology and percentile thresholds, following Hobday et al.
+               (2016). This is what products.add_mhw_mcs calls to write the
+               'category' variable into a products file.
+  statistics - per year, per grid cell, computed from those categories once
+               they exist. See annual_event_stats() and write_event_stats().
+
+They are deliberately not one operation. Detection is only ever handed one
+file's worth of days, and event statistics are only meaningful over a whole
+record, so computing them together would count an event once per file it
+touches. See the section header above annual_event_stats().
+
+The operational forecast products built on top of the detection (the
+daily-averaged products file, anomalies, SST fronts, stratification, and the
+figures and animations) live in crocotools_py.products.
 """
 
-from datetime import date
+import os
+from glob import glob
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import xarray as xr
 import scipy.ndimage as ndimage
+
+import crocotools_py.postprocess as post
+import crocotools_py.define_attrs as cf_attrs
 
 # Two separate exceedances no more than this many days apart are joined into a
 # single event, as per Hobday et al. (2016). Kept as a constant so that the
@@ -78,37 +93,14 @@ def category_attrs(min_duration=5, max_gap=MAX_GAP_DAYS):
 
 
 # Core Heatwave Algorithms
-def empty_event_dict():
-    """
-    An empty per-event statistics dict, as returned by
-    detect_events_with_climatology(). Kept as its own function so the same
-    definition is used whether or not statistics are being collected.
-    """
-    return {'time_start': [], 'time_end': [], 'time_peak': [],
-        'date_start': [], 'date_end': [], 'date_peak': [],
-        'index_start': [], 'index_end': [], 'index_peak': [],
-        'duration': [], 'duration_moderate': [], 'duration_strong': [],
-        'duration_severe': [], 'duration_extreme': [],
-        'intensity_max': [], 'intensity_mean': [], 'intensity_var': [],
-        'intensity_cumulative': [],
-        'intensity_max_relThresh': [], 'intensity_mean_relThresh': [],
-        'intensity_var_relThresh': [], 'intensity_cumulative_relThresh': [],
-        'intensity_max_abs': [], 'intensity_mean_abs': [],
-        'intensity_var_abs': [], 'intensity_cumulative_abs': [],
-        'category': [],
-        'rate_onset': [], 'rate_decline': [],
-        'n_events': 0,}
-
-
-def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t_dates=None,
-                                    stats=True, min_duration=5):
+def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold,
+                                   min_duration=5):
     """
     Detect MHW/MCS events using pre-computed climatology.
 
-    Returns (mhw, categories) where 'categories' is the per-timestep signed
-    category time-series and 'mhw' is a dict of per-event statistics
-    (durations, intensities, onset/decline rates etc - see
-    empty_event_dict()).
+    Returns the per-timestep category time-series for one grid cell. The
+    magnitude is the Hobday et al. (2016) category and the sign is applied by
+    the caller, since a cell cannot be in both states at once.
 
     Categories follow Hobday et al. (2016): with dT = threshold - climatology,
     a day is category floor((T - climatology)/dT), i.e. 1 = Moderate (T is
@@ -116,27 +108,21 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
     4 = Extreme. Category 4 is an open-ended top bucket (>= 4x dT) - there is
     no category 5 in the scheme.
 
-    stats : if True (the default) the per-event statistics are computed, as
-            they always have been - this is what you want for hindcast
-            analysis. If False, only 'categories' is computed and the first
-            return value is None. Building those statistics is the bulk of
-            the cost of this function, and the operational forecast pipeline
-            writes only the categories, so it passes stats=False. The
-            'categories' output is identical either way - the statistics are
-            computed in an 'if stats:' block *after* the category assignment,
-            so both settings run the same category code path.
+    This function deliberately does NOT compute per-event statistics
+    (durations, intensities, onset rates). Those are only meaningful over a
+    whole record, and this is only ever handed one file's worth of days - so
+    computing them here would silently count an event once per file it touches
+    and split its duration across them. They are a separate step, run on the
+    categories once they exist: see annual_event_stats().
 
     min_duration : number of days an exceedance must last before it counts as an
             event, default 5 as per Hobday et al. (2016).
-
     """
     n_time     = len(temp_data)
     categories = np.zeros(n_time, dtype='int8')
 
-    mhw = empty_event_dict() if stats else None
-
     if np.all(np.isnan(temp_data)) or np.all(temp_data == 0):
-        return mhw, categories
+        return categories
 
     temp_clean = temp_data.copy()
     temp_clean[np.isnan(temp_clean)] = clim_seas[np.isnan(temp_clean)]
@@ -166,8 +152,6 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         clim_thresh_use = clim_thresh
         temp_work       = temp_clean
 
-    cat_names = CATEGORY_NAMES
-
     for ev in range(1, n_events + 1):
         event_idx  = np.where(events == ev)[0]
         event_dur  = len(event_idx)
@@ -181,80 +165,17 @@ def detect_events_with_climatology(temp_data, clim_seas, clim_thresh, is_cold, t
         thresh_mhw = clim_thresh_use[tt_start:tt_end + 1]
         seas_mhw   = clim_seas_use[tt_start:tt_end + 1]
 
-        # The category time-series is the only thing the operational pipeline
-        # needs, so it is computed (and assigned) before the statistics block
-        # below - that way stats=True and stats=False run identical code to
-        # get here and are guaranteed to produce the same categories.
-        #
         # floor(1 + (T - thresh)/(thresh - clim)) == floor((T - clim)/dT), the
         # Hobday category. It is capped at 4 because Extreme is an open-ended
-        # top bucket (>= 4x dT) - which is how duration_extreme counts it
-        # below (cats >= 4) and how peak_cat_val names it. Capping at 5 instead
-        # let a category with no name, no colour in the plotting colormap and
-        # no place in the file's own metadata reach the output.
+        # top bucket (>= 4x dT): capping at 5 instead let a category with no
+        # name, no colour in the plotting colormap and no place in the file's
+        # own metadata reach the output.
         mhw_relThreshNorm = (temp_mhw - thresh_mhw) / (thresh_mhw - seas_mhw)
         cats              = np.clip(np.floor(1.0 + mhw_relThreshNorm), 1, 4)
         categories[tt_start:tt_end + 1] = cats.astype('int8')
 
-        if not stats:
-            continue
+    return categories
 
-        mhw_relSeas       = temp_mhw - seas_mhw
-        mhw_relThresh     = temp_mhw - thresh_mhw
-        mhw_abs           = temp_mhw
-
-        tt_peak = int(np.argmax(mhw_relSeas))
-
-        mhw['index_start'].append(int(tt_start))
-        mhw['index_end'].append(int(tt_end))
-        mhw['index_peak'].append(int(tt_start + tt_peak))
-
-        if t_dates is not None:
-            mhw['time_start'].append(int(t_dates[tt_start]))
-            mhw['time_end'].append(int(t_dates[tt_end]))
-            mhw['time_peak'].append(int(t_dates[tt_start + tt_peak]))
-            mhw['date_start'].append(date.fromordinal(int(t_dates[tt_start])))
-            mhw['date_end'].append(date.fromordinal(int(t_dates[tt_end])))
-            mhw['date_peak'].append(date.fromordinal(int(t_dates[tt_start + tt_peak])))
-        else:
-            for key in ('time_start', 'time_end', 'time_peak'): mhw[key].append(None)
-            for key in ('date_start', 'date_end', 'date_peak'): mhw[key].append(None)
-
-        mhw['duration'].append(event_dur)
-        mhw['intensity_max'].append(float(mhw_relSeas[tt_peak]))
-        mhw['intensity_mean'].append(float(mhw_relSeas.mean()))
-        mhw['intensity_var'].append(float(np.sqrt(mhw_relSeas.var())))
-        mhw['intensity_cumulative'].append(float(mhw_relSeas.sum()))
-
-        mhw['intensity_max_relThresh'].append(float(mhw_relThresh[tt_peak]))
-        mhw['intensity_mean_relThresh'].append(float(mhw_relThresh.mean()))
-        mhw['intensity_var_relThresh'].append(float(np.sqrt(mhw_relThresh.var())))
-        mhw['intensity_cumulative_relThresh'].append(float(mhw_relThresh.sum()))
-
-        mhw['intensity_max_abs'].append(float(mhw_abs[tt_peak]))
-        mhw['intensity_mean_abs'].append(float(mhw_abs.mean()))
-        mhw['intensity_var_abs'].append(float(np.sqrt(mhw_abs.var())))
-        mhw['intensity_cumulative_abs'].append(float(mhw_abs.sum()))
-
-        tt_peakCat    = int(np.argmax(mhw_relThreshNorm))
-        peak_cat_val  = int(np.clip(cats[tt_peakCat], 1, 4))
-        mhw['category'].append(cat_names[peak_cat_val - 1])
-
-        mhw['duration_moderate'].append(int(np.sum(cats == 1)))
-        mhw['duration_strong'].append(int(np.sum(cats == 2)))
-        mhw['duration_severe'].append(int(np.sum(cats == 3)))
-        mhw['duration_extreme'].append(int(np.sum(cats >= 4)))
-
-        if event_dur > 1:
-            mhw['rate_onset'].append(float(mhw_relSeas[tt_peak] / (tt_peak + 1)))
-            mhw['rate_decline'].append(float(mhw_relSeas[tt_peak] / (event_dur - tt_peak)))
-        else:
-            mhw['rate_onset'].append(0.0)
-            mhw['rate_decline'].append(0.0)
-
-    if stats:
-        mhw['n_events'] = len(mhw['duration'])
-    return mhw, categories
 
 def build_doy_alignment_index(temp_time, doy_values):
     """
@@ -317,45 +238,30 @@ def load_daily_baselines(ds_clim, temp_time,
     return tuple(out)
 
 
-def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold, t_dates,
-                         stats=True, min_duration=5):
+def process_level_batch(temp_slice, clim_seas_slice, clim_thresh_slice, is_cold,
+                        min_duration=5):
     """
-    Detect MHW/MCS events for a (time, eta, xi) slab.
+    Detect MHW/MCS events for a (time, eta, xi) slab, returning the categories.
 
-    stats : passed through to detect_events_with_climatology(). With the
-            default of True the per-grid-cell statistics dicts are collected
-            and returned as before. With stats=False they are not computed at
-            all and the second return value is None - the 'categories' output
-            is unaffected either way.
-    min_duration : passed through to detect_events_with_climatology().
+    min_duration is passed through to detect_events_with_climatology().
     """
     n_time, n_eta, n_xi = temp_slice.shape
     categories = np.zeros((n_time, n_eta, n_xi), dtype='int8')
-    mhw_dicts  = [] if stats else None
 
     for i in range(n_eta):
         for j in range(n_xi):
-            temp_ts        = temp_slice[:, i, j]
-            clim_seas_ts   = clim_seas_slice[:, i, j]
-            clim_thresh_ts = clim_thresh_slice[:, i, j]
+            temp_ts = temp_slice[:, i, j]
 
             if np.all(np.isnan(temp_ts)):
-                if stats:
-                    mhw_dicts.append(None)
                 continue
 
-            mhw_ev, cats           = detect_events_with_climatology(
-                temp_ts, clim_seas_ts, clim_thresh_ts, is_cold, t_dates, stats=stats,
-                min_duration=min_duration
-            )
-            categories[:, i, j]   = cats
-            if stats:
-                mhw_dicts.append(mhw_ev)
-    return categories, mhw_dicts
+            categories[:, i, j] = detect_events_with_climatology(
+                temp_ts, clim_seas_slice[:, i, j], clim_thresh_slice[:, i, j],
+                is_cold, min_duration=min_duration)
+    return categories
 
 def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thresh_level,
-                          is_cold, t_dates, batch_size, cat_slice, stats=False,
-                          min_duration=5):
+                         is_cold, batch_size, cat_slice, min_duration=5):
     """
     Detect MHW/MCS events for one vertical plane and store inside the in-memory array tracker.
 
@@ -363,12 +269,6 @@ def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thre
     arrays for this level, already resampled to daily means and already aligned
     onto the forecast days by load_daily_baselines - so nothing is read from
     disk in here.
-
-    stats defaults to False here (unlike the functions this calls, which
-    default to True for backwards compatibility): this function only ever
-    writes categories into cat_slice, so collecting the per-grid-cell event
-    statistics would be pure overhead - and it is the dominant cost of the
-    operational run.
 
     min_duration is passed through to detect_events_with_climatology() - see
     there for what it means and why the operational runs do not use the
@@ -381,11 +281,10 @@ def process_single_level(level, n_levels, temp_level, clim_seas_level, clim_thre
     for i in range(0, n_eta, batch_size):
         end_i = min(i + batch_size, n_eta)
 
-        categories, _ = process_level_batch(temp_level[:, i:end_i, :],
-                                            clim_seas_level[:, i:end_i, :],
-                                            clim_thresh_level[:, i:end_i, :],
-                                            is_cold, t_dates, stats=stats,
-                                            min_duration=min_duration)
+        categories = process_level_batch(temp_level[:, i:end_i, :],
+                                         clim_seas_level[:, i:end_i, :],
+                                         clim_thresh_level[:, i:end_i, :],
+                                         is_cold, min_duration=min_duration)
 
         if is_cold:
             categories = -np.abs(categories).astype('int8')
@@ -425,3 +324,383 @@ def load_and_harmonize_baselines(clim_file, thresh_file=None):
             ds_clim = ds_clim.assign_coords({v: ds_clim_raw[v]})
             
     return ds_clim
+
+
+# Annual event statistics
+#
+# Once the categories exist, the event statistics are computed from them rather
+# than by detecting all over again. A run of days with a non-zero category IS an
+# event: min_duration and the gap bridging were already applied when the
+# categories were written, so nothing here needs the temperature, the
+# climatology or the thresholds - only 'category' and 'temp_anom', which is
+# T - climatology and therefore the event intensity by definition.
+#
+# This is also why it must be a separate step rather than a flag on the
+# detection. Detection is only ever handed one file's worth of days, so an event
+# crossing a file boundary would be counted once per file it touches and its
+# duration split between them. The statistics are computed on the concatenated
+# record instead, where a run is the whole event - which is sound precisely
+# because products.detection_window() makes the monthly categories identical to
+# what a single pass over the whole record would give.
+#
+# Two attribution conventions, both recorded on the output variables:
+#
+#   day-based metrics   (days, days_<category>, intensity_*) count each day in
+#                       the calendar year that day falls in. Unambiguous.
+#   event-based metrics (count, duration_mean, duration_max) attribute the whole
+#                       event to the year it STARTED in, so an event is counted
+#                       exactly once no matter how many years it spans.
+#
+# A consequence worth knowing when reading the file: duration_mean is not
+# days/count, because the two are binned differently at year boundaries.
+
+# Statistics computed for each sign, as {suffix: (long_name, units, dtype)}.
+#
+# Note the units on the day counts and durations. 'days' (plural) is NOT usable
+# here: xarray reads a variable whose units attribute is a plural time unit as a
+# timedelta and decodes it to nanoseconds, so a count of 41724 days comes back
+# as 3.6e18 to anyone who opens the file normally. A count is dimensionless, so
+# it takes '1' with the meaning in the long_name; a duration really is in days,
+# so it takes the UDUNITS canonical singular 'day', which is not decoded.
+EVENT_STAT_VARS = {
+    'days':                ('days in an event', '1', 'int16'),
+    'count':               ('number of events starting', '1', 'int16'),
+    'duration_mean':       ('mean event duration', 'day', 'float32'),
+    'duration_max':        ('longest event duration', 'day', 'int16'),
+    'intensity_mean':      ('mean intensity over event days', 'degC', 'float32'),
+    'intensity_max':       ('peak intensity', 'degC', 'float32'),
+    'intensity_cumulative': ('cumulative intensity over event days', 'degC day', 'float32'),
+    'days_moderate':       ('days at category 1 (Moderate)', '1', 'int16'),
+    'days_strong':         ('days at category 2 (Strong)', '1', 'int16'),
+    'days_severe':         ('days at category 3 (Severe)', '1', 'int16'),
+    'days_extreme':        ('days at category 4 (Extreme)', '1', 'int16'),
+}
+
+
+def _stats_one_sign(in_event, magnitude, intensity, year_of_day, n_years):
+    """
+    Annual event statistics for one sign (heatwaves or cold spells), for one
+    vertical level.
+
+    Parameters
+    ----------
+    in_event    : (time, eta, xi) bool - is this day part of an event
+    magnitude   : (time, eta, xi) int8 - the Hobday category 1..4, 0 outside
+    intensity   : (time, eta, xi) float - |T - climatology|, a positive
+                  magnitude for both signs so that a cold spell 3 degC below the
+                  climatology reads as 3, not -3
+    year_of_day : (time,) int - index into the output year axis for each day
+    n_years     : length of the output year axis
+
+    Returns {suffix: (n_years, eta, xi) array} keyed as in EVENT_STAT_VARS.
+    """
+    n_time, n_eta, n_xi = in_event.shape
+    shape = (n_years, n_eta, n_xi)
+
+    out = {name: np.zeros(shape, dtype=('float64' if spec[2] == 'float32' else 'int64'))
+           for name, spec in EVENT_STAT_VARS.items()}
+
+    # --- day-based metrics: whole-year slices, since days are contiguous ------
+    # a plain reduction per year, which is why these need no event logic at all
+    bounds = np.searchsorted(year_of_day, np.arange(n_years + 1))
+    for y in range(n_years):
+        t0, t1 = bounds[y], bounds[y + 1]
+        if t1 <= t0:
+            continue
+        ev = in_event[t0:t1]
+        n_days = ev.sum(axis=0)
+        out['days'][y] = n_days
+
+        mag = magnitude[t0:t1]
+        for cat, key in enumerate(('days_moderate', 'days_strong',
+                                   'days_severe', 'days_extreme'), start=1):
+            out[key][y] = (mag == cat).sum(axis=0)
+
+        # Zero outside events rather than NaN, then reduce normally: within an
+        # event the intensity is positive by construction for both signs, so a
+        # plain sum and max are correct and there are no all-NaN slices to warn
+        # about. Cells with no event days are set to NaN afterwards - 0 would
+        # read as 'an event of zero intensity' rather than 'no event'.
+        inten = np.where(ev, intensity[t0:t1], 0.0)
+        none = n_days == 0
+        total = inten.sum(axis=0)
+        out['intensity_cumulative'][y] = np.where(none, np.nan, total)
+        out['intensity_mean'][y] = np.where(none, np.nan,
+                                            total / np.maximum(n_days, 1))
+        out['intensity_max'][y] = np.where(none, np.nan, inten.max(axis=0))
+
+    # --- event-based metrics: one pass, tracking the run length --------------
+    # 'run' holds how many consecutive event days each cell is currently in. An
+    # event ENDS on the last day it is still in one, and at that point run is its
+    # full duration and t - run + 1 is the day it started - which is what gets
+    # it attributed to its start year.
+    run = np.zeros((n_eta, n_xi), dtype='int32')
+    end_year, end_cell, end_dur = [], [], []
+    for t in range(n_time):
+        here = in_event[t]
+        run = np.where(here, run + 1, 0)
+        ends = here & (~in_event[t + 1] if t + 1 < n_time else here)
+        if not ends.any():
+            continue
+        ii, jj = np.nonzero(ends)
+        dur = run[ii, jj]
+        end_year.append(year_of_day[t - dur + 1])
+        end_cell.append(ii * n_xi + jj)
+        end_dur.append(dur)
+
+    if end_dur:
+        ey = np.concatenate(end_year)
+        ec = np.concatenate(end_cell)
+        ed = np.concatenate(end_dur).astype('int64')
+        flat = ey * (n_eta * n_xi) + ec
+        size = n_years * n_eta * n_xi
+        out['count'] = np.bincount(flat, minlength=size).reshape(shape)
+        dur_sum = np.bincount(flat, weights=ed, minlength=size).reshape(shape)
+        dur_max = np.zeros(size, dtype='int64')
+        np.maximum.at(dur_max, flat, ed)
+        out['duration_max'] = dur_max.reshape(shape)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            out['duration_mean'] = np.where(out['count'] > 0,
+                                            dur_sum / np.maximum(out['count'], 1),
+                                            np.nan)
+    else:
+        out['duration_mean'][:] = np.nan
+
+    return out
+
+
+def annual_event_stats(category, temp_anom, times, mask=None):
+    """
+    Annual MHW and MCS event statistics for one vertical level.
+
+    Parameters
+    ----------
+    category  : (time, eta, xi) signed Hobday category, as written by
+                products.add_mhw_mcs. Land may be the int8 fill of -127 or NaN;
+                either is handled, and `mask` blanks it either way
+    temp_anom : (time, eta, xi) temperature anomaly T - climatology, as written
+                by products.add_anomalies. This is the event intensity
+    times     : (time,) datetime64 - the days the two arrays cover
+    mask      : (eta, xi) land/sea mask, 1 = sea. Land is set to NaN (float
+                outputs) or 0 (integer outputs) in the result
+
+    Returns (stats, years) where stats is {variable_name: (n_years, eta, xi)}
+    with names like 'mhw_days' and 'mcs_intensity_max', and years is the
+    calendar years covered.
+    """
+    times = pd.DatetimeIndex(times)
+    years = np.arange(times.year.min(), times.year.max() + 1)
+    year_of_day = (times.year.values - years[0]).astype('int64')
+
+    cat = np.asarray(category)
+    # land may arrive as the int8 fill or as NaN depending on how it was read
+    valid = np.isfinite(cat) if cat.dtype.kind == 'f' else (cat != -127)
+    cat = np.where(valid, cat, 0).astype('int8')
+    anom = np.asarray(temp_anom, dtype='float32')
+
+    stats = {}
+    for sign, prefix in ((1, 'mhw'), (-1, 'mcs')):
+        in_event = (cat * sign) > 0
+        magnitude = np.abs(cat) * in_event
+        # intensity as a positive magnitude for both signs - a cold spell 3 degC
+        # below the climatology reads as 3, matching how its category is |cat|
+        intensity = anom * sign
+        one = _stats_one_sign(in_event, magnitude, intensity, year_of_day, len(years))
+        for suffix, arr in one.items():
+            stats[f'{prefix}_{suffix}'] = arr
+
+    if mask is not None:
+        land = np.asarray(mask) == 0
+        for name, arr in stats.items():
+            dtype = EVENT_STAT_VARS[name.split('_', 1)[1]][2]
+            arr[:, land] = np.nan if dtype == 'float32' else 0
+
+    return stats, years
+
+
+STATS_TITLE = 'SOMISANA annual marine heatwave / marine cold spell statistics'
+
+# Heavy 4D fields in a products file that the statistics never look at. Dropped
+# on open so that reading 33 years of monthly files does not pull them through.
+STATS_DROP_VARS = ['temp', 'salt', 'u', 'v', 'zeta_anom', 'sst_front',
+                   'stratification', 'density_deep', 'density_target_depth',
+                   'temp_clim', 'temp_thresh_90', 'temp_thresh_10']
+
+
+def mean_sigma_depths(ds):
+    """
+    Depth of each sigma level (metres, negative down) at the record-mean sea
+    surface, as (s_rho, eta_rho, xi_rho).
+
+    The statistics file has a year axis, not a time axis, so it cannot carry
+    the time-varying depths a tier 1 file does. It does not need to: the sigma
+    depths breathe with zeta, which on this grid is centimetres at the surface
+    and millimetres at depth, against level spacings of metres to hundreds of
+    metres. One static field computed at the mean sea surface describes the
+    grid the statistics sit on, and is what makes the file independently
+    usable without going back to the products files.
+    """
+    zeta_mean = ds['zeta'].mean(dim='time').values
+    ds_one = ds.isel(time=[0]).copy()
+    ds_one['zeta'] = (('time', 'eta_rho', 'xi_rho'), zeta_mean[np.newaxis, ...])
+    return post.get_depths(ds_one).values[0]
+
+
+def write_event_stats(fname_in, fname_out, Yorig=2000, doi_link=None,
+                      compress=True):
+    """
+    Write annual MHW/MCS event statistics from a set of products files.
+
+    The input is any number of products files carrying 'category' and
+    'temp_anom' - typically the monthly files of a hindcast, given as a wildcard
+    or a list. They are concatenated along time, so an event crossing a file
+    boundary is one event, which is only sound because products.add_mhw_mcs was
+    run with the neighbouring files as context (see products.detection_window).
+
+    The output is NOT in CROCO format and cannot be fed to the regridding tiers:
+    its vertical axis is still the model's sigma grid but its time axis is
+    calendar years, so there is nothing for regrid_tier2 to interpolate onto
+    depth levels. It is written to stand on its own instead, in the shape of a
+    tier 1 file - lon_rho/lat_rho, h, mask and a 'depth' variable giving where
+    each sigma level actually sits - so it can be read and plotted without
+    reference to anything else.
+
+    Parameters
+    ----------
+    fname_in  : products file(s) - a wildcard string or a list
+    fname_out : statistics file to write
+    Yorig     : origin year of the CROCO time axis of the input files
+    doi_link  : bare DOI, written as a full https://doi.org/ URL
+    compress  : deflate the output (default True; it is small either way)
+    """
+    os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
+    files = sorted(glob(fname_in)) if isinstance(fname_in, str) else sorted(fname_in)
+    if not files:
+        raise ValueError(f'no files matched {fname_in}')
+    print(f'Reading {len(files)} products file(s)')
+
+    # mask_and_scale=False keeps 'category' as int8: letting xarray decode its
+    # -127 fill to NaN would promote 33 years of it to float and quadruple the
+    # read for nothing, since the land mask says the same thing
+    ds = xr.open_mfdataset(files, decode_times=False, mask_and_scale=False,
+                           combine='by_coords', data_vars='minimal',
+                           coords='minimal', compat='override',
+                           drop_variables=STATS_DROP_VARS)
+    ds = post.handle_time(ds, Yorig=Yorig)
+
+    for needed in ('category', 'temp_anom'):
+        if needed not in ds:
+            raise ValueError(
+                f"'{needed}' is not in the input files, so the statistics cannot "
+                'be computed. They are written by products.add_mhw_mcs and '
+                'products.add_anomalies respectively.')
+
+    times = pd.DatetimeIndex(ds['time'].values)
+    n_lev = ds.sizes['s_rho']
+    n_eta, n_xi = ds.sizes['eta_rho'], ds.sizes['xi_rho']
+    years = np.arange(times.year.min(), times.year.max() + 1)
+    print(f'  {len(times)} days, {times[0].date()} to {times[-1].date()} '
+          f'-> {len(years)} years, {n_lev} levels')
+
+    gaps = np.diff(times.values).astype('timedelta64[D]').astype(int)
+    if (gaps != 1).any():
+        n_gap = int((gaps != 1).sum())
+        print(f'  WARNING: the time axis is not continuous - {n_gap} gap(s). An '
+              'event either side of a gap will be counted as two.')
+
+    mask = ds['mask_rho'].values
+    mask = mask[0] if mask.ndim > 2 else mask
+
+    print('Computing the mean sigma level depths')
+    depth = mean_sigma_depths(ds)
+
+    out = {}
+    for prefix in ('mhw', 'mcs'):
+        for suffix, (_, _, dtype) in EVENT_STAT_VARS.items():
+            out[f'{prefix}_{suffix}'] = np.zeros((len(years), n_lev, n_eta, n_xi),
+                                                 dtype=dtype)
+
+    for k in range(n_lev):
+        print(f'  level {k + 1}/{n_lev}', end='\r')
+        # one chunk per file per level, because products.default_encoding chunks
+        # the 4D fields one sigma level at a time
+        cat = ds['category'].isel(s_rho=k).values
+        anom = ds['temp_anom'].isel(s_rho=k).values
+        stats, _ = annual_event_stats(cat, anom, times, mask=mask)
+        for name, arr in stats.items():
+            out[name][:, k] = arr.astype(out[name].dtype)
+        del cat, anom, stats
+    print(f'  {n_lev} levels complete' + ' ' * 20)
+
+    ds_out = xr.Dataset(coords={
+        'year': ('year', years.astype('int32')),
+        's_rho': ('s_rho', ds['s_rho'].values),
+        'lon_rho': (('eta_rho', 'xi_rho'), ds['lon_rho'].values),
+        'lat_rho': (('eta_rho', 'xi_rho'), ds['lat_rho'].values)})
+    ds_out['year'].attrs = {'long_name': 'calendar year', 'units': '1'}
+
+    ds_out['depth'] = (('s_rho', 'eta_rho', 'xi_rho'), depth.astype('float32'))
+    ds_out['depth'].attrs = {
+        'long_name': 'Depth of the sigma levels at the record-mean sea surface',
+        'units': 'm', 'standard_name': 'depth', 'positive': 'up',
+        'comment': 'Static, unlike the time-varying depth of a tier 1 file - see '
+                   'marineheatwaves.mean_sigma_depths()'}
+    ds_out['h'] = (('eta_rho', 'xi_rho'), ds['h'].values.astype('float32'))
+    # the input is opened with mask_and_scale=False, which leaves _FillValue and
+    # friends in attrs rather than moving them to encoding - carrying them over
+    # would collide with the encoding set below
+    ds_out['h'].attrs = {k: v for k, v in ds['h'].attrs.items()
+                         if k not in ('_FillValue', 'scale_factor', 'add_offset',
+                                      'missing_value')}
+    ds_out['mask'] = (('eta_rho', 'xi_rho'), mask.astype('float32'))
+    ds_out['mask'].attrs = {'long_name': 'mask on RHO-points', 'option_0': 'land',
+                            'option_1': 'water', 'standard_name': 'land_binary_mask'}
+
+    dims4 = ('year', 's_rho', 'eta_rho', 'xi_rho')
+    for prefix, what in (('mhw', 'marine heatwave'), ('mcs', 'marine cold spell')):
+        for suffix, (long_name, units, _) in EVENT_STAT_VARS.items():
+            name = f'{prefix}_{suffix}'
+            ds_out[name] = (dims4, out[name])
+            by_event = suffix in ('count', 'duration_mean', 'duration_max')
+            binned = ('the year the event started in, so an event spanning a year '
+                      'boundary is counted once'
+                      if by_event else 'the calendar year each day falls in')
+            method = ('year: maximum' if suffix.endswith('_max') else
+                      'year: mean' if suffix.endswith('_mean') else 'year: sum')
+            attrs = {'long_name': f'Annual {what} {long_name}',
+                     'units': units, 'cell_methods': method,
+                     'comment': f'Binned by {binned}.'}
+            if suffix.startswith('intensity'):
+                attrs['comment'] += (' Intensity is |temperature - climatology|, '
+                                     'a positive magnitude for both heatwaves and '
+                                     'cold spells. NaN where there were no event '
+                                     'days that year.')
+            ds_out[name].attrs = attrs
+
+    ds_out.attrs = cf_attrs.global_attrs(
+        title=STATS_TITLE,
+        source=f'{len(files)} products file(s): {files[0]} .. {files[-1]}',
+        ds=ds_out, doi_link=doi_link,
+        src_history=str(ds.attrs.get('history', '')),
+        extra={'time_coverage_start': f'{times[0].date()}T00:00:00Z',
+               'time_coverage_end': f'{times[-1].date()}T00:00:00Z',
+               'time_coverage_resolution': 'P1Y'},
+        action=f'write_event_stats: annual MHW/MCS event statistics over '
+               f'{times[0].date()} to {times[-1].date()}, from {len(files)} '
+               'products file(s)')
+
+    encoding = {}
+    for var in ds_out.data_vars:
+        enc = {'zlib': True, 'complevel': 2} if compress else {}
+        if ds_out[var].dtype.kind == 'f':
+            enc['_FillValue'] = np.nan
+        encoding[var] = enc
+
+    out_file = Path(fname_out)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    if out_file.exists():
+        out_file.unlink()
+    print(f'Writing {fname_out}')
+    ds_out.to_netcdf(fname_out, encoding=encoding)
+    ds.close()
+    print(f'Done: {fname_out} ({out_file.stat().st_size / (1024 ** 2):.1f} MB)')

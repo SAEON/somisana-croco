@@ -880,7 +880,6 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
                                           context_files, Yorig)
     T_win = len(win_time)
     keep = np.isin(win_time, target_time)
-    t_dates = np.array([d.toordinal() for d in pd.to_datetime(win_time)], dtype=int)
 
     # Read the climatology/thresholds once, for the days in the window only,
     # across all levels - see marineheatwaves.load_daily_baselines() for why
@@ -898,12 +897,12 @@ def add_mhw_mcs(fname_out, clim_file, thresh_file, fname_in=None, Yorig=2000, ba
 
         mhw_layer = np.zeros((T_win, n_eta, n_xi), dtype='int8')
         mhw.process_single_level(k, num_levels, temp_level, clim_level,
-                                 thresh90_daily[:, k, :, :], False, t_dates,
+                                 thresh90_daily[:, k, :, :], False,
                                  batch_size, mhw_layer, min_duration=min_duration)
 
         mcs_layer = np.zeros((T_win, n_eta, n_xi), dtype='int8')
         mhw.process_single_level(k, num_levels, temp_level, clim_level,
-                                 thresh10_daily[:, k, :, :], True, t_dates,
+                                 thresh10_daily[:, k, :, :], True,
                                  batch_size, mcs_layer, min_duration=min_duration)
 
         combined = mhw_layer.copy()

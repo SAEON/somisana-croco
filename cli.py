@@ -18,6 +18,7 @@ from crocotools_py.plotting import plot as crocplot
 from crocotools_py.regridding import regrid_tier1, regrid_tier2, regrid_tier3
 from crocotools_py.products import (make_products_base, add_anomalies, add_mhw_mcs,
                                     add_sst_front, add_stratification)
+from crocotools_py.marineheatwaves import write_event_stats
 from crocotools_py.plotting_products import (plot_coastal_flags, plot_timeseries_mhw,
                                              plot_timeseries_stratification)
 
@@ -536,6 +537,26 @@ def main():
                     min_duration=args.min_duration, add_baselines=args.add_baselines,
                     context_files=args.context_files)
     parser_add_mhw.set_defaults(func=add_mhw_mcs_handler)
+
+    # ----------------------
+    # mhw_stats
+    # ----------------------
+    parser_mhw_stats = subparsers.add_parser('mhw_stats',
+            help='Write annual MHW/MCS event statistics (event counts, durations, intensities and days per category, per year and per grid cell) from a set of products files. This is a separate step from the detection, run once the categories exist: event statistics are only meaningful over a whole record, so they are computed on the concatenated files rather than one file at a time')
+    parser_mhw_stats.add_argument('--fname_in', required=True, type=str,
+            help='products file(s) carrying category and temp_anom - typically the monthly files of a hindcast. Can include wildcards (*), and they are concatenated along time, so an event crossing a file boundary is counted once')
+    parser_mhw_stats.add_argument('--fname_out', required=True, type=str,
+            help='statistics file to write. Not in CROCO format - its time axis is calendar years - so it cannot be fed to the regridding tiers, and is written to stand on its own with lon_rho/lat_rho, h, mask and a depth variable, like a tier 1 file')
+    parser_mhw_stats.add_argument('--Yorig', required=False, type=parse_int, default=2000,
+            help='Origin year used in setting up CROCO time of the input files i.e. CROCO time will be seconds since Yorig-01-01')
+    parser_mhw_stats.add_argument('--doi_link', required=False, type=str, default=None,
+            help='Doi link to where the data can be located.')
+    parser_mhw_stats.add_argument('--compress', required=False, type=parse_bool, default=True,
+            help='deflate the output (default True). The file is small either way')
+    def mhw_stats_handler(args):
+        write_event_stats(args.fname_in, args.fname_out, Yorig=args.Yorig,
+                          doi_link=args.doi_link, compress=args.compress)
+    parser_mhw_stats.set_defaults(func=mhw_stats_handler)
 
     # ----------------------
     # add_sst_front
