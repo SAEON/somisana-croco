@@ -582,18 +582,37 @@ def write_event_stats(fname_in, fname_out, Yorig=2000, doi_link=None,
     # mask_and_scale=False keeps 'category' as int8: letting xarray decode its
     # -127 fill to NaN would promote 33 years of it to float and quadruple the
     # read for nothing, since the land mask says the same thing
+    # Check every file individually BEFORE concatenating. open_mfdataset fills a
+    # variable that is missing from some of the files with NaN rather than
+    # failing, and annual_event_stats reads a non-finite category as 'no event' -
+    # so a month whose products pass never ran would silently contribute zero
+    # event days to the statistics, with nothing in the output to say so. The
+    # time axis stays continuous in that case, so the gap check below does not
+    # see it either. This reads headers only, so it costs very little.
+    needed = ('category', 'temp_anom')
+    incomplete = []
+    for f in files:
+        with xr.open_dataset(f, decode_times=False) as ds_one:
+            missing = [v for v in needed if v not in ds_one.data_vars]
+        if missing:
+            incomplete.append(f'{os.path.basename(f)} (no {", ".join(missing)})')
+    if incomplete:
+        shown = '\n  '.join(incomplete[:10])
+        more = f'\n  ... and {len(incomplete) - 10} more' if len(incomplete) > 10 else ''
+        raise ValueError(
+            f'{len(incomplete)} of the {len(files)} input file(s) do not carry the '
+            f'variables the statistics are computed from:\n  {shown}{more}\n'
+            "'category' is written by products.add_mhw_mcs and 'temp_anom' by "
+            'products.add_anomalies, so those months have not been through the '
+            'products step yet. Run it for them before computing the statistics - '
+            'if they were left out, their days would be counted as event free '
+            'rather than as missing.')
+
     ds = xr.open_mfdataset(files, decode_times=False, mask_and_scale=False,
                            combine='by_coords', data_vars='minimal',
                            coords='minimal', compat='override',
                            drop_variables=STATS_DROP_VARS)
     ds = post.handle_time(ds, Yorig=Yorig)
-
-    for needed in ('category', 'temp_anom'):
-        if needed not in ds:
-            raise ValueError(
-                f"'{needed}' is not in the input files, so the statistics cannot "
-                'be computed. They are written by products.add_mhw_mcs and '
-                'products.add_anomalies respectively.')
 
     times = pd.DatetimeIndex(ds['time'].values)
     n_lev = ds.sizes['s_rho']
