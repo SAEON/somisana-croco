@@ -278,10 +278,16 @@ jobs:
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
+          # every product - files, figures and animations - goes in here. Only
+          # make_products_base creates its own output directory, so the steps
+          # which follow (get_ts_multivar, regrid_tier*) rely on it existing;
+          # creating it explicitly here means they no longer depend on the order
+          # of the steps in this job.
+          mkdir -p ${{ env.RUN_DIR }}/postprocess/products
           python /home/somisana/code/somisana-croco/cli.py \
               make_products_base \
                 --fname_in ${{ env.RUN_DIR }}/output/croco_avg.nc \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --Yorig 2000
 
       - name: add daily temperature and sea level anomalies
@@ -290,7 +296,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               add_anomalies \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --clim_file ${{ inputs.CLIM_FILE }} \
                 --Yorig 2000
 
@@ -315,7 +321,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               add_mhw_mcs \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --clim_file ${{ inputs.CLIM_FILE }} \
                 --thresh_file ${{ inputs.THRESH_FILE }} \
                 --Yorig 2000 \
@@ -329,7 +335,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               add_sst_front \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --Yorig 2000
 
       - name: add stratification
@@ -338,7 +344,7 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               add_stratification \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --target_depth 5 \
                 --deep_depth 50 \
                 --Yorig 2000
@@ -356,11 +362,11 @@ jobs:
           fi
           python /home/somisana/code/somisana-croco/cli.py \
               get_ts_multivar \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --coords_file $coords \
                 --varList temp,salt,category,temp_anom,zeta_anom,sst_front,stratification,temp_clim,temp_thresh_90,temp_thresh_10 \
                 --min_depth 20 \
-                --fname_out ${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc \
+                --fname_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products_ts.nc \
                 --Yorig 2000
 
       # The products are regridded through the same three tiers as the raw
@@ -386,7 +392,7 @@ jobs:
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
           cli=/home/somisana/code/somisana-croco/cli.py
-          post=${{ env.RUN_DIR }}/postprocess
+          post=${{ env.RUN_DIR }}/postprocess/products
           python $cli \
               regrid_tier1 \
                 --fname $post/croco_avg_products.nc \
@@ -419,14 +425,14 @@ jobs:
         run: |
           source /home/somisana/miniforge3/etc/profile.d/conda.sh
           conda activate somisana_croco
-          ts=${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc
+          ts=${{ env.RUN_DIR }}/postprocess/products/croco_avg_products_ts.nc
           [ -f "$ts" ] || { echo "no $ts - skipping"; exit 0; }
           for spec in "Surface:-1" "Bottom:0"; do
             name=${spec%%:*}; lev=${spec##*:}
             python /home/somisana/code/somisana-croco/cli.py \
                 plot_coastal_flags \
                   --ts_file $ts \
-                  --out_path ${{ env.RUN_DIR }}/postprocess/MHW_MCS_coastal_flags_${name}.png \
+                  --out_path ${{ env.RUN_DIR }}/postprocess/products/MHW_MCS_coastal_flags_${name}.png \
                   --level $lev \
                   --depth_name $name \
                   --title '${{ inputs.DOMAIN }}  ·  MHW / MCS Flag Map'
@@ -440,7 +446,7 @@ jobs:
       #  run: |
       #    source /home/somisana/miniforge3/etc/profile.d/conda.sh
       #    conda activate somisana_croco
-      #    ts=${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc
+      #    ts=${{ env.RUN_DIR }}/postprocess/products/croco_avg_products_ts.nc
       #    [ -f "$ts" ] || { echo "no $ts - skipping"; exit 0; }
       #    run_date=${{ inputs.RUN_DATE }}
       #    base_date="${run_date:0:4}-${run_date:4:2}-${run_date:6:2}"
@@ -449,7 +455,7 @@ jobs:
       #      python /home/somisana/code/somisana-croco/cli.py \
       #          plot_timeseries_mhw \
       #            --ts_file $ts \
-      #            --out_dir ${{ env.RUN_DIR }}/postprocess/${name} \
+      #            --out_dir ${{ env.RUN_DIR }}/postprocess/products/${name} \
       #            --today $base_date \
       #            --level $lev \
       #            --depth_name $name
@@ -460,14 +466,14 @@ jobs:
       #  run: |
       #    source /home/somisana/miniforge3/etc/profile.d/conda.sh
       #    conda activate somisana_croco
-      #    ts=${{ env.RUN_DIR }}/postprocess/croco_avg_products_ts.nc
+      #    ts=${{ env.RUN_DIR }}/postprocess/products/croco_avg_products_ts.nc
       #    [ -f "$ts" ] || { echo "no $ts - skipping"; exit 0; }
       #    run_date=${{ inputs.RUN_DATE }}
       #    base_date="${run_date:0:4}-${run_date:4:2}-${run_date:6:2}"
       #    python /home/somisana/code/somisana-croco/cli.py \
       #        plot_timeseries_stratification \
       #          --ts_file $ts \
-      #          --out_dir ${{ env.RUN_DIR }}/postprocess \
+      #          --out_dir ${{ env.RUN_DIR }}/postprocess/products \
       #          --today $base_date \
       #          --target_depth 5 \
       #          --deep_depth 50
@@ -483,13 +489,13 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --var category \
                 --cmap mhw_mcs \
                 --ticks=-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
                 --cbar_label 'MHW / MCS category' \
                 --add_vectors False \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_mhw_mcs_surf.mp4 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_mhw_mcs_surf.mp4 \
                 --Yorig 2000
       - name: animate MHW/MCS categories at the bottom
         continue-on-error: true
@@ -498,14 +504,14 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --var category \
                 --level 0 \
                 --cmap mhw_mcs \
                 --ticks=-4.5,-3.5,-2.5,-1.5,-0.5,0.5,1.5,2.5,3.5,4.5 \
                 --cbar_label 'MHW / MCS category' \
                 --add_vectors False \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_mhw_mcs_bot.mp4 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_mhw_mcs_bot.mp4 \
                 --Yorig 2000
       - name: animate surface thermal fronts
         continue-on-error: true
@@ -514,13 +520,13 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --var sst_front \
                 --cmap inferno \
                 --ticks=0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5 \
                 --cbar_label 'SST gradient ($\degree$C / km)' \
                 --add_vectors False \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_fronts_surf.mp4 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_temp_fronts_surf.mp4 \
                 --Yorig 2000
       # The ticks below are uneven on purpose - crocplot builds a BoundaryNorm
       # from them, so uneven ticks give a non-linear colour scale.
@@ -538,13 +544,13 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --var stratification \
                 --cmap viridis \
                 --ticks=0,0.05,0.1,0.15,0.25,0.4,0.6,0.8,1.1,1.5,1.9 \
                 --cbar_label 'stratification (kg m$^{-3}$)' \
                 --add_vectors False \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_stratification.mp4 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_stratification.mp4 \
                 --Yorig 2000
       - name: animate surface temperature anomalies
         continue-on-error: true
@@ -553,8 +559,8 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_surf.mp4 \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_temp_anom_surf.mp4 \
                 --var temp_anom \
                 --cmap RdBu_r \
                 --ticks=-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
@@ -568,14 +574,14 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --level 0 \
                 --var temp_anom \
                 --cmap RdBu_r \
                 --ticks=-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
                 --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_bot.mp4 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_temp_anom_bot.mp4 \
                 --Yorig 2000
       - name: animate 100m temperature anomalies
         continue-on-error: true
@@ -584,14 +590,14 @@ jobs:
           conda activate somisana_croco
           python /home/somisana/code/somisana-croco/cli.py \
               crocplot \
-                --fname ${{ env.RUN_DIR }}/postprocess/croco_avg_products.nc \
+                --fname ${{ env.RUN_DIR }}/postprocess/products/croco_avg_products.nc \
                 --level -100 \
                 --var temp_anom \
                 --cmap RdBu_r \
                 --ticks=-3,-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3 \
                 --cbar_label 'temperature anomaly ($\degree$C)' \
                 --add_vectors False \
-                --mp4_out ${{ env.RUN_DIR }}/postprocess/croco_avg_temp_anom_100m.mp4 \
+                --mp4_out ${{ env.RUN_DIR }}/postprocess/products/croco_avg_temp_anom_100m.mp4 \
                 --Yorig 2000
 
       - name: ensure permissions
