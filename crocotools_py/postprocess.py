@@ -2001,7 +2001,246 @@ def croco_srf_2_ww3(fname, grdname=None, dir_out='.', Yorig=None):
     ds_zeta.close()
 
     print(f'  done')
-
+    
+def _find_eta_dim(dims):
+    '''Return the eta_* dim in dims (works for rho/u/v/psi grids), or None.'''
+    return next((d for d in dims if d.startswith('eta')), None)
+ 
+ 
+def _doy_window_masks(all_doy, half_window, n_doy=366):
+    '''
+    Precompute a boolean mask per day-of-year (1..n_doy), each selecting
+    the daily records that fall within +/- half_window days of that
+    day-of-year, wrapping circularly across the Dec31/Jan1 boundary.
+ 
+    all_doy = array of day-of-year values (1..366) for each daily record
+    Returns a list of length n_doy of boolean arrays, same length as all_doy.
+    '''
+    masks = []
+    for target_doy in range(1, n_doy + 1):
+        diff = np.abs(all_doy - target_doy)
+        circ_diff = np.minimum(diff, n_doy - diff)
+        masks.append(circ_diff <= half_window)
+    return masks
+ 
+ 
+def _daily_mean_for_doy(fname, var_str, grdname=None, Yorig=None,
+                         half_window=5, eta_chunk=5, n_doy=366):
+    '''
+    Shared setup used by both get_climatology() and get_thresholds():
+    opens fname, decodes time, resamples var_str to daily means (lazy,
+    dask-backed), and precomputes the day-of-year pooling windows.
+ 
+    Returns (ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord)
+    ds is left open/unclosed - the caller is responsible for ds.close().
+    '''
+    if isinstance(fname, xr.Dataset):
+        ds = fname.copy()
+    else:
+        ds = get_ds(fname, var_str)
+ 
+    if grdname is not None:
+        ds_grd = get_ds(grdname)
+        ds = ds.assign_coords(lon_rho=ds_grd['lon_rho'], lat_rho=ds_grd['lat_rho'])
+        ds['mask_rho'] = ds_grd['mask_rho']
+        ds_grd.close()
+ 
+    ds = handle_time(ds, Yorig=Yorig)
+ 
+    da = ds[var_str]
+    spatial_dims = tuple(d for d in da.dims if d != 'time')
+    eta_dim = _find_eta_dim(spatial_dims)
+ 
+    chunks = {'time': -1}
+    if eta_dim is not None:
+        chunks[eta_dim] = min(eta_chunk, ds.sizes[eta_dim])
+    da = da.chunk(chunks)
+ 
+    print('    resampling to daily means...')
+    da_daily = da.resample(time='1D').mean()
+ 
+    time_da = da_daily['time']
+    all_doy = time_da.dt.dayofyear.values
+    dates_np = time_da.values
+    print(f'    date range: {np.datetime_as_string(dates_np[0], unit="D")} to '
+          f'{np.datetime_as_string(dates_np[-1], unit="D")} '
+          f'({len(all_doy)} daily records)')
+ 
+    print(f'    pre-computing +/-{half_window}-day pooling windows for {n_doy} days-of-year...')
+    window_masks = _doy_window_masks(all_doy, half_window, n_doy=n_doy)
+    doy_coord = np.arange(1, n_doy + 1)
+ 
+    return ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord
+ 
+ 
+def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy):
+    '''Chunked + compressed netcdf encoding for a (dayofyear, *spatial_dims) variable.'''
+    chunksizes = tuple(
+        min(eta_chunk, dim_sizes[d]) if d == eta_dim else dim_sizes[d]
+        for d in spatial_dims
+    )
+    chunksizes = (min(30, n_doy),) + chunksizes
+    return {v: dict(zlib=True, complevel=4, chunksizes=chunksizes, dtype='f4', _FillValue=1.0e20)
+            for v in var_names}
+ 
+ 
+def get_climatology(fname, var_str,
+                     grdname=None,
+                     Yorig=None,
+                     half_window=5,
+                     eta_chunk=5,
+                     n_doy=366,
+                     nc_out=None):
+    '''
+    Compute a day-of-year climatology (mean) for any time-varying CROCO
+    variable, pooling +/- half_window days across all years.
+ 
+    fname = CROCO output file name / glob pattern / list of files (or an
+            already-opened xarray Dataset) - see get_ds()
+    var_str = variable to compute the climatology for. Works for any
+              time-varying variable on any native grid (rho/u/v/psi) -
+              the variable's own spatial dims are detected automatically,
+              not assumed to be eta_rho/xi_rho.
+    grdname = optional grid file, only needed if grid info isn't in fname
+    Yorig = reference origin year, passed through to handle_time()
+    half_window = pooling half-width in days (+/- half_window, circular
+                  across the Dec31/Jan1 boundary)
+    eta_chunk = dask chunk size along the variable's eta_* dimension -
+                controls how much data is processed per block, trading
+                memory for speed. Lower it if you hit memory pressure.
+    n_doy = number of days-of-year to compute (366 covers leap years)
+    nc_out = optional path to write the result as a netcdf file
+ 
+    Returns an xarray DataArray named var_str, with dims
+    (dayofyear, *var_str's native spatial dims).
+    '''
+    print('')
+    print('  Running get_climatology() for ' + var_str)
+ 
+    ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord = _daily_mean_for_doy(
+        fname, var_str, grdname=grdname, Yorig=Yorig,
+        half_window=half_window, eta_chunk=eta_chunk, n_doy=n_doy)
+ 
+    doy_means = []
+    for mask in window_masks:
+        if not mask.any():
+            doy_means.append(xr.full_like(da_daily.isel(time=0), np.nan))
+            continue
+        doy_means.append(da_daily.isel(time=mask).mean(dim='time', skipna=True))
+ 
+    da_clim = xr.concat(doy_means, dim=xr.DataArray(doy_coord, dims='dayofyear', name='dayofyear'))
+    da_clim = da_clim.transpose('dayofyear', *spatial_dims)
+ 
+    print(f'    computing (dask, {eta_chunk}-row {eta_dim} blocks)...' if eta_dim
+          else '    computing...')
+    da_clim = da_clim.astype('float32').compute()
+ 
+    da_clim.name = var_str
+    da_clim.attrs = dict(
+        long_name=f'Day-of-year climatological mean of {var_str}',
+        window_half_width_days=half_window,
+    )
+ 
+    if nc_out is not None:
+        print(f'    writing the netcdf file: {nc_out}')
+        dim_sizes = {d: da_clim.sizes[d] for d in spatial_dims}
+        encoding = _doy_encoding([var_str], spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy)
+        da_clim.to_dataset().to_netcdf(nc_out, encoding=encoding)
+ 
+    ds.close()
+    return da_clim
+ 
+ 
+def get_thresholds(fname, var_str,
+                    grdname=None,
+                    Yorig=None,
+                    half_window=5,
+                    pctl_low=10,
+                    pctl_high=90,
+                    eta_chunk=5,
+                    n_doy=366,
+                    nc_out=None):
+    '''
+    Compute day-of-year percentile thresholds for any time-varying CROCO
+    variable (e.g. for marine heatwave / cold spell detection), pooling
+    +/- half_window days across all years.
+ 
+    fname, var_str, grdname, Yorig, half_window, eta_chunk, n_doy: as per
+        get_climatology() - var_str's own native spatial dims are used,
+        not assumed to be eta_rho/xi_rho.
+    pctl_low, pctl_high = the two percentiles to compute (0-100). Both are
+        computed together from a single pooled selection per day-of-year.
+    nc_out = optional path to write the result as a netcdf file
+ 
+    Returns an xarray Dataset with two variables, 'threshold_<pctl_low>'
+    and 'threshold_<pctl_high>', each with dims
+    (dayofyear, *var_str's native spatial dims).
+ 
+    Raises RuntimeError if threshold_<pctl_high> comes out identical to
+    threshold_<pctl_low> (a sanity check against percentile-computation bugs).
+    '''
+    print('')
+    print('  Running get_thresholds() for ' + var_str)
+ 
+    ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord = _daily_mean_for_doy(
+        fname, var_str, grdname=grdname, Yorig=Yorig,
+        half_window=half_window, eta_chunk=eta_chunk, n_doy=n_doy)
+ 
+    quantile_fracs = [pctl_low / 100.0, pctl_high / 100.0]
+ 
+    doy_quantiles = []
+    for mask in window_masks:
+        if not mask.any():
+            nan_da = xr.full_like(da_daily.isel(time=0), np.nan).expand_dims(
+                quantile=quantile_fracs)
+            doy_quantiles.append(nan_da)
+            continue
+        pooled = da_daily.isel(time=mask).chunk({'time': -1})
+        doy_quantiles.append(pooled.quantile(quantile_fracs, dim='time', skipna=True))
+ 
+    da_q = xr.concat(doy_quantiles, dim=xr.DataArray(doy_coord, dims='dayofyear', name='dayofyear'))
+    da_q = da_q.transpose('dayofyear', 'quantile', *spatial_dims)
+ 
+    print(f'    computing (dask, {eta_chunk}-row {eta_dim} blocks)...' if eta_dim
+          else '    computing...')
+    da_q = da_q.astype('float32').compute()
+ 
+    thr_high = da_q.sel(quantile=pctl_high / 100.0, drop=True)
+    thr_low = da_q.sel(quantile=pctl_low / 100.0, drop=True)
+ 
+    diff_check = float(np.nanmean(np.abs(thr_high.values - thr_low.values)))
+    print(f'    sanity check: mean|p{pctl_high} - p{pctl_low}| = {diff_check:.4f} '
+          f'(should be well above 0)')
+    if diff_check < 1e-6:
+        ds.close()
+        raise RuntimeError(
+            f'threshold_{pctl_high} came out identical to threshold_{pctl_low} - '
+            f'aborting. Check pctl_low/pctl_high and the percentile computation above.'
+        )
+ 
+    thr_high.name = f'threshold_{pctl_high}'
+    thr_low.name = f'threshold_{pctl_low}'
+    thr_high.attrs = dict(
+        long_name=f'Day-of-year {pctl_high}th percentile threshold of {var_str}',
+        window_half_width_days=half_window,
+    )
+    thr_low.attrs = dict(
+        long_name=f'Day-of-year {pctl_low}th percentile threshold of {var_str}',
+        window_half_width_days=half_window,
+    )
+ 
+    ds_out = xr.Dataset({thr_high.name: thr_high, thr_low.name: thr_low})
+ 
+    if nc_out is not None:
+        print(f'    writing the netcdf file: {nc_out}')
+        dim_sizes = {d: ds_out.sizes[d] for d in spatial_dims}
+        encoding = _doy_encoding([thr_high.name, thr_low.name], spatial_dims,
+                                  dim_sizes, eta_dim, eta_chunk, n_doy)
+        ds_out.to_netcdf(nc_out, encoding=encoding)
+ 
+    ds.close()
+    return ds_out
+ 
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
 #    Yorig=2000
