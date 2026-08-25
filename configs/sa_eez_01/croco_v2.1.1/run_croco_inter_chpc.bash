@@ -23,17 +23,12 @@ while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ];
         END_DATE_JOB=$(date -d "$END_DATE" +%Y-%m-01)
     fi
     
-    NY_START=$(date -d "$CURRENT_DATE" +%Y)
-    NM_START=$(date -d "$CURRENT_DATE" +%-m)
-    NY_END=$(date -d "$END_DATE_JOB" +%Y)
-    NM_END=$(date -d "$END_DATE_JOB" +%-m)
-    
     if [ -z "$prev_jobid" ]; then
         # First job (no dependency)
-        jobid=$(qsub -v NY_START=$NY_START,NY_END=$NY_END,NM_START=$NM_START,NM_END=$NM_END,RSTFLAG=$RSTFLAG $SCRIPT)
+        jobid=$(qsub -v START_DATE=$CURRENT_DATE,END_DATE=$END_DATE_JOB,RSTFLAG=$RSTFLAG $SCRIPT)
     else
         # include dependency of previous job
-        jobid=$(qsub -W depend=afterok:$prev_jobid -v NY_START=$NY_START,NY_END=$NY_END,NM_START=$NM_START,NM_END=$NM_END,RSTFLAG=$RSTFLAG $SCRIPT)
+        jobid=$(qsub -W depend=afterok:$prev_jobid -v START_DATE=$CURRENT_DATE,END_DATE=$END_DATE_JOB,RSTFLAG=$RSTFLAG $SCRIPT)
     fi
 
     echo "Submitted run starting at month $CURRENT_DATE as job $jobid"

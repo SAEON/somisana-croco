@@ -31,27 +31,15 @@ NH_STA=1
 #NLEVEL=4
 NLEVEL=1
 #
-# these are the time extents for this run
-# (commented out since now these are taken as command line inputs to run_croco_inter.pbs) 
-# NY_START=2008
-# NY_END=2008
-# NM_START=1
-# NM_END=1
+# the time extents for this run are passed to run_croco_inter.pbs by
+# run_croco_inter_chpc.bash, as START_DATE and END_DATE (qsub -v)
 #
 # Set month format at 1 or 2 digits (for input and output files): "%01d" = 1 digit/ "%02d" = 2 digit
 MTH_FORMAT="%02d"
-#
-# Number of year that are considered to be part of the spin-up (i.e. 365 days per year)
-NY_SPIN=0
 #
 #  Restart file - RSTFLAG=0 --> No Restart
 #		  RSTFLAG=1 --> Restart
 #
 # (commented out since now these are taken as command line inputs to run_croco_inter.pbs) 
 # RSTFLAG=0
-#
-#  Time Schedule  -  TIME_SCHED=0 --> yearly files
-#                    TIME_SCHED=1 --> monthly files
-#
-TIME_SCHED=1
 #

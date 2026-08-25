@@ -5,7 +5,7 @@
 #PBS -l walltime=24:00:00
 #PBS -o /home/gfearon/lustre/somisana-croco/configs/sa_eez_01/croco_v2.1.1/stdout 
 #PBS -e /home/gfearon/lustre/somisana-croco/configs/sa_eez_01/croco_v2.1.1/stderr 
-#PBS -v NY_START,NY_END,NM_START,NM_END,RSTFLAG
+#PBS -v START_DATE,END_DATE,RSTFLAG
 #
 #unalias cp
 #unalias mv
@@ -39,10 +39,14 @@ OUTPUTDIR=$RUNDIR/$RUNNAME/output
 
 ########################################################
 #
-if [[ $TIME_SCHED == 0 ]]; then
-  NM_START=1979
-  NM_END=1979
-fi
+# Months are stepped with date arithmetic, driven by the START_DATE and
+# END_DATE passed in by run_croco_inter_chpc.bash. One file per month.
+#
+# our Y<yyyy>M<mm> stamp for a given date, honouring MTH_FORMAT from myenv_in.sh
+#
+time_stamp () {
+  echo "Y$(date -d "$1" +%Y)M$( printf ${MTH_FORMAT} $(date -d "$1" +%-m))"
+}
 #
 # netcdf file prefixes
 #
@@ -54,27 +58,9 @@ INIFILE=${MODEL}_ini
 CLMFILE=${MODEL}_clm
 BRYFILE=${MODEL}_bry
 #
+TIME=$(time_stamp "$START_DATE")
 if [[ $RSTFLAG != 0 ]]; then
-  NY=$NY_START
-  NM=$NM_START
-  if [[ $TIME_SCHED == 0 ]]; then
-    NY=$((NY - 1))
-    TIME=Y${NY}
-  else
-    NM=$((NM - 1))
-    if [[ $NM == 0 ]]; then
-      NM=12
-      NY=$((NY - 1))
-    fi
-    TIME=Y${NY}M$( printf ${MTH_FORMAT} ${NM})
-  fi
-  RSTFILE=croco_rst_${TIME}
-fi
-#
-if [[ $TIME_SCHED == 0 ]]; then
-  TIME=Y${NY_START}
-else
-  TIME=Y${NY_START}M$( printf ${MTH_FORMAT} ${NM_START})
+  RSTFILE=${MODEL}_rst_$(time_stamp "$START_DATE -1 month")
 fi
 #
 # Get the code
@@ -120,33 +106,12 @@ done
 #  Compute
 ###########################################################
 #
-NY_END=$((NY_END + 1))
-NM_END=$((NM_END + 1))
-NY=$NY_START
-while [ $NY != $NY_END ]; do
-  if [[ $NY == $NY_START ]]; then
-    NM=$NM_START
-   else 
-     NM=1
-  fi
-   MY_YEAR=$NY
-   MY_YEAR=$((MY_YEAR + 1))
-  if [[ $MY_YEAR == $NY_END ]]; then
-     MONTH_END=$NM_END
-  else 
-     MONTH_END=13
-  fi
-  if [[ $TIME_SCHED == 0 ]]; then
-     MONTH_END=2
-  fi
-  while [ $NM != $MONTH_END ]; do
-    if [[ $TIME_SCHED == 0 ]]; then
-      TIME=Y${NY}
-      echo "Computing YEAR $NY"
-    else
-      TIME=Y${NY}M$( printf ${MTH_FORMAT} ${NM})
-      echo "Computing YEAR $NY MONTH $NM"
-    fi
+CURRENT_DATE=$START_DATE
+while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ]; do
+    TIME=$(time_stamp "$CURRENT_DATE")
+    NY=$(date -d "$CURRENT_DATE" +%Y)
+    NM=$(date -d "$CURRENT_DATE" +%-m)
+    echo "Computing YEAR $NY MONTH $NM"
 #
 # Get forcing and clim for this time
 #
@@ -183,47 +148,9 @@ while [ $NY != $NY_END ]; do
       $LN -sf ${INPUTDIR_BRY}/${BRYFILE}_${OGCM}_${TIME}.nc ${BRYFILE}.nc
     fi
 #
-# Set the number of time steps for each month 
-# (30 or 31 days + 28 or 29 days for february)
+# Number of days in this month - date(1) handles leap years for us
 #
-    NUMTIMES=0
-#
-    if [[ ${NM} == 1 || ${NM} == 3 || ${NM} == 5 || ${NM} == 7 || ${NM} == 8 || ${NM} == 10 || ${NM} == 12 ]]; then
-      NDAYS=31
-    else
-      NDAYS=30
-      if [[ ${NM} == 2 ]]; then
-        NDAYS=28
-# February... check if it is a leap year
-
-        B4=0
-        B100=0
-        B400=0
-
-        B4=$((4 * ( NY / 4 )))
-        B100=$((100 * ( NY / 100 )))
-        B400=$((400 * ( NY / 400 )))
-
-	
-        if [[ $NY == $B4 && ((!($NY == $B100))||($NY == $B400)) ]]; then
-#
-          BSPIN=$(( NY - NY_START + 1 ))
-          if [[ $BSPIN -gt $NY_SPIN ]]; then
-	     echo Leap Year - $NY $B4 $B100 $B400
-             NDAYS=29
-          else
-#.........   SPINUP!!!! In case of spinup I cant have leap years.
-	     echo year $NY should be a Leap Year     
-	     echo 'BUT : Spinup case: no leap year'
-             NDAYS=28
-          fi
-#
-        else
-	  echo Not a Leap Year - $NY $B4 $B100 $B400
-          NDAYS=28	  		  
-        fi
-      fi
-    fi
+    NDAYS=$(date -d "$(date -d "$CURRENT_DATE" +%Y-%m-01) +1 month -1 day" +%d)
 
     DT=$DT0
     
@@ -312,14 +239,20 @@ while [ $NY != $NY_END ]; do
 	  $MV -f ${MODEL}_his.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_${TIME}.nc${ENDF}
 	  $MV -f ${MODEL}_rst.nc${ENDF} ${OUTPUTDIR}/${MODEL}_rst_${TIME}.nc${ENDF}
 	  $MV -f ${MODEL}_avg.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_${TIME}.nc${ENDF}
-	  $MV -f ${MODEL}_his_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_surf_${TIME}.nc${ENDF}
-	  $MV -f ${MODEL}_avg_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_surf_${TIME}.nc${ENDF}
+	  #$MV -f ${MODEL}_his_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_his_surf_${TIME}.nc${ENDF}
+	  # hourly averaged surface file (needs OUTPUTS_SURFACE in cppdefs.h, and
+	  # ldefsurf_avg=T in the .in). Checked explicitly because a silent $MV
+	  # failure here would cost us a month of surface output in a long chain.
+	  if [[ -f ${MODEL}_avg_surf.nc${ENDF} ]]; then
+	    $MV -f ${MODEL}_avg_surf.nc${ENDF} ${OUTPUTDIR}/${MODEL}_avg_surf_${TIME}.nc${ENDF}
+	  else
+	    echo "WARNING: ${MODEL}_avg_surf.nc${ENDF} not found in ${SCRATCHDIR} for ${TIME} - no surface output archived"
+	  fi
           #$MV -f ${MODEL}_sta.nc${ENDF} ${OUTPUTDIR}/${MODEL}_sta_${TIME}.nc${ENDF}
       LEVEL=$((LEVEL + 1))
     done
-    NM=$((NM + 1))
-  done
-  NY=$((NY + 1))
+    # advance by one month
+    CURRENT_DATE=$(date -d "$CURRENT_DATE +1 month" +%Y-%m-01)
 done
 #
 #############################################################
