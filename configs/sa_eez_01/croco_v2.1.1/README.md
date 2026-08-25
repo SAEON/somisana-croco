@@ -1,10 +1,6 @@
 Here is where we prepare all the files to be used in our CROCO configuration and where we run the model
 
-This configuration is the `sa_eez_01` domain run with the **croco-v2.1.1** source code. It is a direct
-port of the `croco_v2.0.1` C12 setup in the sibling directory - same grid, same CPP keys, same runtime
-options - with the compile files rebuilt on top of the v2.1.1 source templates.
-
-For inter-annual runs, there is a `jobcomp_lengau` file for compiling the croco code and a
+For inter-annual runs, there is a `jobcomp_lengau` file for compiling the croco code on the CHPC and a
 `run_croco_inter.pbs` file for running the simulation. Both of these scripts use environment variables
 which are set up in `myenv_inter.sh`
 
@@ -37,12 +33,6 @@ precedes Surface Forcing, ABL1D moved inside BULK\_FLUX, the RVTK\_DEBUG block w
 effective key settings are identical to croco\_v2.0.1/C12 - verified key by key. Differences that remain
 are all upstream v2.1.1 changes sitting behind keys we do not define (OA\_COUPLING block,
 DIAGNOSTICS\_TS\_MLD\_CRIT, key\_pisces\_light renamed key\_pisces\_npzd).
-
-Note there is no C13 here. C13 in croco\_v2.0.1 was C12 plus a trailing `#undef SPONGE_GRID` to take the
-sponge width from x\_sponge in the .in file. This configuration uses C12, so SPONGE\_GRID stays defined
-(cppdefs\_dev.h force-defines it) and set\_nudgcof.F uses a fixed 10 grid point sponge. The `XXX`
-placeholder on the sponge line of the .in file is therefore never read - but it would be a landmine if
-anyone switches to a C13-style build, so check it before doing so.
 
 Runtime input (\*.in files)
 ---------------------------
@@ -140,9 +130,31 @@ The make\_\*.bash scripts run on lengau and reference the raw input data under
 
 Run window
 ----------
-1993-03 to 2025-11, cold start (RSTFLAG=0), submitted by `run_croco_inter_chpc.bash` as 99 dependent
-4-month jobs. Note that window is not a whole number of 4-month jobs, so that script clamps the final
-job to END_DATE - without the clamp the chain would run on to 2026-02 and off the end of the forcing.
+1993-03 to 2025-11 (393 months), cold start (RSTFLAG=0), submitted by `run_croco_inter_chpc.bash` as
+9 dependent jobs chained with afterok: 8 jobs of MONTHS\_PER\_JOB=44 months plus a final 41-month job.
+
+Chunk size is set by MONTHS\_PER\_JOB at the top of that script and is sized against the 48 hr walltime
+in run\_croco\_inter.pbs (48 hr is the CHPC queue maximum). A month takes ~50 min on 64 procs; budgeting
+1 hr/month as a safety factor:
+
+    months/job   jobs   budgeted   slack @1h/mo   slack @50min
+        48         9      48 h        0 h            8.0 h     <- fills walltime, would be killed
+        47         9      47 h        1 h            8.8 h
+        46         9      46 h        2 h            9.7 h
+        45         9      45 h        3 h           10.5 h
+        44         9      44 h        4 h           11.3 h     <- chosen
+        43        10      43 h        5 h           12.2 h
+
+44 is the sweet spot: 45-47 need the same 9 jobs but give away slack for nothing, 48 would fill the
+walltime exactly, and 43 costs a 10th job. 9 jobs is the floor at 48 hr walltime, and 44 reaches it
+with the most headroom. If you change the walltime, change MONTHS\_PER\_JOB to match.
+
+Note the window is not a whole number of MONTHS\_PER\_JOB jobs, so the script clamps the final job to
+END\_DATE - without the clamp the chain would run past the end of the forcing.
+
+The chain uses afterok dependencies, so a job killed on walltime stops everything behind it. That is
+recoverable (fix, then resubmit from the failed month with RSTFLAG=1) but it is the reason for keeping
+a few hours of headroom rather than packing the walltime.
 
 Yorig is 1993 throughout.
 

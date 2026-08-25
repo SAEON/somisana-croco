@@ -1,8 +1,20 @@
 #!/bin/bash
 
 # This script is designed to run on the chpc
-# it submits a series of run_croco_inter.pbs job scripts, each of which is for a few months 
-# this is needed to ensure we stay under the 48 hr job length for each job submission
+# it submits a series of run_croco_inter.pbs job scripts, each covering MONTHS_PER_JOB
+# months, chained with afterok dependencies. Jobs are chunked so each one fits inside
+# the walltime requested in run_croco_inter.pbs.
+
+# Months per PBS job.
+# A month takes ~50 min on 64 procs; we budget 1 hr/month as a safety factor against
+# the 48 hr walltime in run_croco_inter.pbs (48 hr is the CHPC queue maximum), so
+# 44 months uses 44 of those 48 hrs: ~4 hrs slack at the budgeted rate, ~11 hrs at
+# the measured rate.
+# 44 is the sweet spot for this run window. 45, 46 and 47 all need the same 9 jobs but
+# give away slack for nothing; 48 would fill the walltime exactly and get killed; 43
+# drops to 10 jobs. So 44 is the fewest jobs with the most headroom.
+# If you change the walltime, change this to match.
+MONTHS_PER_JOB=44
 
 CURRENT_DATE="1993-03-01"
 END_DATE="2025-11-01"
@@ -14,11 +26,11 @@ SCRIPT="/home/gfearon/lustre/somisana-croco/configs/sa_eez_01/croco_v2.1.1/run_c
 
 while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ]; do
 
-    # using jobs of 4 month increments, so add 3 months to get the end dates for this job
-    END_DATE_JOB=$(date -d "$CURRENT_DATE +3 month" +%Y-%m-01)
+    # add MONTHS_PER_JOB-1 months to get the end month covered by this job
+    END_DATE_JOB=$(date -d "$CURRENT_DATE +$((MONTHS_PER_JOB - 1)) month" +%Y-%m-01)
 
-    # the run window is not necessarily a whole number of 4 month jobs, so clamp the
-    # last job to END_DATE - otherwise we'd run past the end of the surface/boundary forcing
+    # the run window is not necessarily a whole number of MONTHS_PER_JOB jobs, so clamp
+    # the last job to END_DATE - otherwise we'd run past the end of the forcing
     if [ "$(date -d "$END_DATE_JOB" +%Y%m)" -gt "$(date -d "$END_DATE" +%Y%m)" ]; then
         END_DATE_JOB=$(date -d "$END_DATE" +%Y-%m-01)
     fi
@@ -38,7 +50,7 @@ while [ "$(date -d "$CURRENT_DATE" +%Y%m)" -le "$(date -d "$END_DATE" +%Y%m)" ];
     # Advance by one month
     CURRENT_DATE=$(date -d "$END_DATE_JOB +1 month" +%Y-%m-01)
 
-    # Always set restart to 1 after the first month
+    # Always set restart to 1 after the first job
     RSTFLAG=1
 
 done
