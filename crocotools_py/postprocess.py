@@ -2058,6 +2058,7 @@ def _daily_mean_for_doy(fname, var_str, grdname=None, Yorig=None,
  
     print('    resampling to daily means...')
     da_daily = da.resample(time='1D').mean()
+    da_daily = da_daily.compute()
  
     time_da = da_daily['time']
     all_doy = time_da.dt.dayofyear.values
