@@ -128,12 +128,22 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
         # build encoding dynamically based on variables present in ds_all
         encoding = {}
         for var in ds_all.data_vars:
-            encoding[var] = {"dtype": "float32"}
-            # the encoding sets the on-disk type, so flag_values and friends have
-            # to be re-typed to match it or a float32 variable ends up describing
-            # itself with attributes of whatever type it happened to have in
-            # memory - see postprocess.retype_attrs()
-            ds_all[var].attrs = post.retype_attrs(ds_all[var].attrs, 'float32')
+            if var in CATEGORICAL_VARS:
+                encoding[var] = {"dtype": "int8", "_FillValue":np.int8(-127)}
+                # category only ever takes 9 small -4 to 4, keeps it int8
+                # rather than float32. xarray's CFMaskCoder handles the
+                # NaN-over-land values from get_var()'s masking: because
+                # _FillValue is set here, it swaps NaN -> -127 and casts to
+                # int8 on write, the same way it would for any masked
+                # integer variable.
+                ds_all[var].attrs = post.retype_attrs(ds_all[var].attrs, 'int8')
+            else:
+                encoding[var] = {"dtype": "float32"}
+                # the encoding sets the on-disk type, so flag_values and friends have
+                # to be re-typed to match it or a float32 variable ends up describing
+                # itself with attributes of whatever type it happened to have in
+                # memory - see postprocess.retype_attrs()
+                ds_all[var].attrs = post.retype_attrs(ds_all[var].attrs, 'float32')
         for var in ['h', 'mask', 'lon_rho', 'lat_rho']:
             if var in ds_all:
                 encoding[var] = {"dtype": "float32"}
