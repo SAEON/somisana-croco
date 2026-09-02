@@ -11,7 +11,8 @@ VECTOR_ATTRS: dict of variable name -> (grid-aligned, eastnorth-rotated,
               (v, vbar, svstr, ...).
 
 apply_attrs(): applies CF attributes to a DataArray, with a warning if
-               the variable is not in the registry.
+               the variable is not in the registry. A '<var>_bottom' name falls
+               back to the entry for <var> - see BOTTOM_SUFFIX below.
 
 This registry is the CF baseline: the three fields every variable must have.
 It deliberately does not hold the richer, run-specific attributes some
@@ -100,6 +101,21 @@ VECTOR_ATTRS = {
                   VarAttrs('Along-section component of bottom stress', 'N m-2', 'bottom_along_section_stress')),
 }
 
+# Variables sampled in the model's bottom-most sigma layer are named
+# '<var>_bottom' (regridding.regrid_tier2(bottom=True) writes them). Rather than
+# duplicating every entry above, apply_attrs() falls back to the entry for the
+# stem: it is the same quantity, just taken somewhere specific, so the units and
+# the standard_name are the parent's and only the long_name says where.
+#
+# The stem is looked up in the same two registries as any other name, so this
+# composes: 'u_bottom' picks up the rotated east/north entry from VECTOR_ATTRS,
+# and 'temp_anom_bottom' picks up the anomaly entry from ATTRS. A name whose stem
+# is in neither still falls through to the warning below, so a typo is not
+# quietly absorbed.
+BOTTOM_SUFFIX = '_bottom'
+BOTTOM_LONG_NAME = '{long_name} in the bottom-most model layer'
+
+
 def apply_attrs(da, var_str, rotated=False, section=False):
     """
     Apply CF-compliant attributes to a DataArray.
@@ -107,7 +123,8 @@ def apply_attrs(da, var_str, rotated=False, section=False):
     Parameters
     ----------
     da       : xarray DataArray to update
-    var_str  : variable name to look up in the registry
+    var_str  : variable name to look up in the registry. A name ending in
+               '_bottom' whose stem is in the registry is served by the stem
     rotated  : if True, use east/north attrs for vector variables.
                Ignored when section=True.
     section  : if True, use section-rotated (across/along) attrs for vector
@@ -115,19 +132,28 @@ def apply_attrs(da, var_str, rotated=False, section=False):
 
     Returns the DataArray (modified in place).
     """
-    if var_str in ATTRS:
-        meta = ATTRS[var_str]
-    elif var_str in VECTOR_ATTRS:
+    # a '<var>_bottom' name is served by the entry for <var>, with only its
+    # long_name changed - see BOTTOM_SUFFIX above
+    stem, is_bottom = var_str, False
+    if var_str.endswith(BOTTOM_SUFFIX):
+        candidate = var_str[:-len(BOTTOM_SUFFIX)]
+        if candidate in ATTRS or candidate in VECTOR_ATTRS:
+            stem, is_bottom = candidate, True
+
+    if stem in ATTRS:
+        meta = ATTRS[stem]
+    elif stem in VECTOR_ATTRS:
         if section:
-            meta = VECTOR_ATTRS[var_str][2]
+            meta = VECTOR_ATTRS[stem][2]
         elif rotated:
-            meta = VECTOR_ATTRS[var_str][1]
+            meta = VECTOR_ATTRS[stem][1]
         else:
-            meta = VECTOR_ATTRS[var_str][0]
+            meta = VECTOR_ATTRS[stem][0]
     else:
         print(f"WARNING: no CF compliant attributes defined for '{var_str}' - metadata not updated to be CF compliant")
         return da
-    da.attrs['long_name'] = meta.long_name
+    da.attrs['long_name'] = (BOTTOM_LONG_NAME.format(long_name=meta.long_name)
+                             if is_bottom else meta.long_name)
     da.attrs['units'] = meta.units
     da.attrs['standard_name'] = meta.standard_name
     return da

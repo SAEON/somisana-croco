@@ -63,6 +63,79 @@ def source_history(file):
               'the output will not carry its provenance')
         return ''
 
+def sigma_vars(file, varList):
+    """
+    The variables in varList that `file` stores on the rho sigma levels.
+
+    These are the ones a bottom layer can be extracted for. Variables on the w
+    levels (s_w) are deliberately excluded: index 0 there is the sea floor
+    itself, where the boundary condition holds the vertical velocity at zero, so
+    a '_bottom' variant of one would be a field of zeros.
+    """
+    with xr.open_dataset(file, decode_times=False) as ds_src:
+        return [var for var in varList
+                if var in ds_src.variables and 's_rho' in ds_src[var].dims]
+
+
+def rename_bottom(ds_bot, varNames, rotated=False):
+    """
+    Rename the extracted variables to '<var>_bottom' and say so in their metadata.
+
+    get_var()/get_uv() have already applied the parent variable's attributes,
+    including the run-specific ones that only the code which computed the
+    variable knows about - the MHW/MCS category's flag_values and
+    min_duration_days, say. apply_attrs() writes only the three CF fields, so
+    calling it on the renamed variable amends the long_name and leaves the rest
+    of that metadata where it is.
+
+    Everything else the extraction returns is dropped. zeta, h and mask are
+    already in the tier 2 output from the depth level extraction. 'depth' here is
+    the depth of the one layer that was read - a (time, eta_rho, xi_rho) field,
+    correct but not a vertical coordinate, and it would collide with the depth
+    dimension it is being merged alongside. And the scalar s_rho coordinate left
+    behind by selecting a single level would be written out as a stray scalar.
+    """
+    ds_bot = ds_bot.drop_vars(['depth', 'zeta', 'h', 'mask', 's_rho'], errors='ignore')
+    ds_bot = ds_bot.rename({var: var + cf_attrs.BOTTOM_SUFFIX for var in varNames})
+    for var in varNames:
+        cf_attrs.apply_attrs(ds_bot[var + cf_attrs.BOTTOM_SUFFIX],
+                             var + cf_attrs.BOTTOM_SUFFIX, rotated=rotated)
+    return ds_bot
+
+
+def bottom_layer(file, varList, grdname=None, Yorig=2000):
+    """
+    Datasets of the 3D variables in varList sampled in the bottom model layer.
+
+    This is the model's own bottom-most sigma layer (s_rho index 0) read
+    straight off the file, on the rho grid, not an interpolation down to the sea
+    floor - hlev_xarray() masks everything below the centre of the deepest cell,
+    so there is nothing below it to interpolate to. How close to the bed that
+    puts it depends on the vertical stretching and the water depth: on the
+    sa-west grid (30 levels, theta_b = 7) the layer centre is 0.08 m above the
+    bed in 5 m of water and 5 m above it in 3000 m. The seabed depth itself is
+    the 'h' that is in the output either way.
+
+    Returns a list of datasets ready to merge alongside the depth level ones.
+    """
+    var_3d = sigma_vars(file, varList)
+    if not var_3d:
+        print('  no 3D variables in the list - no bottom layer to extract')
+        return []
+
+    print(f'  extracting the bottom model layer of: {", ".join(var_3d)}')
+    scalars, pairs = post.partition_vars(var_3d)
+    datasets = []
+    for var in scalars:
+        ds_bot = post.get_var(file, var, grdname=grdname, Yorig=Yorig, level=0)
+        datasets.append(rename_bottom(ds_bot, [var]))
+    for var_u, var_v in pairs:
+        ds_bot = post.get_uv(file, grdname=grdname, Yorig=Yorig, level=0,
+                             var_u=var_u, var_v=var_v)
+        datasets.append(rename_bottom(ds_bot, [var_u, var_v], rotated=True))
+    return datasets
+
+
 def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
                  varList=['temp','salt','u','v'], compress=False):
     '''
@@ -168,7 +241,7 @@ def regrid_tier1(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
 
 def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
                  depths=[0,-5,-10,-20,-50,-75,-100,-200,-500,-1000],
-                 varList=['temp','salt','u','v']):
+                 varList=['temp','salt','u','v'], bottom=False):
     '''
     tier 2 regridding of a CROCO output:
       -> as per tier1 regridding but we regrid vertically to constant z levels
@@ -182,12 +255,21 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
     Yorig     : Origin year used in setting up CROCO time i.e. seconds since Yorig-01-01
     depths    : list of depths to extract (in metres, negative down, required = False).
                 If not specified depth = [0,-5,-10,-20,-50,-75,-100,-200,-500,-1000].
-                A value of 0 denotes the surface and a value of -99999 denotes the bottom layer.
+                A value of 0 denotes the surface. There is no depth which denotes the
+                bottom - the deepest constant depth level a column can offer is the
+                centre of its deepest cell, and asking for anything below that gives
+                NaN. Use bottom=True for the bottom layer.
     doi_link  : doi link in string (required = False)
     varList   : list of variable names to extract (default=['temp','salt','u','v']).
                 If both components of a vector pair (e.g. u/v, ubar/vbar, sustr/svstr, bustr/bvstr)
                 are present, they are extracted together via get_uv() and rotated to east/north components.
                 If only one component is present, it is extracted via get_var() and remains grid-aligned.
+    bottom    : also write each 3D variable sampled in the model's bottom-most sigma
+                layer, as a 2D '<var>_bottom' variable (default False, i.e. as written
+                up to now). Constant depth levels cannot represent the sea floor, which
+                follows the bathymetry, so this is the only way the tier 2 output can
+                carry it. regrid_tier3() picks these variables up on its own.
+                See bottom_layer() for what is and is not included.
     '''
 
     if type(fname_in) == str:
@@ -216,13 +298,19 @@ def regrid_tier2(fname_in, dir_out, grdname=None, Yorig=2000, doi_link=None,
             datasets.append(post.get_var(file, var, grdname=grdname, Yorig=Yorig, level=depths, interp_method=interp_method))
         for var_u, var_v in pairs:
             datasets.append(post.get_uv(file, grdname=grdname, Yorig=Yorig, level=depths, var_u=var_u, var_v=var_v))
+        if bottom:
+            datasets += bottom_layer(file, varList, grdname=grdname, Yorig=Yorig)
         ds_all = xr.merge(datasets, compat='override')
 
+        action = (f'regrid_tier2: interpolated to depth levels '
+                  f'{", ".join(str(d) for d in depths)} m')
+        if bottom:
+            action += (", the model's bottom-most sigma layer added as "
+                       "<var>_bottom")
         ds_all.attrs = cf_attrs.global_attrs(
             title=TIER_TITLES[2], source=file,
             ds=ds_all, src_history=source_history(file), doi_link=doi_link,
-            action=f'regrid_tier2: interpolated to depth levels '
-                   f'{", ".join(str(d) for d in depths)} m, from {file}')
+            action=f'{action}, from {file}')
 
         # build encoding dynamically based on variables present in ds_all
         encoding = {}
@@ -281,6 +369,8 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
     varList   : list of variable names to interpolate (default=['temp','salt','u','v']).
                 Variables are read from the tier 2 input file and interpolated onto the regular grid.
                 3D variables (with a depth dimension) and 2D variables are handled automatically.
+                A '<var>_bottom' written by regrid_tier2(bottom=True) is picked up
+                automatically for any var listed here, so it does not have to be named.
     output_format : 'netcdf' (default) or 'zarr'.
                 When 'zarr', writes a compressed Zarr store (a directory) instead of a NetCDF file.
                 Zarr output uses Blosc/Zstd compression and chunking tuned for per-map access
@@ -328,6 +418,17 @@ def regrid_tier3(fname_in, dir_out, Yorig=2000, doi_link=None, spacing=0.01,
         Nz = ds.depth.size if has_depth else 0
         lon_rho_1d = np.ravel(ds.lon_rho.values)
         lat_rho_1d = np.ravel(ds.lat_rho.values)
+
+        # A tier 2 file written with bottom=True carries a '<var>_bottom' for each
+        # of its 3D variables. Pick those up without being asked to - the rule is
+        # keyed on names the input file itself has, so a tier 2 file written
+        # without them is unaffected, and no caller has to learn a second list.
+        varList = list(varList)
+        for v in list(varList):
+            bot = v + cf_attrs.BOTTOM_SUFFIX
+            if bot in ds.data_vars and bot not in varList:
+                print(f'  {bot} is in the input - interpolating it too')
+                varList.append(bot)
 
         # classify variables as 2D or 3D based on whether they have a depth dimension
         vars_3d = [v for v in varList if v in ds and 'depth' in ds[v].dims]

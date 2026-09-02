@@ -289,42 +289,23 @@ def rho2psi(var_rho):
                               var_rho[:,:,1:, 1:])
     return var_psi
 
-def csf(sc, theta_s, theta_b):
-    """
-    Allows use of theta_b > 0 (July 2009)
-    is required in zlevs.py
-    """
-    one64 = np.float64(1)
-
-    if theta_s > 0.0:
-        csrf = (one64 - np.cosh(theta_s * sc)) / (np.cosh(theta_s) - one64)
-    else:
-        csrf = -(sc**2)
-    sc1 = csrf + one64
-    if theta_b > 0.0:
-        Cs = (np.exp(theta_b * sc1) - one64) / (np.exp(theta_b) - one64) - one64
-    else:
-        Cs = csrf
-
-    return Cs
-
-def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
-    """
-    Vectorised version of z_levels, accepts zeta with shape (T, M, L) and returns
-    z with shape (T, N, M, L).
-    """
-
+def z_levels(h, zeta, hc, vtransform, sc, Cs):
     """
     this provides a 3D grid of the depths of the sigma levels
     h = 2D bathymetry of your grid
-    zeta = zeta at particular timestep or also accepts zeta with shape (T, M, L) 
-    theta_s = surface stretching parameter
-    theta_b = bottom stretching parameter
+    zeta = zeta at particular timestep or also accepts zeta with shape (T, M, L)
     hc = critical depth
-    N = number of sigma levels
-    type = 'w' or 'rho'
     vtransform = 1 (OLD) or 2 (NEW)
-    
+    sc = sigma coordinate of the levels wanted (CROCO's s_rho/sc_r, or s_w/sc_w)
+    Cs = stretching curve of those levels (CROCO's Cs_r, or Cs_w)
+
+    sc and Cs are read off the file rather than being re-derived here from the
+    number of levels and the stretching parameters. They are what says which
+    levels are being asked for, so a dataset that has been subset in the vertical
+    - get_var(level=0), say - gets the levels it actually kept rather than the
+    levels of a column that many deep, and w levels are a matter of passing s_w
+    and Cs_w rather than a separate branch.
+
     returns
     z with shape (T, N, M, L).
 
@@ -337,27 +318,8 @@ def z_levels(h, zeta, theta_s, theta_b, hc, N, type, vtransform):
 
     T, M, L = zeta.shape
 
-    # Stretching coordinates
-    if vtransform == 2:
-        ds = 1 / N
-        if type == "w":
-            sc = np.linspace(-1.0, 0.0, N + 1)
-            Cs = csf(sc, theta_s, theta_b)
-            N += 1
-        else:
-            sc = ds * (np.arange(1, N + 1) - N - 0.5)
-            Cs = csf(sc, theta_s, theta_b)
-    else:
-        if type == "w":
-            sc = (np.arange(0, N + 1) - N) / N
-            N += 1
-        else:
-            sc = (np.arange(1, N + 1) - N - 0.5) / N
-        cff1 = 1.0 / np.sinh(theta_s)
-        cff2 = 0.5 / np.tanh(0.5 * theta_s)
-        Cs = (1 - theta_b) * cff1 * np.sinh(theta_s * sc) + theta_b * (
-            cff2 * np.tanh(theta_s * (sc + 0.5)) - 0.5
-        )
+    sc = np.asarray(sc, dtype='float64')
+    Cs = np.asarray(Cs, dtype='float64')
 
     # Safety check
     h = np.where(h == 0, 1e-2, h)  # avoid divide-by-zero
@@ -565,25 +527,48 @@ def get_depths(ds):
     
     # get the variables used to calculate the sigma levels
     # CROCO uses these params to determine how to deform the vertical grid
-    if 'theta_s' in ds.variables: # it's a variable in ROMS files
-        theta_s = ds.theta_s.values
-    else: # it's a global attribute in CROCO files
-        theta_s = ds.theta_s
-    if 'theta_b' in ds.variables: # it's a variable in ROMS files
-        theta_b = ds.theta_b.values
-    else: # it's a global attribute in CROCO files
-        theta_b = ds.theta_b
     if 'hc' in ds.variables: # it's a variable in ROMS files
         hc = ds.hc.values
     else: # it's a global attribute in CROCO files
         hc = ds.hc
-    N = np.shape(ds.s_rho)[0]
-    type_coordinate = "rho"
     vtransform = ds.Vtransform.values
     if not vtransform == 1 and not vtransform == 2:
         raise Exception("Unexpected value for vtransform (" + vtransform + ")")
 
-    depth_rho = z_levels(h, ssh, theta_s, theta_b, hc, N, type_coordinate, vtransform)
+    # The sigma levels are read off the file rather than re-derived here from
+    # theta_s, theta_b and the number of levels. Two reasons:
+    #
+    #   - they are dimensioned on s_rho, so they get subset along with the data,
+    #     which is what keeps the depths right when only some of the levels were
+    #     read (get_var(level=0), say). See z_levels().
+    #   - ROMS offers a choice of stretching function (Vstretching 1-5) and
+    #     writes the resulting curve to Cs_r. Deriving it here means committing
+    #     to one. The derivation this replaced keyed off Vtransform, which is a
+    #     different setting: it produced the Vstretching 1 curve for
+    #     Vtransform 1 and the Vstretching 4 curve for Vtransform 2. Those are
+    #     the conventional pairings and what CROCO uses, so it was right in
+    #     practice, but a ROMS run pairing Vtransform 2 with Vstretching 2, 3
+    #     or 5 would have been given the wrong levels with nothing to say so.
+    #     Reading Cs_r is right for all of them, and means Vstretching never
+    #     has to be interpreted here at all.
+    #
+    # 'sc_r' is the older ROMS-AGRIF/CROCO name for 's_rho' and is identical
+    # where both are present, so either will do. What is checked is that the
+    # values really are a sigma coordinate: a file whose s_rho holds level
+    # indices instead would otherwise produce depths that look plausible.
+    sc = None
+    for name in ('s_rho', 'sc_r'):
+        if name in ds.variables:
+            values = np.asarray(ds[name].values)
+            if np.all((values >= -1.0001) & (values <= 0.0001)):
+                sc = values
+                break
+    if sc is None:
+        raise Exception('Could not find a sigma coordinate in [-1, 0] in this '
+                        "file (looked for 's_rho' and 'sc_r'), so the depths of "
+                        'the sigma levels cannot be computed')
+
+    depth_rho = z_levels(h, ssh, hc, vtransform, sc, ds['Cs_r'].values)
     
     # depth_rho = np.squeeze(depth_rho)
     

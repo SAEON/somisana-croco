@@ -98,9 +98,13 @@ BASE_VARS = ['temp', 'salt', 'u', 'v']
 # buries the attributes that do. Two groups are kept:
 #
 #   - the vertical-coordinate parameters, because postprocess.get_depths()
-#     reads theta_s/theta_b/hc/Vtransform from the global attributes when they
-#     are not present as variables. Dropping them would stop the products file
-#     being a valid CROCO file that the rest of the repo can interpolate.
+#     reads hc and Vtransform from the global attributes when they are not
+#     present as variables (the sigma levels themselves it reads off the
+#     s_rho and Cs_r variables kept in GRID_VARS). theta_s and theta_b are kept
+#     alongside them because they are part of how CROCO describes its vertical
+#     coordinate, not because anything here recomputes it from them. Dropping
+#     any of it would stop the products file being a valid CROCO file that the
+#     rest of the repo can interpolate.
 #   - CPP-options and rho0, as a compact record of the model configuration the
 #     products were derived from.
 #

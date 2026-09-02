@@ -127,7 +127,8 @@ jobs:
               regrid_tier2 \
                 --fname ${{ env.RUN_DIR }}/output/croco_avg.nc \
                 --dir_out ${{ env.RUN_DIR }}/postprocess/ \
-                --depths=0,-5,-10,-50,-100,-500,-1000
+                --depths=0,-5,-10,-50,-100,-500,-1000 \
+                --bottom true
       # and interpolate data to a constant horizontal grid (tier 3)
       - name: Tier 3 regridding
         continue-on-error: true
@@ -405,7 +406,8 @@ jobs:
                 --dir_out $post/ \
                 --Yorig 2000 \
                 --depths=0,-5,-10,-20,-50,-100,-200,-500,-1000 \
-                --varList $PRODUCT_VARS
+                --varList $PRODUCT_VARS \
+                --bottom true
           # tier 3 takes the tier 2 output as its input, not the products file
           python $cli \
               regrid_tier3 \

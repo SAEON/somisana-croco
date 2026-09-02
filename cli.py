@@ -193,8 +193,10 @@ def main():
     parser_regrid_tier2.add_argument('--varList', required=False, type=parse_list_str,
                          default=['temp','salt','u','v'],
                          help='comma separated list of variables to regrid e.g. temp,salt,u,v')
+    parser_regrid_tier2.add_argument('--bottom', required=False, type=parse_bool, default=False,
+                         help="also write each 3D variable sampled in the model's bottom-most sigma layer, as a 2D <var>_bottom variable (default False). Constant depth levels cannot represent the sea floor, which follows the bathymetry, so this is the only way the tier 2 output can carry it. regrid_tier3 picks these variables up on its own")
     def regrid_tier2_handler(args):
-        regrid_tier2(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link, depths = args.depths, varList = args.varList)
+        regrid_tier2(args.fname, args.dir_out, args.grdname, args.Yorig, args.doi_link, depths = args.depths, varList = args.varList, bottom = args.bottom)
     parser_regrid_tier2.set_defaults(func=regrid_tier2_handler)
     
     # --------------
