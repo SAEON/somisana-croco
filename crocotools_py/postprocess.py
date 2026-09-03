@@ -2002,6 +2002,19 @@ def croco_srf_2_ww3(fname, grdname=None, dir_out='.', Yorig=None):
 
     print(f'  done')
     
+
+def _resolve_files(fname):
+    '''Expand fname (single path, glob pattern, or list/tuple) into a sorted list of files.'''
+    if isinstance(fname, (list, tuple)):
+        return sorted(fname)
+    if isinstance(fname, str) and any(c in fname for c in '*?['):
+        files = sorted(glob(fname))
+        if not files:
+            raise FileNotFoundError(f'No files matched {fname}')
+        return files
+    return [fname]
+ 
+ 
 def _find_eta_dim(dims):
     '''Return the eta_* dim in dims (works for rho/u/v/psi grids), or None.'''
     return next((d for d in dims if d.startswith('eta')), None)
@@ -2012,9 +2025,6 @@ def _doy_window_masks(all_doy, half_window, n_doy=366):
     Precompute a boolean mask per day-of-year (1..n_doy), each selecting
     the daily records that fall within +/- half_window days of that
     day-of-year, wrapping circularly across the Dec31/Jan1 boundary.
- 
-    all_doy = array of day-of-year values (1..366) for each daily record
-    Returns a list of length n_doy of boolean arrays, same length as all_doy.
     '''
     masks = []
     for target_doy in range(1, n_doy + 1):
@@ -2024,54 +2034,40 @@ def _doy_window_masks(all_doy, half_window, n_doy=366):
     return masks
  
  
-def _daily_mean_for_doy(fname, var_str, grdname=None, Yorig=None,
-                         half_window=5, eta_chunk=5, n_doy=366):
+def _build_daily_mean(fname, var_str, Yorig=None):
     '''
-    Shared setup used by both get_climatology() and get_thresholds():
-    opens fname, decodes time, resamples var_str to daily means (lazy,
-    dask-backed), and precomputes the day-of-year pooling windows.
+    Build an in-memory daily-mean DataArray for var_str, reading raw
+    file(s) ONE AT A TIME and resampling each eagerly - cheap, since each
+    raw file only covers ~a month - then concatenating the small results.
  
-    Returns (ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord)
-    ds is left open/unclosed - the caller is responsible for ds.close().
+    This deliberately avoids resampling a dask-backed multi-file dataset
+    in one shot: doing that across many decades of files can build an
+    enormous dask task graph (roughly proportional to n_days x
+    n_spatial_chunks) that exhausts memory just constructing the graph,
+    before any computation even starts. Reading and resampling file by
+    file sidesteps that - each step is small, eager, and bounded.
     '''
     if isinstance(fname, xr.Dataset):
-        ds = fname.copy()
-    else:
-        ds = get_ds(fname, var_str)
+        ds = handle_time(fname.copy(), Yorig=Yorig)
+        da_daily = ds[var_str].resample(time='1D').mean().load().astype('float32')
+        ds.close()
+        return da_daily
  
-    if grdname is not None:
-        ds_grd = get_ds(grdname)
-        ds = ds.assign_coords(lon_rho=ds_grd['lon_rho'], lat_rho=ds_grd['lat_rho'])
-        ds['mask_rho'] = ds_grd['mask_rho']
-        ds_grd.close()
+    files = _resolve_files(fname)
+    print(f'    building daily means for \'{var_str}\' from {len(files)} file(s), one at a time...')
+    pieces = []
+    for fi, f in enumerate(files):
+        ds_f = get_ds(f, var_str)
+        ds_f = handle_time(ds_f, Yorig=Yorig)
+        da_f = ds_f[var_str].resample(time='1D').mean().load().astype('float32')
+        pieces.append(da_f)
+        ds_f.close()
+        if (fi + 1) % 12 == 0 or fi == len(files) - 1:
+            print(f'      {fi + 1}/{len(files)} files processed')
  
-    ds = handle_time(ds, Yorig=Yorig)
- 
-    da = ds[var_str]
-    spatial_dims = tuple(d for d in da.dims if d != 'time')
-    eta_dim = _find_eta_dim(spatial_dims)
- 
-    chunks = {'time': -1}
-    if eta_dim is not None:
-        chunks[eta_dim] = min(eta_chunk, ds.sizes[eta_dim])
-    da = da.chunk(chunks)
- 
-    print('    resampling to daily means...')
-    da_daily = da.resample(time='1D').mean()
-    da_daily = da_daily.compute()
- 
-    time_da = da_daily['time']
-    all_doy = time_da.dt.dayofyear.values
-    dates_np = time_da.values
-    print(f'    date range: {np.datetime_as_string(dates_np[0], unit="D")} to '
-          f'{np.datetime_as_string(dates_np[-1], unit="D")} '
-          f'({len(all_doy)} daily records)')
- 
-    print(f'    pre-computing +/-{half_window}-day pooling windows for {n_doy} days-of-year...')
-    window_masks = _doy_window_masks(all_doy, half_window, n_doy=n_doy)
-    doy_coord = np.arange(1, n_doy + 1)
- 
-    return ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord
+    da_daily = xr.concat(pieces, dim='time')
+    del pieces
+    return da_daily
  
  
 def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy):
@@ -2085,6 +2081,92 @@ def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy)
             for v in var_names}
  
  
+def _climatology_from_daily(da_daily, half_window, eta_chunk, n_doy):
+    '''
+    Day-of-year mean, batched over the eta_* dimension in plain numpy so
+    peak memory is bounded by one eta-batch's worth of data rather than
+    the whole daily stack.
+    '''
+    spatial_dims = tuple(d for d in da_daily.dims if d != 'time')
+    eta_dim = _find_eta_dim(spatial_dims)
+    dim_sizes = {d: da_daily.sizes[d] for d in spatial_dims}
+ 
+    all_doy = da_daily['time'].dt.dayofyear.values
+    window_masks = _doy_window_masks(all_doy, half_window, n_doy=n_doy)
+ 
+    shape = tuple(dim_sizes[d] for d in spatial_dims)
+    out_arr = np.full((n_doy,) + shape, np.nan, dtype='float32')
+ 
+    if eta_dim is None:
+        block = da_daily.values
+        for d_idx, mask in enumerate(window_masks):
+            if mask.any():
+                out_arr[d_idx, ...] = np.nanmean(block[mask, ...], axis=0)
+        del block
+    else:
+        n_eta = dim_sizes[eta_dim]
+        eta_axis = spatial_dims.index(eta_dim)
+        for i in range(0, n_eta, eta_chunk):
+            end_i = min(i + eta_chunk, n_eta)
+            block = da_daily.isel(**{eta_dim: slice(i, end_i)}).values
+            for d_idx, mask in enumerate(window_masks):
+                if not mask.any():
+                    continue
+                mean_vals = np.nanmean(block[mask, ...], axis=0)
+                out_slices = [slice(None)] * len(spatial_dims)
+                out_slices[eta_axis] = slice(i, end_i)
+                out_arr[(d_idx,) + tuple(out_slices)] = mean_vals
+            print(f'      {eta_dim} rows {i:4d}-{end_i:4d}/{n_eta} done')
+            del block
+ 
+    return out_arr, spatial_dims, eta_dim, dim_sizes
+ 
+ 
+def _thresholds_from_daily(da_daily, half_window, pctl_low, pctl_high, eta_chunk, n_doy):
+    '''
+    Day-of-year percentiles (both together, one pooled selection per
+    day), batched over the eta_* dimension in plain numpy - same
+    memory-bounded pattern as _climatology_from_daily().
+    '''
+    spatial_dims = tuple(d for d in da_daily.dims if d != 'time')
+    eta_dim = _find_eta_dim(spatial_dims)
+    dim_sizes = {d: da_daily.sizes[d] for d in spatial_dims}
+ 
+    all_doy = da_daily['time'].dt.dayofyear.values
+    window_masks = _doy_window_masks(all_doy, half_window, n_doy=n_doy)
+ 
+    shape = tuple(dim_sizes[d] for d in spatial_dims)
+    out_low = np.full((n_doy,) + shape, np.nan, dtype='float32')
+    out_high = np.full((n_doy,) + shape, np.nan, dtype='float32')
+ 
+    if eta_dim is None:
+        block = da_daily.values
+        for d_idx, mask in enumerate(window_masks):
+            if mask.any():
+                vals = np.nanpercentile(block[mask, ...], [pctl_low, pctl_high], axis=0)
+                out_low[d_idx, ...] = vals[0]
+                out_high[d_idx, ...] = vals[1]
+        del block
+    else:
+        n_eta = dim_sizes[eta_dim]
+        eta_axis = spatial_dims.index(eta_dim)
+        for i in range(0, n_eta, eta_chunk):
+            end_i = min(i + eta_chunk, n_eta)
+            block = da_daily.isel(**{eta_dim: slice(i, end_i)}).values
+            for d_idx, mask in enumerate(window_masks):
+                if not mask.any():
+                    continue
+                vals = np.nanpercentile(block[mask, ...], [pctl_low, pctl_high], axis=0)
+                out_slices = [slice(None)] * len(spatial_dims)
+                out_slices[eta_axis] = slice(i, end_i)
+                out_low[(d_idx,) + tuple(out_slices)] = vals[0]
+                out_high[(d_idx,) + tuple(out_slices)] = vals[1]
+            print(f'      [p{pctl_low}/p{pctl_high}] {eta_dim} rows {i:4d}-{end_i:4d}/{n_eta} done')
+            del block
+ 
+    return out_low, out_high, spatial_dims, eta_dim, dim_sizes
+ 
+ 
 def get_climatology(fname, var_str,
                      grdname=None,
                      Yorig=None,
@@ -2096,19 +2178,29 @@ def get_climatology(fname, var_str,
     Compute a day-of-year climatology (mean) for any time-varying CROCO
     variable, pooling +/- half_window days across all years.
  
+    Memory-safe by construction, regardless of how many years of raw
+    files are involved:
+      1. Raw file(s) are read ONE AT A TIME and reduced to daily means
+         eagerly, then concatenated (see _build_daily_mean()) - avoids
+         building a huge dask task graph across a decades-long file list.
+      2. The day-of-year pooling/averaging is done by batching over the
+         variable's eta_* dimension in plain numpy.
+ 
     fname = CROCO output file name / glob pattern / list of files (or an
-            already-opened xarray Dataset) - see get_ds()
+            already-opened xarray Dataset, assumed small enough to
+            resample directly) - see get_ds()
     var_str = variable to compute the climatology for. Works for any
               time-varying variable on any native grid (rho/u/v/psi) -
-              the variable's own spatial dims are detected automatically,
-              not assumed to be eta_rho/xi_rho.
-    grdname = optional grid file, only needed if grid info isn't in fname
+              the variable's own spatial dims are detected automatically.
+    grdname = currently unused by this function (climatology output is a
+              numeric field only). Use get_grd_var() to attach
+              lon_rho/lat_rho/mask_rho to the result yourself if needed.
     Yorig = reference origin year, passed through to handle_time()
     half_window = pooling half-width in days (+/- half_window, circular
                   across the Dec31/Jan1 boundary)
-    eta_chunk = dask chunk size along the variable's eta_* dimension -
-                controls how much data is processed per block, trading
-                memory for speed. Lower it if you hit memory pressure.
+    eta_chunk = how many eta_* rows are processed per batch during the
+                pooling step - controls peak memory, trading memory for
+                speed. Lower it if you still hit memory pressure.
     n_doy = number of days-of-year to compute (366 covers leap years)
     nc_out = optional path to write the result as a netcdf file
  
@@ -2118,37 +2210,26 @@ def get_climatology(fname, var_str,
     print('')
     print('  Running get_climatology() for ' + var_str)
  
-    ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord = _daily_mean_for_doy(
-        fname, var_str, grdname=grdname, Yorig=Yorig,
-        half_window=half_window, eta_chunk=eta_chunk, n_doy=n_doy)
+    da_daily = _build_daily_mean(fname, var_str, Yorig=Yorig)
  
-    doy_means = []
-    for mask in window_masks:
-        if not mask.any():
-            doy_means.append(xr.full_like(da_daily.isel(time=0), np.nan))
-            continue
-        doy_means.append(da_daily.isel(time=mask).mean(dim='time', skipna=True))
+    print(f'    pooling +/-{half_window}-day windows for {n_doy} days-of-year...')
+    out_arr, spatial_dims, eta_dim, dim_sizes = _climatology_from_daily(
+        da_daily, half_window, eta_chunk, n_doy)
+    del da_daily
  
-    da_clim = xr.concat(doy_means, dim=xr.DataArray(doy_coord, dims='dayofyear', name='dayofyear'))
-    da_clim = da_clim.transpose('dayofyear', *spatial_dims)
- 
-    print(f'    computing (dask, {eta_chunk}-row {eta_dim} blocks)...' if eta_dim
-          else '    computing...')
-    da_clim = da_clim.astype('float32').compute()
- 
-    da_clim.name = var_str
-    da_clim.attrs = dict(
-        long_name=f'Day-of-year climatological mean of {var_str}',
-        window_half_width_days=half_window,
+    doy_coord = np.arange(1, n_doy + 1)
+    da_clim = xr.DataArray(
+        out_arr, dims=('dayofyear',) + spatial_dims,
+        coords={'dayofyear': doy_coord}, name=var_str,
+        attrs=dict(long_name=f'Day-of-year climatological mean of {var_str}',
+                   window_half_width_days=half_window),
     )
  
     if nc_out is not None:
         print(f'    writing the netcdf file: {nc_out}')
-        dim_sizes = {d: da_clim.sizes[d] for d in spatial_dims}
         encoding = _doy_encoding([var_str], spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy)
-        da_clim.to_dataset().to_netcdf(nc_out, encoding=encoding)
+        da_clim.fillna(1.0e20).to_dataset().to_netcdf(nc_out, encoding=encoding)
  
-    ds.close()
     return da_clim
  
  
@@ -2166,9 +2247,10 @@ def get_thresholds(fname, var_str,
     variable (e.g. for marine heatwave / cold spell detection), pooling
     +/- half_window days across all years.
  
-    fname, var_str, grdname, Yorig, half_window, eta_chunk, n_doy: as per
-        get_climatology() - var_str's own native spatial dims are used,
-        not assumed to be eta_rho/xi_rho.
+    Same memory-safe approach as get_climatology() - see that docstring
+    for details. fname, var_str, grdname, Yorig, half_window, eta_chunk,
+    n_doy all behave the same way here.
+ 
     pctl_low, pctl_high = the two percentiles to compute (0-100). Both are
         computed together from a single pooled selection per day-of-year.
     nc_out = optional path to write the result as a netcdf file
@@ -2183,64 +2265,46 @@ def get_thresholds(fname, var_str,
     print('')
     print('  Running get_thresholds() for ' + var_str)
  
-    ds, da_daily, spatial_dims, eta_dim, window_masks, doy_coord = _daily_mean_for_doy(
-        fname, var_str, grdname=grdname, Yorig=Yorig,
-        half_window=half_window, eta_chunk=eta_chunk, n_doy=n_doy)
+    da_daily = _build_daily_mean(fname, var_str, Yorig=Yorig)
  
-    quantile_fracs = [pctl_low / 100.0, pctl_high / 100.0]
+    print(f'    pooling +/-{half_window}-day windows for {n_doy} days-of-year...')
+    out_low, out_high, spatial_dims, eta_dim, dim_sizes = _thresholds_from_daily(
+        da_daily, half_window, pctl_low, pctl_high, eta_chunk, n_doy)
+    del da_daily
  
-    doy_quantiles = []
-    for mask in window_masks:
-        if not mask.any():
-            nan_da = xr.full_like(da_daily.isel(time=0), np.nan).expand_dims(
-                quantile=quantile_fracs)
-            doy_quantiles.append(nan_da)
-            continue
-        pooled = da_daily.isel(time=mask).chunk({'time': -1})
-        doy_quantiles.append(pooled.quantile(quantile_fracs, dim='time', skipna=True))
- 
-    da_q = xr.concat(doy_quantiles, dim=xr.DataArray(doy_coord, dims='dayofyear', name='dayofyear'))
-    da_q = da_q.transpose('dayofyear', 'quantile', *spatial_dims)
- 
-    print(f'    computing (dask, {eta_chunk}-row {eta_dim} blocks)...' if eta_dim
-          else '    computing...')
-    da_q = da_q.astype('float32').compute()
- 
-    thr_high = da_q.sel(quantile=pctl_high / 100.0, drop=True)
-    thr_low = da_q.sel(quantile=pctl_low / 100.0, drop=True)
- 
-    diff_check = float(np.nanmean(np.abs(thr_high.values - thr_low.values)))
+    diff_check = float(np.nanmean(np.abs(out_high - out_low)))
     print(f'    sanity check: mean|p{pctl_high} - p{pctl_low}| = {diff_check:.4f} '
           f'(should be well above 0)')
     if diff_check < 1e-6:
-        ds.close()
         raise RuntimeError(
-            f'threshold_{pctl_high} came out identical to threshold_{pctl_low} - '
-            f'aborting. Check pctl_low/pctl_high and the percentile computation above.'
+            f'threshold_{pctl_high} came out identical to threshold_{pctl_low} - aborting. '
+            f'Check pctl_low/pctl_high and the percentile computation above.'
         )
  
-    thr_high.name = f'threshold_{pctl_high}'
-    thr_low.name = f'threshold_{pctl_low}'
-    thr_high.attrs = dict(
-        long_name=f'Day-of-year {pctl_high}th percentile threshold of {var_str}',
-        window_half_width_days=half_window,
+    doy_coord = np.arange(1, n_doy + 1)
+    var_dims = ('dayofyear',) + spatial_dims
+    thr_high = xr.DataArray(
+        out_high, dims=var_dims, coords={'dayofyear': doy_coord},
+        name=f'threshold_{pctl_high}',
+        attrs=dict(long_name=f'Day-of-year {pctl_high}th percentile threshold of {var_str}',
+                   window_half_width_days=half_window),
     )
-    thr_low.attrs = dict(
-        long_name=f'Day-of-year {pctl_low}th percentile threshold of {var_str}',
-        window_half_width_days=half_window,
+    thr_low = xr.DataArray(
+        out_low, dims=var_dims, coords={'dayofyear': doy_coord},
+        name=f'threshold_{pctl_low}',
+        attrs=dict(long_name=f'Day-of-year {pctl_low}th percentile threshold of {var_str}',
+                   window_half_width_days=half_window),
     )
- 
     ds_out = xr.Dataset({thr_high.name: thr_high, thr_low.name: thr_low})
  
     if nc_out is not None:
         print(f'    writing the netcdf file: {nc_out}')
-        dim_sizes = {d: ds_out.sizes[d] for d in spatial_dims}
         encoding = _doy_encoding([thr_high.name, thr_low.name], spatial_dims,
                                   dim_sizes, eta_dim, eta_chunk, n_doy)
-        ds_out.to_netcdf(nc_out, encoding=encoding)
+        ds_out.fillna(1.0e20).to_netcdf(nc_out, encoding=encoding)
  
-    ds.close()
     return ds_out
+ 
  
 #if __name__ == "__main__":
 #    file = '/home/g.rautenbach/Data/models/sa_southeast/croco_avg.nc'
