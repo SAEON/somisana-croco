@@ -2034,49 +2034,53 @@ def _doy_window_masks(all_doy, half_window, n_doy=366):
     return masks
  
  
-def _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=None, files_per_write_batch=12):
-    '''
-    Stream raw CROCO file(s) into a small per-variable daily-mean netcdf
-    file (daily_mean_file), processing files in small batches so peak
-    memory stays bounded no matter how many years of files are involved.
+def _daily_mean_batch_files(daily_mean_prefix):
+    '''List existing daily-mean batch files for a prefix, in write order.'''
+    return sorted(glob(f'{daily_mean_prefix}_*.nc'))
  
-    Two things that WON'T work at this scale, and why this avoids them:
-      - Resampling a dask-backed multi-file dataset in one shot can build
-        an enormous task graph (roughly n_days x n_spatial_chunks) that
-        exhausts memory just constructing the graph.
-      - Reading+resampling file by file but only concatenating at the
-        very end still needs to hold every file's daily-mean piece in
-        memory simultaneously - for hundreds of files that grows without
-        bound too.
-    Here, only `files_per_write_batch` files' worth of daily means are
-    held in memory at once; each batch is written to disk immediately
-    (mode='w' for the first batch, mode='a' - appending along the
-    unlimited 'time' dim - for the rest) and then freed.
+ 
+def _build_daily_mean_netcdf(fname, var_str, daily_mean_prefix, Yorig=None, files_per_write_batch=12):
+    '''
+    Stream raw CROCO file(s) into a SERIES of small per-variable
+    daily-mean netcdf files (daily_mean_prefix_0000.nc, _0001.nc, ...),
+    processing files in small batches so peak memory stays bounded no
+    matter how many years of files are involved.
+ 
+    Each batch gets its OWN file rather than being appended to one
+    growing file: plain xarray to_netcdf(mode='a') does not actually
+    extend an existing unlimited dimension (it will raise a dimension-
+    size mismatch), and proper incremental appending requires the raw
+    netCDF4 API directly, which isn't imported here. Writing one file
+    per batch sidesteps that entirely - the batch files are stitched
+    back together lazily with xr.open_mfdataset() for the pooling step.
+ 
+    Returns the list of written file paths, in chronological order.
     '''
     if isinstance(fname, xr.Dataset):
         ds = handle_time(fname.copy(), Yorig=Yorig)
         da_daily = ds[var_str].resample(time='1D').mean().load().astype('float32')
-        da_daily.to_dataset(name=var_str).to_netcdf(daily_mean_file, unlimited_dims=['time'])
+        out_path = f'{daily_mean_prefix}_0000.nc'
+        da_daily.to_dataset(name=var_str).to_netcdf(out_path)
         ds.close()
-        return
+        return [out_path]
  
     files = _resolve_files(fname)
-    print(f'    building a daily-mean stack for \'{var_str}\' from {len(files)} file(s) '
+    print(f'    building daily-mean batch files for \'{var_str}\' from {len(files)} file(s) '
           f'(batches of {files_per_write_batch})...')
  
     batch = []
-    first_write = True
+    written_files = []
     n_days_total = 0
  
     def flush_batch():
-        nonlocal first_write, n_days_total
+        nonlocal n_days_total
         if not batch:
             return
         da_batch = xr.concat(batch, dim='time') if len(batch) > 1 else batch[0]
-        mode = 'w' if first_write else 'a'
-        da_batch.to_dataset(name=var_str).to_netcdf(daily_mean_file, mode=mode, unlimited_dims=['time'])
+        out_path = f'{daily_mean_prefix}_{len(written_files):04d}.nc'
+        da_batch.to_dataset(name=var_str).to_netcdf(out_path)
+        written_files.append(out_path)
         n_days_total += da_batch.sizes['time']
-        first_write = False
         batch.clear()
  
     for fi, f in enumerate(files):
@@ -2088,7 +2092,10 @@ def _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=None, files_
  
         if len(batch) >= files_per_write_batch or fi == len(files) - 1:
             flush_batch()
-            print(f'      {fi + 1}/{len(files)} files processed ({n_days_total} daily records written)')
+            print(f'      {fi + 1}/{len(files)} files processed ({n_days_total} daily records written, '
+                  f'{len(written_files)} batch file(s) so far)')
+ 
+    return written_files
  
  
 def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy):
@@ -2102,14 +2109,14 @@ def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy)
             for v in var_names}
  
  
-def _climatology_from_daily_file(daily_mean_file, var_str, half_window, eta_chunk, n_doy):
+def _climatology_from_daily_files(daily_mean_files, var_str, half_window, eta_chunk, n_doy):
     '''
-    Day-of-year mean, batched over the eta_* dimension in plain numpy -
-    reads only one eta-batch's worth of the (much smaller) daily-mean
-    file at a time, so peak memory is bounded regardless of the full
-    stack's size.
+    Day-of-year mean, batched over the eta_* dimension in plain numpy.
+    daily_mean_files (a list of small per-batch netcdf paths) are opened
+    together with open_mfdataset - only one eta-batch's worth of data is
+    actually pulled into memory at a time via .isel(...).values.
     '''
-    ds = xr.open_dataset(daily_mean_file)
+    ds = xr.open_mfdataset(daily_mean_files, combine='nested', concat_dim='time')
     da = ds[var_str]
     spatial_dims = tuple(d for d in da.dims if d != 'time')
     eta_dim = _find_eta_dim(spatial_dims)
@@ -2147,13 +2154,13 @@ def _climatology_from_daily_file(daily_mean_file, var_str, half_window, eta_chun
     return out_arr, spatial_dims, eta_dim, dim_sizes
  
  
-def _thresholds_from_daily_file(daily_mean_file, var_str, half_window, pctl_low, pctl_high, eta_chunk, n_doy):
+def _thresholds_from_daily_files(daily_mean_files, var_str, half_window, pctl_low, pctl_high, eta_chunk, n_doy):
     '''
     Day-of-year percentiles (both together, one pooled selection per
     day), batched over the eta_* dimension in plain numpy - same
-    memory-bounded pattern as _climatology_from_daily_file().
+    memory-bounded pattern as _climatology_from_daily_files().
     '''
-    ds = xr.open_dataset(daily_mean_file)
+    ds = xr.open_mfdataset(daily_mean_files, combine='nested', concat_dim='time')
     da = ds[var_str]
     spatial_dims = tuple(d for d in da.dims if d != 'time')
     eta_dim = _find_eta_dim(spatial_dims)
@@ -2202,22 +2209,12 @@ def get_climatology(fname, var_str,
                      eta_chunk=5,
                      n_doy=366,
                      nc_out=None,
-                     daily_mean_file=None,
-                     reuse_daily_mean_file=False,
+                     daily_mean_prefix=None,
+                     reuse_daily_mean_files=False,
                      files_per_write_batch=12):
     '''
     Compute a day-of-year climatology (mean) for any time-varying CROCO
     variable, pooling +/- half_window days across all years.
- 
-    Memory-safe regardless of how many years of raw files are involved:
-      1. Raw files are read in small batches (files_per_write_batch at a
-         time), reduced to daily means, and streamed to a small
-         intermediate per-variable netcdf file on disk - see
-         _build_daily_mean_netcdf(). Only one batch is ever held in
-         memory at once.
-      2. The day-of-year pooling/averaging is then done by batching over
-         the variable's eta_* dimension in plain numpy, reading only one
-         eta-batch's worth of the (much smaller) daily-mean file at a time.
  
     fname = CROCO output file name / glob pattern / list of files (or an
             already-opened xarray Dataset, assumed small enough to
@@ -2236,17 +2233,18 @@ def get_climatology(fname, var_str,
                 speed. Lower it if you still hit memory pressure.
     n_doy = number of days-of-year to compute (366 covers leap years)
     nc_out = optional path to write the result as a netcdf file
-    daily_mean_file = path for the intermediate daily-mean file. Defaults
-              to f'_daily_mean_{var_str}.nc' in the current directory.
-              This file is NOT deleted automatically - it's cheap to
-              build once and reuse (e.g. pass reuse_daily_mean_file=True
+    daily_mean_prefix = filename prefix for the intermediate daily-mean
+              batch files. Defaults to f'_daily_mean_{var_str}'. These
+              files are NOT deleted automatically - they're cheap to
+              build once and reuse (e.g. pass reuse_daily_mean_files=True
               on a second call, for get_thresholds() on the same
               variable, to skip re-reading all the raw files).
-    reuse_daily_mean_file = if True, skip rebuilding daily_mean_file and
-              assume it already exists from a previous call.
+    reuse_daily_mean_files = if True, skip rebuilding the daily-mean
+              batch files and look up existing ones matching
+              daily_mean_prefix instead.
     files_per_write_batch = how many raw files' daily means are held in
-              memory before being flushed to daily_mean_file. Lower this
-              if you still hit memory pressure while building it.
+              memory before being flushed to a new batch file. Lower
+              this if you still hit memory pressure while building it.
  
     Returns an xarray DataArray named var_str, with dims
     (dayofyear, *var_str's native spatial dims).
@@ -2254,18 +2252,19 @@ def get_climatology(fname, var_str,
     print('')
     print('  Running get_climatology() for ' + var_str)
  
-    if daily_mean_file is None:
-        daily_mean_file = f'_daily_mean_{var_str}.nc'
+    if daily_mean_prefix is None:
+        daily_mean_prefix = f'_daily_mean_{var_str}'
  
-    if reuse_daily_mean_file:
-        print(f'    reusing existing daily-mean file: {daily_mean_file}')
+    if reuse_daily_mean_files:
+        daily_mean_files = _daily_mean_batch_files(daily_mean_prefix)
+        print(f'    reusing {len(daily_mean_files)} existing daily-mean file(s) for prefix: {daily_mean_prefix}')
     else:
-        _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=Yorig,
-                                  files_per_write_batch=files_per_write_batch)
+        daily_mean_files = _build_daily_mean_netcdf(
+            fname, var_str, daily_mean_prefix, Yorig=Yorig, files_per_write_batch=files_per_write_batch)
  
     print(f'    pooling +/-{half_window}-day windows for {n_doy} days-of-year...')
-    out_arr, spatial_dims, eta_dim, dim_sizes = _climatology_from_daily_file(
-        daily_mean_file, var_str, half_window, eta_chunk, n_doy)
+    out_arr, spatial_dims, eta_dim, dim_sizes = _climatology_from_daily_files(
+        daily_mean_files, var_str, half_window, eta_chunk, n_doy)
  
     doy_coord = np.arange(1, n_doy + 1)
     da_clim = xr.DataArray(
@@ -2292,8 +2291,8 @@ def get_thresholds(fname, var_str,
                     eta_chunk=5,
                     n_doy=366,
                     nc_out=None,
-                    daily_mean_file=None,
-                    reuse_daily_mean_file=False,
+                    daily_mean_prefix=None,
+                    reuse_daily_mean_files=False,
                     files_per_write_batch=12):
     '''
     Compute day-of-year percentile thresholds for any time-varying CROCO
@@ -2302,8 +2301,9 @@ def get_thresholds(fname, var_str,
  
     Same memory-safe, disk-backed approach as get_climatology() - see
     that docstring for details. fname, var_str, grdname, Yorig,
-    half_window, eta_chunk, n_doy, daily_mean_file, reuse_daily_mean_file,
-    files_per_write_batch all behave the same way here.
+    half_window, eta_chunk, n_doy, daily_mean_prefix,
+    reuse_daily_mean_files, files_per_write_batch all behave the same
+    way here.
  
     pctl_low, pctl_high = the two percentiles to compute (0-100). Both are
         computed together from a single pooled selection per day-of-year.
@@ -2319,18 +2319,19 @@ def get_thresholds(fname, var_str,
     print('')
     print('  Running get_thresholds() for ' + var_str)
  
-    if daily_mean_file is None:
-        daily_mean_file = f'_daily_mean_{var_str}.nc'
+    if daily_mean_prefix is None:
+        daily_mean_prefix = f'_daily_mean_{var_str}'
  
-    if reuse_daily_mean_file:
-        print(f'    reusing existing daily-mean file: {daily_mean_file}')
+    if reuse_daily_mean_files:
+        daily_mean_files = _daily_mean_batch_files(daily_mean_prefix)
+        print(f'    reusing {len(daily_mean_files)} existing daily-mean file(s) for prefix: {daily_mean_prefix}')
     else:
-        _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=Yorig,
-                                  files_per_write_batch=files_per_write_batch)
+        daily_mean_files = _build_daily_mean_netcdf(
+            fname, var_str, daily_mean_prefix, Yorig=Yorig, files_per_write_batch=files_per_write_batch)
  
     print(f'    pooling +/-{half_window}-day windows for {n_doy} days-of-year...')
-    out_low, out_high, spatial_dims, eta_dim, dim_sizes = _thresholds_from_daily_file(
-        daily_mean_file, var_str, half_window, pctl_low, pctl_high, eta_chunk, n_doy)
+    out_low, out_high, spatial_dims, eta_dim, dim_sizes = _thresholds_from_daily_files(
+        daily_mean_files, var_str, half_window, pctl_low, pctl_high, eta_chunk, n_doy)
  
     diff_check = float(np.nanmean(np.abs(out_high - out_low)))
     print(f'    sanity check: mean|p{pctl_high} - p{pctl_low}| = {diff_check:.4f} '
