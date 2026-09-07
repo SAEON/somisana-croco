@@ -2034,40 +2034,61 @@ def _doy_window_masks(all_doy, half_window, n_doy=366):
     return masks
  
  
-def _build_daily_mean(fname, var_str, Yorig=None):
+def _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=None, files_per_write_batch=12):
     '''
-    Build an in-memory daily-mean DataArray for var_str, reading raw
-    file(s) ONE AT A TIME and resampling each eagerly - cheap, since each
-    raw file only covers ~a month - then concatenating the small results.
+    Stream raw CROCO file(s) into a small per-variable daily-mean netcdf
+    file (daily_mean_file), processing files in small batches so peak
+    memory stays bounded no matter how many years of files are involved.
  
-    This deliberately avoids resampling a dask-backed multi-file dataset
-    in one shot: doing that across many decades of files can build an
-    enormous dask task graph (roughly proportional to n_days x
-    n_spatial_chunks) that exhausts memory just constructing the graph,
-    before any computation even starts. Reading and resampling file by
-    file sidesteps that - each step is small, eager, and bounded.
+    Two things that WON'T work at this scale, and why this avoids them:
+      - Resampling a dask-backed multi-file dataset in one shot can build
+        an enormous task graph (roughly n_days x n_spatial_chunks) that
+        exhausts memory just constructing the graph.
+      - Reading+resampling file by file but only concatenating at the
+        very end still needs to hold every file's daily-mean piece in
+        memory simultaneously - for hundreds of files that grows without
+        bound too.
+    Here, only `files_per_write_batch` files' worth of daily means are
+    held in memory at once; each batch is written to disk immediately
+    (mode='w' for the first batch, mode='a' - appending along the
+    unlimited 'time' dim - for the rest) and then freed.
     '''
     if isinstance(fname, xr.Dataset):
         ds = handle_time(fname.copy(), Yorig=Yorig)
         da_daily = ds[var_str].resample(time='1D').mean().load().astype('float32')
+        da_daily.to_dataset(name=var_str).to_netcdf(daily_mean_file, unlimited_dims=['time'])
         ds.close()
-        return da_daily
+        return
  
     files = _resolve_files(fname)
-    print(f'    building daily means for \'{var_str}\' from {len(files)} file(s), one at a time...')
-    pieces = []
+    print(f'    building a daily-mean stack for \'{var_str}\' from {len(files)} file(s) '
+          f'(batches of {files_per_write_batch})...')
+ 
+    batch = []
+    first_write = True
+    n_days_total = 0
+ 
+    def flush_batch():
+        nonlocal first_write, n_days_total
+        if not batch:
+            return
+        da_batch = xr.concat(batch, dim='time') if len(batch) > 1 else batch[0]
+        mode = 'w' if first_write else 'a'
+        da_batch.to_dataset(name=var_str).to_netcdf(daily_mean_file, mode=mode, unlimited_dims=['time'])
+        n_days_total += da_batch.sizes['time']
+        first_write = False
+        batch.clear()
+ 
     for fi, f in enumerate(files):
         ds_f = get_ds(f, var_str)
         ds_f = handle_time(ds_f, Yorig=Yorig)
         da_f = ds_f[var_str].resample(time='1D').mean().load().astype('float32')
-        pieces.append(da_f)
+        batch.append(da_f)
         ds_f.close()
-        if (fi + 1) % 12 == 0 or fi == len(files) - 1:
-            print(f'      {fi + 1}/{len(files)} files processed')
  
-    da_daily = xr.concat(pieces, dim='time')
-    del pieces
-    return da_daily
+        if len(batch) >= files_per_write_batch or fi == len(files) - 1:
+            flush_batch()
+            print(f'      {fi + 1}/{len(files)} files processed ({n_days_total} daily records written)')
  
  
 def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy):
@@ -2081,24 +2102,27 @@ def _doy_encoding(var_names, spatial_dims, dim_sizes, eta_dim, eta_chunk, n_doy)
             for v in var_names}
  
  
-def _climatology_from_daily(da_daily, half_window, eta_chunk, n_doy):
+def _climatology_from_daily_file(daily_mean_file, var_str, half_window, eta_chunk, n_doy):
     '''
-    Day-of-year mean, batched over the eta_* dimension in plain numpy so
-    peak memory is bounded by one eta-batch's worth of data rather than
-    the whole daily stack.
+    Day-of-year mean, batched over the eta_* dimension in plain numpy -
+    reads only one eta-batch's worth of the (much smaller) daily-mean
+    file at a time, so peak memory is bounded regardless of the full
+    stack's size.
     '''
-    spatial_dims = tuple(d for d in da_daily.dims if d != 'time')
+    ds = xr.open_dataset(daily_mean_file)
+    da = ds[var_str]
+    spatial_dims = tuple(d for d in da.dims if d != 'time')
     eta_dim = _find_eta_dim(spatial_dims)
-    dim_sizes = {d: da_daily.sizes[d] for d in spatial_dims}
+    dim_sizes = {d: ds.sizes[d] for d in spatial_dims}
  
-    all_doy = da_daily['time'].dt.dayofyear.values
+    all_doy = ds['time'].dt.dayofyear.values
     window_masks = _doy_window_masks(all_doy, half_window, n_doy=n_doy)
  
     shape = tuple(dim_sizes[d] for d in spatial_dims)
     out_arr = np.full((n_doy,) + shape, np.nan, dtype='float32')
  
     if eta_dim is None:
-        block = da_daily.values
+        block = da.values
         for d_idx, mask in enumerate(window_masks):
             if mask.any():
                 out_arr[d_idx, ...] = np.nanmean(block[mask, ...], axis=0)
@@ -2108,7 +2132,7 @@ def _climatology_from_daily(da_daily, half_window, eta_chunk, n_doy):
         eta_axis = spatial_dims.index(eta_dim)
         for i in range(0, n_eta, eta_chunk):
             end_i = min(i + eta_chunk, n_eta)
-            block = da_daily.isel(**{eta_dim: slice(i, end_i)}).values
+            block = da.isel(**{eta_dim: slice(i, end_i)}).values
             for d_idx, mask in enumerate(window_masks):
                 if not mask.any():
                     continue
@@ -2119,20 +2143,23 @@ def _climatology_from_daily(da_daily, half_window, eta_chunk, n_doy):
             print(f'      {eta_dim} rows {i:4d}-{end_i:4d}/{n_eta} done')
             del block
  
+    ds.close()
     return out_arr, spatial_dims, eta_dim, dim_sizes
  
  
-def _thresholds_from_daily(da_daily, half_window, pctl_low, pctl_high, eta_chunk, n_doy):
+def _thresholds_from_daily_file(daily_mean_file, var_str, half_window, pctl_low, pctl_high, eta_chunk, n_doy):
     '''
     Day-of-year percentiles (both together, one pooled selection per
     day), batched over the eta_* dimension in plain numpy - same
-    memory-bounded pattern as _climatology_from_daily().
+    memory-bounded pattern as _climatology_from_daily_file().
     '''
-    spatial_dims = tuple(d for d in da_daily.dims if d != 'time')
+    ds = xr.open_dataset(daily_mean_file)
+    da = ds[var_str]
+    spatial_dims = tuple(d for d in da.dims if d != 'time')
     eta_dim = _find_eta_dim(spatial_dims)
-    dim_sizes = {d: da_daily.sizes[d] for d in spatial_dims}
+    dim_sizes = {d: ds.sizes[d] for d in spatial_dims}
  
-    all_doy = da_daily['time'].dt.dayofyear.values
+    all_doy = ds['time'].dt.dayofyear.values
     window_masks = _doy_window_masks(all_doy, half_window, n_doy=n_doy)
  
     shape = tuple(dim_sizes[d] for d in spatial_dims)
@@ -2140,7 +2167,7 @@ def _thresholds_from_daily(da_daily, half_window, pctl_low, pctl_high, eta_chunk
     out_high = np.full((n_doy,) + shape, np.nan, dtype='float32')
  
     if eta_dim is None:
-        block = da_daily.values
+        block = da.values
         for d_idx, mask in enumerate(window_masks):
             if mask.any():
                 vals = np.nanpercentile(block[mask, ...], [pctl_low, pctl_high], axis=0)
@@ -2152,7 +2179,7 @@ def _thresholds_from_daily(da_daily, half_window, pctl_low, pctl_high, eta_chunk
         eta_axis = spatial_dims.index(eta_dim)
         for i in range(0, n_eta, eta_chunk):
             end_i = min(i + eta_chunk, n_eta)
-            block = da_daily.isel(**{eta_dim: slice(i, end_i)}).values
+            block = da.isel(**{eta_dim: slice(i, end_i)}).values
             for d_idx, mask in enumerate(window_masks):
                 if not mask.any():
                     continue
@@ -2164,6 +2191,7 @@ def _thresholds_from_daily(da_daily, half_window, pctl_low, pctl_high, eta_chunk
             print(f'      [p{pctl_low}/p{pctl_high}] {eta_dim} rows {i:4d}-{end_i:4d}/{n_eta} done')
             del block
  
+    ds.close()
     return out_low, out_high, spatial_dims, eta_dim, dim_sizes
  
  
@@ -2173,18 +2201,23 @@ def get_climatology(fname, var_str,
                      half_window=5,
                      eta_chunk=5,
                      n_doy=366,
-                     nc_out=None):
+                     nc_out=None,
+                     daily_mean_file=None,
+                     reuse_daily_mean_file=False,
+                     files_per_write_batch=12):
     '''
     Compute a day-of-year climatology (mean) for any time-varying CROCO
     variable, pooling +/- half_window days across all years.
  
-    Memory-safe by construction, regardless of how many years of raw
-    files are involved:
-      1. Raw file(s) are read ONE AT A TIME and reduced to daily means
-         eagerly, then concatenated (see _build_daily_mean()) - avoids
-         building a huge dask task graph across a decades-long file list.
-      2. The day-of-year pooling/averaging is done by batching over the
-         variable's eta_* dimension in plain numpy.
+    Memory-safe regardless of how many years of raw files are involved:
+      1. Raw files are read in small batches (files_per_write_batch at a
+         time), reduced to daily means, and streamed to a small
+         intermediate per-variable netcdf file on disk - see
+         _build_daily_mean_netcdf(). Only one batch is ever held in
+         memory at once.
+      2. The day-of-year pooling/averaging is then done by batching over
+         the variable's eta_* dimension in plain numpy, reading only one
+         eta-batch's worth of the (much smaller) daily-mean file at a time.
  
     fname = CROCO output file name / glob pattern / list of files (or an
             already-opened xarray Dataset, assumed small enough to
@@ -2203,6 +2236,17 @@ def get_climatology(fname, var_str,
                 speed. Lower it if you still hit memory pressure.
     n_doy = number of days-of-year to compute (366 covers leap years)
     nc_out = optional path to write the result as a netcdf file
+    daily_mean_file = path for the intermediate daily-mean file. Defaults
+              to f'_daily_mean_{var_str}.nc' in the current directory.
+              This file is NOT deleted automatically - it's cheap to
+              build once and reuse (e.g. pass reuse_daily_mean_file=True
+              on a second call, for get_thresholds() on the same
+              variable, to skip re-reading all the raw files).
+    reuse_daily_mean_file = if True, skip rebuilding daily_mean_file and
+              assume it already exists from a previous call.
+    files_per_write_batch = how many raw files' daily means are held in
+              memory before being flushed to daily_mean_file. Lower this
+              if you still hit memory pressure while building it.
  
     Returns an xarray DataArray named var_str, with dims
     (dayofyear, *var_str's native spatial dims).
@@ -2210,12 +2254,18 @@ def get_climatology(fname, var_str,
     print('')
     print('  Running get_climatology() for ' + var_str)
  
-    da_daily = _build_daily_mean(fname, var_str, Yorig=Yorig)
+    if daily_mean_file is None:
+        daily_mean_file = f'_daily_mean_{var_str}.nc'
+ 
+    if reuse_daily_mean_file:
+        print(f'    reusing existing daily-mean file: {daily_mean_file}')
+    else:
+        _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=Yorig,
+                                  files_per_write_batch=files_per_write_batch)
  
     print(f'    pooling +/-{half_window}-day windows for {n_doy} days-of-year...')
-    out_arr, spatial_dims, eta_dim, dim_sizes = _climatology_from_daily(
-        da_daily, half_window, eta_chunk, n_doy)
-    del da_daily
+    out_arr, spatial_dims, eta_dim, dim_sizes = _climatology_from_daily_file(
+        daily_mean_file, var_str, half_window, eta_chunk, n_doy)
  
     doy_coord = np.arange(1, n_doy + 1)
     da_clim = xr.DataArray(
@@ -2241,15 +2291,19 @@ def get_thresholds(fname, var_str,
                     pctl_high=90,
                     eta_chunk=5,
                     n_doy=366,
-                    nc_out=None):
+                    nc_out=None,
+                    daily_mean_file=None,
+                    reuse_daily_mean_file=False,
+                    files_per_write_batch=12):
     '''
     Compute day-of-year percentile thresholds for any time-varying CROCO
     variable (e.g. for marine heatwave / cold spell detection), pooling
     +/- half_window days across all years.
  
-    Same memory-safe approach as get_climatology() - see that docstring
-    for details. fname, var_str, grdname, Yorig, half_window, eta_chunk,
-    n_doy all behave the same way here.
+    Same memory-safe, disk-backed approach as get_climatology() - see
+    that docstring for details. fname, var_str, grdname, Yorig,
+    half_window, eta_chunk, n_doy, daily_mean_file, reuse_daily_mean_file,
+    files_per_write_batch all behave the same way here.
  
     pctl_low, pctl_high = the two percentiles to compute (0-100). Both are
         computed together from a single pooled selection per day-of-year.
@@ -2265,12 +2319,18 @@ def get_thresholds(fname, var_str,
     print('')
     print('  Running get_thresholds() for ' + var_str)
  
-    da_daily = _build_daily_mean(fname, var_str, Yorig=Yorig)
+    if daily_mean_file is None:
+        daily_mean_file = f'_daily_mean_{var_str}.nc'
+ 
+    if reuse_daily_mean_file:
+        print(f'    reusing existing daily-mean file: {daily_mean_file}')
+    else:
+        _build_daily_mean_netcdf(fname, var_str, daily_mean_file, Yorig=Yorig,
+                                  files_per_write_batch=files_per_write_batch)
  
     print(f'    pooling +/-{half_window}-day windows for {n_doy} days-of-year...')
-    out_low, out_high, spatial_dims, eta_dim, dim_sizes = _thresholds_from_daily(
-        da_daily, half_window, pctl_low, pctl_high, eta_chunk, n_doy)
-    del da_daily
+    out_low, out_high, spatial_dims, eta_dim, dim_sizes = _thresholds_from_daily_file(
+        daily_mean_file, var_str, half_window, pctl_low, pctl_high, eta_chunk, n_doy)
  
     diff_check = float(np.nanmean(np.abs(out_high - out_low)))
     print(f'    sanity check: mean|p{pctl_high} - p{pctl_low}| = {diff_check:.4f} '
