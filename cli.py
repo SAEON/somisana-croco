@@ -11,7 +11,7 @@ import argparse
 import sys, os
 from datetime import datetime, timedelta
 import calendar
-from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,make_ini,make_bry,make_clm
+from crocotools_py.preprocess import make_tides,reformat_gfs_atm,reformat_saws_atm,reformat_cmems_wind,make_ini,make_bry,make_clm
 from crocotools_py.postprocess import (get_ts_multivar, croco_srf_2_ww3,
                                         read_timeseries_coords)
 from crocotools_py.plotting import plot as crocplot
@@ -102,6 +102,24 @@ def main():
     def reformat_gfs_atm_handler(args):
         reformat_gfs_atm(args.gfsDir,args.outputDir,args.Yorig)
     parser_reformat_gfs_atm.set_defaults(func=reformat_gfs_atm_handler)
+    
+    # -------------------
+    # reformat_cmems_wind
+    # -------------------
+    parser_reformat_cmems_wind = subparsers.add_parser('reformat_cmems_wind',
+            help='replace the 10 m winds in CROCO-formatted ERA5 files with the CMEMS L4 hourly gridded winds, interpolating the other ERA5 variables onto the CMEMS grid. Output is monthly files in the same format as the ERA5 files, for CROCO (ONLINE, ERA_ECMWF) and WW3. NB the CMEMS winds are stress-equivalent winds, used as-is')
+    parser_reformat_cmems_wind.add_argument('--windDir', required=True, help='Directory containing the monthly CMEMS wind files, named YYYY_MM.nc')
+    parser_reformat_cmems_wind.add_argument('--era5Dir', required=True, help='Directory containing the CROCO-formatted ERA5 files, used for all variables other than the winds')
+    parser_reformat_cmems_wind.add_argument('--outputDir', required=True, help='Directory to save reformatted nc files')
+    parser_reformat_cmems_wind.add_argument('--month_start', required=True, type=str,
+            help='first month to process in format "YYYY-MM"')
+    parser_reformat_cmems_wind.add_argument('--month_end', required=True, type=str,
+            help='last month to process in format "YYYY-MM". Months without a CMEMS file are skipped with a warning')
+    parser_reformat_cmems_wind.add_argument('--Yorig', required=True, type=int,
+                        help='the Yorig value used in setting up the CROCO model - must match the time units of the ERA5 files')
+    def reformat_cmems_wind_handler(args):
+        reformat_cmems_wind(args.windDir,args.era5Dir,args.outputDir,args.month_start,args.month_end,args.Yorig)
+    parser_reformat_cmems_wind.set_defaults(func=reformat_cmems_wind_handler)
     
     # --------------------------
     # plot/animate croco output

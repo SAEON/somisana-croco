@@ -1227,7 +1227,187 @@ def reformat_gfs_atm(gfs_dir,out_dir,Yorig):
             os.remove(ncx_file)
         for idx_file in glob.glob(os.path.join(gfs_dir, '*.idx')):
             os.remove(idx_file)
-        
+
+def reformat_cmems_wind(wind_dir,era5_dir,out_dir,month_start,month_end,Yorig):
+    '''
+    Replace the ERA5 10 m winds in a set of CROCO-formatted ERA5 files with the
+    CMEMS L4 hourly gridded winds (scatterometer bias-corrected ERA5, product
+    WIND_GLO_PHY_L4_MY_012_006 / _NRT_012_004), keeping ERA5 for all the other variables.
+    The output is in the exact same format as the ERA5 files written by ERA5_convert.py
+    (one file per variable per month e.g. U10M_Y2022M1.nc), so it can be used by CROCO
+    with the ONLINE and ERA_ECMWF cpp keys, and by WW3, just by pointing to out_dir.
+
+    This is analogous to reformat_saws_atm(), where the variables we don't get from the
+    new wind product are interpolated onto its (higher resolution) grid. The output grid
+    is the native CMEMS grid, so the winds themselves are not interpolated in space.
+
+    NB: the CMEMS winds are *stress-equivalent* winds at 10 m (U10S), i.e. the neutral
+    10 m wind scaled by sqrt(air density / 1.225), and not the actual 10 m wind which
+    ERA5 provides and CROCO/WW3 expect. We are using U10S as-is (differences are
+    typically a few percent, depending on stability and air density), but this caveat
+    should be kept in mind when interpreting the results.
+
+    Parameters
+    ----------
+    wind_dir      : directory containing the monthly CMEMS wind files, named YYYY_MM.nc
+                    (as written by download_cmems_monthly in somisana-download)
+    era5_dir      : directory containing the CROCO-formatted ERA5 files (output of ERA5_convert.py)
+    out_dir       : directory where the output files will be written
+    month_start   : first month to process, as a string 'YYYY-MM'
+    month_end     : last month to process, as a string 'YYYY-MM'
+    Yorig         : the origin year used in setting up the croco times.
+                    Must be consistent with the time units of the ERA5 files
+    '''
+
+    # the ERA5 variables to interpolate onto the CMEMS grid
+    # LSM and SST aren't read by CROCO (ERA_ECMWF) but we keep them so that out_dir
+    # is a drop-in replacement for the ERA5 directory
+    era5_vars = ['T2M', 'Q', 'TP', 'SSR', 'STRD', 'msl', 'SST', 'LSM']
+    # the CMEMS wind variables and their ERA5 equivalents
+    wind_vars = {
+            'U10M': {
+                'cmems_name': 'eastward_wind',
+                'long_name': '10m_u_component_of_wind',
+            },
+            'V10M': {
+                'cmems_name': 'northward_wind',
+                'long_name': '10m_v_component_of_wind',
+            },
+        }
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    month_now = datetime.strptime(month_start+'-01','%Y-%m-%d')
+    month_last = datetime.strptime(month_end+'-01','%Y-%m-%d')
+
+    while month_now <= month_last:
+
+        # ERA5 files use non-zero-padded months, CMEMS files use zero-padded months
+        era5_suffix = '_Y'+str(month_now.year)+'M'+str(month_now.month)+'.nc'
+        fname_wind = os.path.join(wind_dir, month_now.strftime('%Y_%m.nc'))
+
+        if not os.path.exists(fname_wind):
+            print('WARNING: '+fname_wind+' not found - skipping '+month_now.strftime('%Y-%m'))
+        else:
+            print('working on '+month_now.strftime('%Y-%m'))
+
+            ds_wind = xr.open_dataset(fname_wind)
+            ds_wind = ds_wind.rename({'longitude': 'lon', 'latitude': 'lat'})
+
+            # check that we have every hour of the month
+            # (we'd rather stop here than have CROCO or WW3 silently interpolate over a gap)
+            day_end = calendar.monthrange(month_now.year, month_now.month)[1]
+            time_expected = pd.date_range(start=month_now,
+                                          end=datetime(month_now.year, month_now.month, day_end, 23),
+                                          freq='h')
+            time_wind = pd.DatetimeIndex(ds_wind.time.values)
+            if not time_wind.equals(time_expected):
+                raise ValueError(fname_wind+' does not contain every hour of the month')
+
+            # output time in days since Yorig, written as double rather than float
+            # (the hourly ERA5 variables are put onto these same times)
+            # (float32 days since 1993 only resolves to ~30 seconds, which is why the
+            # ERA5 files have times like 01:00:28)
+            reference_date = np.datetime64(str(Yorig)+'-01-01T00:00:00')
+            time_out = (time_expected.values - reference_date) / np.timedelta64(1, 'D')
+
+            for var in wind_vars:
+                da = ds_wind[wind_vars[var]['cmems_name']]
+                da.attrs = {'units': 'm s-1',
+                            'long_name': wind_vars[var]['long_name'],
+                            'comment': 'CMEMS L4 stress-equivalent wind at 10 m (U10S), used as-is in place of the ERA5 10 m wind'}
+                write_era5_format(da, var, time_out, Yorig,
+                                  os.path.join(out_dir, var+era5_suffix))
+
+            for var in era5_vars:
+                fname_era5 = os.path.join(era5_dir, var+era5_suffix)
+                ds_era5 = xr.open_dataset(fname_era5)
+
+                # check that the ERA5 times are referenced to the Yorig we're writing
+                units_era5 = ds_era5.time.encoding['units']
+                if units_era5.split('since')[1].strip().split('-')[0] != str(Yorig):
+                    raise ValueError(fname_era5+' has time units "'+units_era5+'" which are inconsistent with Yorig='+str(Yorig))
+
+                # the ERA5 times are stored as float32, so round them to the nearest hour
+                ds_era5['time'] = pd.DatetimeIndex(ds_era5.time.values).round('h')
+                time_era5 = pd.DatetimeIndex(ds_era5.time.values)
+                if len(time_era5) > 1 and (time_era5[1] - time_era5[0]) > pd.Timedelta('1h'):
+                    # some variables (SST, LSM) are written daily by ERA5_convert.py,
+                    # in which case we keep the ERA5 time axis
+                    da = ds_era5[var]
+                    time_out_var = (time_era5.values - reference_date) / np.timedelta64(1, 'D')
+                else:
+                    # hourly variables are put onto the CMEMS times
+                    # (selecting rather than interpolating in time, so the hourly
+                    # accumulated fluxes are not blended)
+                    missing = time_expected.difference(time_era5)
+                    if len(missing) > 0:
+                        raise ValueError(fname_era5+' is missing '+str(len(missing))+' of the hours in the CMEMS file')
+                    da = ds_era5[var].sel(time=time_expected)
+                    time_out_var = time_out
+
+                # interpolate onto the CMEMS grid
+                # (land values of SST are missing in ERA5, so SST is also missing in
+                # the CMEMS grid cells adjacent to land, which is fine since CROCO doesn't use it)
+                attrs = da.attrs
+                da = da.interp(lon=ds_wind.lon, lat=ds_wind.lat, method='linear')
+                da.attrs = attrs
+                write_era5_format(da, var, time_out_var, Yorig,
+                                  os.path.join(out_dir, var+era5_suffix))
+                ds_era5.close()
+
+            ds_wind.close()
+
+        month_now = month_now + timedelta(days=32) # 32 days ensures we get to the next month
+        month_now = datetime(month_now.year, month_now.month, 1)
+
+def write_era5_format(da, var, time_out, Yorig, fname_out):
+    '''
+    Write a (time, lat, lon) data array to a netcdf file in the same format as the
+    CROCO-formatted ERA5 files written by ERA5_convert.py, the only difference being
+    that time is written as double instead of float to avoid precision loss
+
+    Parameters
+    ----------
+    da        : xarray DataArray with dimensions (time, lat, lon)
+    var       : the name of the variable in the output file e.g. 'U10M'
+    time_out  : array of times in days since Yorig-1-1
+    Yorig     : the origin year of the times
+    fname_out : the output filename
+    '''
+    lon = da.lon.values
+    lat = da.lat.values
+    data = da.transpose('time', 'lat', 'lon').values
+
+    if os.path.exists(fname_out):
+        os.remove(fname_out)
+    nw = netcdf.Dataset(fname_out, 'w', format='NETCDF4')
+    nw.createDimension('lon', len(lon))
+    nw.createDimension('lat', len(lat))
+    nw.createDimension('time', None)
+
+    varlon = nw.createVariable('lon', 'f4', ('lon',))
+    varlat = nw.createVariable('lat', 'f4', ('lat',))
+    vartime = nw.createVariable('time', 'f8', ('time',))
+    vardata = nw.createVariable(var, 'f4', ('time','lat','lon'))
+
+    varlon.long_name = 'longitude of RHO-points'
+    varlon.units = 'degree_east'
+    varlat.long_name = 'latitude of RHO-points'
+    varlat.units = 'degree_north'
+    vartime.long_name = 'Time'
+    vartime.units = 'days since '+str(Yorig)+'-1-1'
+    vardata.missing_value = np.float32(9999.)
+    for attr in ['units', 'long_name', 'comment']:
+        if attr in da.attrs:
+            vardata.setncattr(attr, da.attrs[attr])
+
+    varlon[:] = lon
+    varlat[:] = lat
+    vartime[:] = time_out
+    vardata[:] = np.where(np.isnan(data), 9999., data).astype('float32')
+    nw.close()
+
 def make_ini(input_file,output_dir,ini_date,Yorig,fname_out):
     '''
     Make CROCO initial conditions file from an OGCM file
