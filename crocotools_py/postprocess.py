@@ -568,7 +568,16 @@ def get_depths(ds):
                         "file (looked for 's_rho' and 'sc_r'), so the depths of "
                         'the sigma levels cannot be computed')
 
-    depth_rho = z_levels(h, ssh, hc, vtransform, sc, ds['Cs_r'].values)
+    cs = None
+    for name in ('Cs_rho', 'Cs_r'):
+        if name in ds.variables:
+            cs = ds[name].values
+            break
+
+    if cs is None: 
+        raise Exception("Neither 'Cs_r' nor 'Cs_rho' found in the model output.")
+
+    depth_rho = z_levels(h, ssh, hc, vtransform, sc, cs)
     
     # depth_rho = np.squeeze(depth_rho)
     
